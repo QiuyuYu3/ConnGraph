@@ -1,0 +1,33 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.14"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      # VTK needs an X display and a software OpenGL driver for the 3-D render tests
+      - name: Install system libraries for off-screen rendering
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1 libglx-mesa0 libgl1-mesa-dri
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[graph,atlas,html,dev]"
+      - name: Lint
+        run: ruff check .
+      - name: Test
+        run: xvfb-run -a python -m pytest tests
