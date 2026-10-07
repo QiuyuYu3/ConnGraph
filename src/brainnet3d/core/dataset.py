@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd
 from dataclasses import dataclass
 
+from brainnet3d.exceptions import DataValidationError
+
 
 @dataclass
 class ConnectivityDataset:
@@ -36,13 +38,13 @@ class ConnectivityDataset:
         required_node_cols = {"label", "x", "y", "z"}
         missing = required_node_cols - set(self.nodes_df.columns)
         if missing:
-            raise ValueError(f"nodes_df is missing required columns: {missing}")
+            raise DataValidationError(f"nodes_df is missing required columns: {missing}")
 
         for sub_id, mat in self.matrices.items():
             if mat.shape[0] != mat.shape[1]:
-                raise ValueError(f"Matrix for '{sub_id}' is not square: {mat.shape}")
+                raise DataValidationError(f"Matrix for '{sub_id}' is not square: {mat.shape}")
             if list(mat.index) != list(mat.columns):
-                raise ValueError(
+                raise DataValidationError(
                     f"Matrix for '{sub_id}': row index and column names must match."
                 )
 

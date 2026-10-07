@@ -10,6 +10,8 @@ import zipfile
 
 import pandas as pd
 
+from brainnet3d.exceptions import DownloadError
+
 PathLike = str | os.PathLike
 
 _CONFIG_DIR = pathlib.Path(__file__).parent / "config"
@@ -45,10 +47,10 @@ def _fetch_gordon_parcels(dest_dir: pathlib.Path) -> pathlib.Path:
         with zipfile.ZipFile(io.BytesIO(archive)) as zf:
             content = zf.read(entry["member"])
     except (OSError, zipfile.BadZipFile, KeyError) as e:
-        raise RuntimeError(f"Could not download the Gordon parcellation ({e}). {manual}") from e
+        raise DownloadError(f"Could not download the Gordon parcellation ({e}). {manual}") from e
 
     if hashlib.sha256(content).hexdigest() != entry["sha256"]:
-        raise RuntimeError(f"The downloaded Parcels.xlsx does not match the expected release. {manual}")
+        raise DownloadError(f"The downloaded Parcels.xlsx does not match the expected release. {manual}")
 
     path = dest_dir / "Parcels.xlsx"
     path.write_bytes(content)

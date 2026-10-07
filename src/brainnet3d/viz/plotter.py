@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from brainnet3d.core.dataset import ConnectivityDataset
+from brainnet3d.exceptions import DataValidationError
 
 if TYPE_CHECKING:
     from brainnet3d.graph_theory.runner import GraphMetricsResult
@@ -374,7 +375,7 @@ class BrainNetPlotter:
         filtered = nodes_df[mask].reset_index(drop=True)
 
         if filtered.empty:
-            raise ValueError(
+            raise DataValidationError(
                 f"No nodes found for hemisphere='{show_hemisphere}'. "
                 f"Check the 'hemisphere' column in your nodes file."
             )

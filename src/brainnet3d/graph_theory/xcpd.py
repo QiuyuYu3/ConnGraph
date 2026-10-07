@@ -11,6 +11,7 @@ import warnings
 
 import pandas as pd
 
+from brainnet3d.exceptions import DataValidationError
 from brainnet3d.loaders import _drop_bad_nodes
 
 
@@ -112,7 +113,7 @@ def load_xcpd(
 
     _warn_skipped(skipped)
     if not matrices:
-        raise RuntimeError(
+        raise DataValidationError(
             "No matrices could be loaded. Check xcpd_dir, atlas, session, task, space."
         )
 
@@ -229,7 +230,7 @@ def load_xcpd_flat(
 
     _warn_skipped(skipped)
     if not matrices:
-        raise RuntimeError("No matrices could be loaded. Check flat_dir and parameters.")
+        raise DataValidationError("No matrices could be loaded. Check flat_dir and parameters.")
 
     if verbose:
         print(f"[load_xcpd_flat] Loaded {len(matrices)} matrix/matrices")

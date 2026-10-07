@@ -16,6 +16,7 @@ import warnings
 import pandas as pd
 
 from brainnet3d.core.dataset import ConnectivityDataset
+from brainnet3d.exceptions import DataValidationError
 
 
 def load(
@@ -115,7 +116,7 @@ def _read_matrix(src: str | pd.DataFrame) -> pd.DataFrame:
     df.columns = df.columns.astype(str)
 
     if df.shape[0] != df.shape[1]:
-        raise ValueError(
+        raise DataValidationError(
             f"Matrix in '{src}' is not square: {df.shape}. "
             "Make sure the first column is used as the row index."
         )

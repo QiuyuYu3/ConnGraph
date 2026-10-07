@@ -18,6 +18,7 @@ from brainnet3d.graph_theory.aggregation import (
     build_net_hemi2rois,
     compute_net_corr,
 )
+from brainnet3d.exceptions import DataValidationError
 from brainnet3d.graph_theory.metrics import METRIC_NAMES, _check_graph_method, process_subject
 
 
@@ -232,7 +233,7 @@ def _check_node_matrices(matrices: dict[str, pd.DataFrame]) -> None:
         if n_inf:
             problems.append(f"{sub_id}: {n_inf} Inf value(s) off the diagonal")
     if problems:
-        raise ValueError("Node-level input check failed:\n  " + "\n  ".join(problems))
+        raise DataValidationError("Node-level input check failed:\n  " + "\n  ".join(problems))
 
 
 def _net_corr_to_wide(all_corr: dict[str, pd.DataFrame]) -> pd.DataFrame:
