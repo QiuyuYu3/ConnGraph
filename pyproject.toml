@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=77.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,6 +8,8 @@ version         = "0.1.0"
 description     = "Interactive 3-D brain network plots and graph-theory metrics for connectivity matrices"
 readme          = "README.md"
 requires-python = ">=3.10"
+license         = "Apache-2.0"
+license-files   = ["LICENSE"]
 authors = [
     { name = "Qiuyu Yu", email = "qiuyuyu.psych@gmail.com" },
 ]
