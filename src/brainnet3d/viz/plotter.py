@@ -155,11 +155,16 @@ class BrainNetPlotter:
                      "network" / "hemisphere" / column name → categorical.
                      numeric column name → continuous colormap.
         node_cmap  : colormap for numeric node_color.
+        node_colorvminvmax : colour limits for numeric node_color.
+                     "minmax" → data min to max. "absmax" → symmetric ±max(|values|).
+                     (vmin, vmax) tuple → explicit limits.
         node_alpha : node transparency.
         node_res   : sphere tessellation (higher = smoother).
         node_palette : {category_label: colour} override for categorical colouring.
 
-        edge_threshold : edges with |weight| ≤ threshold are hidden.
+        edge_threshold : cutoff applied according to edge_threshold_dir.
+        edge_threshold_dir : "absabove" → keep |weight| > threshold.
+                     "above" → keep weight > threshold. "below" → keep weight < -threshold.
         edge_width : float → uniform. "weight" → scaled to edge_width_range.
         edge_width_range : (min_w, max_w) in pixels.
         edge_color : "weight" → colormap. "node" → inherits node colour.
@@ -182,6 +187,10 @@ class BrainNetPlotter:
                  "spectral" → NetworkX spectral 3-D layout.
                  Brain surface is automatically hidden when a layout is used.
         layout_seed : random seed for "spring" and "kamada_kawai" layout reproducibility.
+        arrowaxis : add orientation arrows: "all", or a list drawn from "LR", "AP", "SI".
+        highlight_edges : (N, N) array marking edges to keep fully visible (e.g. NBSResult.adj),
+                          ordered like the dataset matrix labels. Other edges are dimmed.
+        highlight_level : dimming of non-highlighted edges (0 = none, 1 = invisible).
         """
         from vedo import Plotter
 
