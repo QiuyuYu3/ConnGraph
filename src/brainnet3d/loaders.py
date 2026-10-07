@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import glob
+import warnings
 
 import pandas as pd
 
@@ -43,7 +44,7 @@ def load(
     mat_df   = _read_matrix(matrix)
     nodes_df = _read_nodes(nodes)
 
-    mat_df   = _drop_bad_nodes(mat_df, bad_node_threshold)
+    mat_df   = _drop_bad_nodes({subject_id: mat_df}, bad_node_threshold)[subject_id]
     nodes_df = _align_nodes(nodes_df, mat_df)
 
     return ConnectivityDataset(matrices={subject_id: mat_df}, nodes_df=nodes_df)
@@ -95,13 +96,7 @@ def load_group(
     else:
         raise TypeError("`matrices` must be a directory path (str) or a dict.")
 
-    bad_nodes = _detect_bad_nodes(raw, bad_node_threshold, drop_mode)
-    if bad_nodes:
-        print(f"[load_group] Dropping {len(bad_nodes)} bad node(s): {sorted(bad_nodes)}")
-        raw = {
-            sid: mat.drop(index=bad_nodes, columns=bad_nodes, errors="ignore")
-            for sid, mat in raw.items()
-        }
+    raw = _drop_bad_nodes(raw, bad_node_threshold, drop_mode)
 
     nodes_df = _read_nodes(nodes)
     ref_mat  = next(iter(raw.values()))
@@ -137,20 +132,23 @@ def _read_nodes(src: str | pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _drop_bad_nodes(mat_df: pd.DataFrame, threshold: float) -> pd.DataFrame:
-    if threshold >= 1.0:
-        return mat_df
+def _drop_bad_nodes(
+    matrices: dict[str, pd.DataFrame],
+    threshold: float,
+    mode: str = "union",
+) -> dict[str, pd.DataFrame]:
+    bad = _detect_bad_nodes(matrices, threshold, mode)
+    if not bad:
+        return matrices
 
-    nan_frac_row = mat_df.isna().mean(axis=1)
-    nan_frac_col = mat_df.isna().mean(axis=0)
-    bad = set(mat_df.index[nan_frac_row > threshold]) | \
-          set(mat_df.columns[nan_frac_col > threshold])
-
-    if bad:
-        print(f"[load] Dropping {len(bad)} bad node(s): {sorted(bad)}")
-        mat_df = mat_df.drop(index=bad, columns=bad, errors="ignore")
-
-    return mat_df
+    warnings.warn(
+        f"Dropping {len(bad)} node(s) with NaN fraction above {threshold}: {sorted(bad)}",
+        stacklevel=3,
+    )
+    return {
+        sid: mat.drop(index=bad, columns=bad, errors="ignore")
+        for sid, mat in matrices.items()
+    }
 
 
 def _detect_bad_nodes(

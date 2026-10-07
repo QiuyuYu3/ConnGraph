@@ -10,6 +10,8 @@ import os
 
 import pandas as pd
 
+from brainnet3d.loaders import _drop_bad_nodes
+
 
 def load_xcpd(
     xcpd_dir: str,
@@ -265,21 +267,3 @@ def _discover_subjects(xcpd_dir: str) -> list[str]:
         for d in dirs
         if os.path.isdir(d)
     )
-
-
-def _drop_bad_nodes(
-    matrices: dict[str, pd.DataFrame],
-    threshold: float,
-) -> dict[str, pd.DataFrame]:
-    bad: set = set()
-    for mat in matrices.values():
-        bad |= set(mat.index[mat.isna().mean(axis=1) > threshold])
-        bad |= set(mat.columns[mat.isna().mean(axis=0) > threshold])
-
-    if bad:
-        print(f"[load_xcpd] Dropping {len(bad)} bad node(s): {sorted(bad)}")
-        matrices = {
-            sid: mat.drop(index=bad, columns=bad, errors="ignore")
-            for sid, mat in matrices.items()
-        }
-    return matrices
