@@ -189,6 +189,8 @@ class BrainNetPlotter:
             for col_name, label_to_val in self._extra_cols.items():
                 nodes_df[col_name] = nodes_df["label"].map(label_to_val)
         matrix    = self._get_matrix(nodes_df)
+        if highlight_edges is not None:
+            highlight_edges = self._align_to_nodes(highlight_edges, nodes_df)
 
         if layout is not None:
             positions = self._compute_layout(matrix, layout, edge_threshold, layout_seed)
@@ -219,6 +221,7 @@ class BrainNetPlotter:
             node_alpha         = node_alpha,
             node_res           = node_res,
             palette            = node_palette,
+            positions          = positions,
         )
         actors.extend(node_spheres)
 
@@ -305,6 +308,20 @@ class BrainNetPlotter:
 
         labels = nodes_df["label"].tolist()
         return df.loc[labels, labels].values.astype(float)
+
+    def _align_to_nodes(self, arr: np.ndarray, nodes_df: pd.DataFrame) -> np.ndarray:
+        # mean_matrix() keeps the first subject's label order
+        key    = next(iter(self.dataset.matrices)) if self.subject_id == "mean" else self.subject_id
+        source = list(self.dataset.matrices[key].columns)
+        arr    = np.asarray(arr)
+        if arr.shape != (len(source), len(source)):
+            raise ValueError(
+                f"highlight_edges has shape {arr.shape}; expected {(len(source), len(source))}, "
+                "ordered like the dataset matrix labels."
+            )
+        pos = {lbl: k for k, lbl in enumerate(source)}
+        idx = [pos[lbl] for lbl in nodes_df["label"]]
+        return arr[np.ix_(idx, idx)]
 
     def _compute_layout(
         self,

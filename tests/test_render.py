@@ -1,6 +1,8 @@
 import re
+import warnings
 
 import matplotlib.pyplot as plt
+import networkx as nx
 import numpy as np
 import pytest
 
@@ -73,6 +75,31 @@ def test_spring_plot(dataset, out_dir):
     _save_fig(fig, out_dir / "spring_2d.png")
 
 
+def _spring_plot_sizes(G):
+    from matplotlib.collections import LineCollection, PathCollection
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        fig, ax = bnv.spring_plot(G, list("abcd"), ["A", "A", "B", "B"], {"A": "red", "B": "blue"})
+    widths = [w for c in ax.collections if isinstance(c, LineCollection) for w in c.get_linewidths()]
+    sizes = [s for c in ax.collections if isinstance(c, PathCollection) for s in c.get_sizes()]
+    plt.close(fig)
+    return np.array(widths, dtype=float), np.array(sizes, dtype=float)
+
+
+def test_spring_plot_negative_weights():
+    G = nx.Graph()
+    G.add_weighted_edges_from([(0, 1, 0.8), (1, 2, -0.6), (2, 3, 0.5)])
+    widths, sizes = _spring_plot_sizes(G)
+    np.testing.assert_allclose(sorted(widths), sorted(np.power([0.8, 0.6, 0.5], 1.5)))
+    assert np.isfinite(sizes).all() and sizes.argmax() == 1
+
+
+def test_spring_plot_without_edges():
+    _, sizes = _spring_plot_sizes(nx.empty_graph(4))
+    np.testing.assert_array_equal(sizes, 50)
+
+
 def test_spring_plot_3d(dataset, out_dir):
     G = bnv.threshold_graph(dataset.mean_matrix().values, threshold=0.4)
     path = out_dir / "spring_3d.png"
@@ -94,6 +121,20 @@ def test_circos_plot(dataset, out_dir):
     network_labels = dataset.nodes_df["network"].tolist()
     fig, _ = bnv.circos_plot(G, dataset.nodes_df["label"].tolist(), network_labels, _net2color(network_labels))
     _save_fig(fig, out_dir / "circos.png")
+
+
+def test_circos_labels_face_outward(dataset):
+    G = bnv.threshold_graph(dataset.mean_matrix().values, threshold=0.4)
+    network_labels = dataset.nodes_df["network"].tolist()
+    fig, ax = bnv.circos_plot(G, dataset.nodes_df["label"].tolist(), network_labels, _net2color(network_labels))
+    checked = 0
+    for text in ax.texts:
+        x, _ = text.get_position()
+        if abs(x) > 1e-6:
+            assert text.get_horizontalalignment() == ("left" if x > 0 else "right"), text.get_text()
+            checked += 1
+    plt.close(fig)
+    assert checked > 0
 
 
 def test_matrix_heatmap(dataset, out_dir):
@@ -184,3 +225,49 @@ def test_plot_writes_standalone_html(dataset, out_dir):
 def test_spring_plot_3d_default_returns_image(dataset):
     G = bnv.threshold_graph(dataset.mean_matrix().values, threshold=0.4)
     _assert_image(bnv.spring_plot_3d(G))
+
+
+def _plot_actors(plotter, monkeypatch, **kwargs):
+    import brainnet3d.viz.views as views
+
+    captured = {}
+    monkeypatch.setattr(views, "_finish_render", lambda vp, actors, *a, **kw: captured.update(actors=actors))
+    plotter.plot(**kwargs)
+    return captured["actors"]
+
+
+def test_layout_places_nodes_at_edge_endpoints(dataset, monkeypatch):
+    actors = _plot_actors(
+        bnv.BrainNetPlotter(dataset, subject_id="mean"), monkeypatch, layout="spring", edge_threshold=0.4,
+    )
+    centres = {a._node_idx: np.asarray(a.center_of_mass()) for a in actors if hasattr(a, "_node_idx")}
+    edges = [a for a in actors if hasattr(a, "_endpoints")]
+    assert edges
+    for e in edges:
+        i, j = e._endpoints
+        ends = np.asarray(e.vertices)
+        np.testing.assert_allclose(ends[0], centres[i], atol=1e-3)
+        np.testing.assert_allclose(ends[-1], centres[j], atol=1e-3)
+
+
+def test_highlight_edges_follow_hemisphere_filter(dataset, monkeypatch):
+    source = dataset.mean_matrix().columns.tolist()
+    r_labels = dataset.nodes_df.loc[dataset.nodes_df["hemisphere"] == "R", "label"].tolist()
+    a, b = r_labels[1], r_labels[3]
+    hl = np.zeros((len(source), len(source)))
+    hl[source.index(a), source.index(b)] = hl[source.index(b), source.index(a)] = 1
+
+    actors = _plot_actors(
+        bnv.BrainNetPlotter(dataset, subject_id="mean"), monkeypatch, show_hemisphere="R",
+        edge_threshold=-1.0, edge_threshold_dir="above", edge_alpha=0.7, highlight_edges=hl,
+    )
+    bright = {
+        frozenset((r_labels[e._endpoints[0]], r_labels[e._endpoints[1]]))
+        for e in actors if hasattr(e, "_endpoints") and e._orig_alpha == 0.7
+    }
+    assert bright == {frozenset((a, b))}
+
+
+def test_highlight_edges_shape_mismatch_raises(dataset):
+    with pytest.raises(ValueError, match="highlight_edges"):
+        bnv.BrainNetPlotter(dataset, subject_id="mean").plot(highlight_edges=np.zeros((3, 3)))

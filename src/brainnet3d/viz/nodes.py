@@ -25,6 +25,7 @@ def build_nodes(
     node_alpha:     float = 1.0,
     node_res:       int   = 16,
     palette:        dict | None = None,
+    positions:      np.ndarray | None = None,
 ) -> list:
     """
     Build vedo Sphere objects for all nodes.
@@ -45,6 +46,7 @@ def build_nodes(
     node_alpha : transparency 0–1.
     node_res : sphere tessellation resolution.
     palette : optional {label: color} dict for categorical colouring.
+    positions : (N, 3) array overriding the x, y, z columns (e.g. a graph layout).
 
     Returns
     -------
@@ -52,7 +54,9 @@ def build_nodes(
     """
     from vedo import Sphere
 
-    positions = nodes_df[["x", "y", "z"]].values.astype(float)
+    if positions is None:
+        positions = nodes_df[["x", "y", "z"]].values
+    positions = np.asarray(positions, dtype=float)
     n         = len(positions)
 
     radii  = _resolve_sizes(node_size, node_size_range, nodes_df, n)

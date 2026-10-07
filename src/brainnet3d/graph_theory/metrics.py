@@ -18,7 +18,7 @@ def process_subject(
     node_labels: list,
     metrics: list[str],
     graph_method: str | Callable = "tmfg",
-) -> dict | None:
+) -> dict:
     """Compute graph-theory metrics for one subject.
 
     Parameters
@@ -42,48 +42,43 @@ def process_subject(
 
     Returns
     -------
-    dict with "subj" key plus one {label: value} dict per metric, or None on failure.
+    dict with "subj" key plus one {label: value} dict per metric. Errors propagate to the caller.
     """
     import bct
     import networkx as nx
 
-    try:
-        mat = corrmat.copy()
-        np.fill_diagonal(mat, 0)
+    mat = corrmat.copy()
+    np.fill_diagonal(mat, 0)
 
-        A = nx.to_numpy_array(_build_graph(mat, graph_method))
+    A = nx.to_numpy_array(_build_graph(mat, graph_method))
 
-        out: dict = {"subj": subj}
+    out: dict = {"subj": subj}
 
-        if "clust_coeff" in metrics:
-            try:
-                clust = bct.clustering_coef_wu_sign(A, coef_type="costantini")
-            except Exception as e:
-                print(f"[{subj}] clustering_coef_wu_sign failed: {e}")
-                clust = np.full(len(node_labels), np.nan)
-            out["clust_coeff"] = pd.Series(clust, index=node_labels).fillna(0).to_dict()
+    if "clust_coeff" in metrics:
+        try:
+            clust = bct.clustering_coef_wu_sign(A, coef_type="costantini")
+        except Exception as e:
+            print(f"[{subj}] clustering_coef_wu_sign failed: {e}")
+            clust = np.full(len(node_labels), np.nan)
+        out["clust_coeff"] = pd.Series(clust, index=node_labels).fillna(0).to_dict()
 
-        if "btwn_cent" in metrics:
-            A_dist = 1.0 / (np.abs(A) + 1e-6)
-            out["btwn_cent"] = pd.Series(
-                bct.betweenness_wei(A_dist), index=node_labels
-            ).to_dict()
+    if "btwn_cent" in metrics:
+        A_dist = 1.0 / (np.abs(A) + 1e-6)
+        out["btwn_cent"] = pd.Series(
+            bct.betweenness_wei(A_dist), index=node_labels
+        ).to_dict()
 
-        if "strength" in metrics:
-            out["strength"] = pd.Series(
-                bct.strengths_und(np.abs(A)), index=node_labels
-            ).to_dict()
+    if "strength" in metrics:
+        out["strength"] = pd.Series(
+            bct.strengths_und(np.abs(A)), index=node_labels
+        ).to_dict()
 
-        if "ge_local" in metrics:
-            out["ge_local"] = pd.Series(
-                bct.efficiency_wei(np.abs(A), local=True), index=node_labels
-            ).to_dict()
+    if "ge_local" in metrics:
+        out["ge_local"] = pd.Series(
+            bct.efficiency_wei(np.abs(A), local=True), index=node_labels
+        ).to_dict()
 
-        return out
-
-    except Exception as e:
-        print(f"[{subj}] failed: {e}")
-        return None
+    return out
 
 
 def _build_graph(corrmat: np.ndarray, method: str | Callable):

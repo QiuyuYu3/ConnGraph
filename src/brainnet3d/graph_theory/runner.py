@@ -5,8 +5,9 @@ Top-level entry point: compute_graph_metrics.
 from __future__ import annotations
 
 import os
+import warnings
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from collections.abc import Callable
 
 import numpy as np
@@ -29,6 +30,7 @@ class GraphMetricsResult:
     net_hemi_df:      pd.DataFrame | None = None
     net_corr_df:      pd.DataFrame | None = None
     net_hemi_corr_df: pd.DataFrame | None = None
+    failed:           dict[str, dict[str, str]] = field(default_factory=dict)
 
 
 def compute_graph_metrics(
@@ -74,9 +76,17 @@ def compute_graph_metrics(
         .net_hemi_df      — like network_df but hemisphere-split (hemi_split=True)
         .net_corr_df      — wide-format pairwise network correlations
         .net_hemi_corr_df — like net_corr_df but hemisphere-split
+        .failed           — {level: {subject_id: error}} for subjects left as NaN rows
     """
     if metrics is None:
         metrics = list(METRIC_NAMES)
+    if not (callable(graph_method) or graph_method == "tmfg"):
+        raise ValueError(
+            f"graph_method={graph_method!r} is not recognised. "
+            "Pass \"tmfg\" or a callable that takes a corrmat and returns a nx.Graph."
+        )
+    if level in ("node", "both"):
+        _check_node_matrices(matrices)
 
     subject_ids = list(matrices.keys())
     result = GraphMetricsResult()
@@ -97,8 +107,10 @@ def compute_graph_metrics(
             corrmat = all_net_corr[sub_id].values.astype(float)
             if apply_fisher_z:
                 corrmat = np.tanh(corrmat)
-            res = process_subject(sub_id, corrmat, list(nets), metrics, graph_method)
-            if res is None:
+            try:
+                res = process_subject(sub_id, corrmat, list(nets), metrics, graph_method)
+            except Exception as e:
+                _record_failure(result, "network", sub_id, e)
                 continue
             for m in metrics:
                 for n in nets:
@@ -138,8 +150,10 @@ def compute_graph_metrics(
                 done += 1
                 sid = futures[future]
                 print(f"  [{done}/{total}] {sid}")
-                res = future.result()
-                if res is None:
+                try:
+                    res = future.result()
+                except Exception as e:
+                    _record_failure(result, "node", sid, e)
                     continue
                 for m in metrics:
                     if m not in res:
@@ -167,8 +181,10 @@ def compute_graph_metrics(
             corrmat = all_net_hemi_corr[sub_id].values.astype(float)
             if apply_fisher_z:
                 corrmat = np.tanh(corrmat)
-            res = process_subject(sub_id, corrmat, list(nets_hemi), metrics, graph_method)
-            if res is None:
+            try:
+                res = process_subject(sub_id, corrmat, list(nets_hemi), metrics, graph_method)
+            except Exception as e:
+                _record_failure(result, "network_hemi", sub_id, e)
                 continue
             for m in metrics:
                 for n in nets_hemi:
@@ -178,11 +194,45 @@ def compute_graph_metrics(
         result.net_hemi_df = net_hemi_df
         result.net_hemi_corr_df = _net_corr_to_wide(all_net_hemi_corr)
 
+    if result.failed:
+        lines = [
+            f"  {lvl} / {sid}: {msg}"
+            for lvl, subs in result.failed.items()
+            for sid, msg in subs.items()
+        ]
+        warnings.warn(
+            "Graph metrics failed for some subjects; their rows are left as NaN:\n" + "\n".join(lines),
+            stacklevel=2,
+        )
+
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
         _save(result, output_dir)
 
     return result
+
+
+def _record_failure(result: GraphMetricsResult, level: str, sub_id: str, exc: Exception) -> None:
+    result.failed.setdefault(level, {})[sub_id] = f"{type(exc).__name__}: {exc}"
+
+
+def _check_node_matrices(matrices: dict[str, pd.DataFrame]) -> None:
+    # The diagonal is zeroed before graph construction, so only off-diagonal values must be finite
+    problems = []
+    for sub_id, df in matrices.items():
+        mat = df.values.astype(float)
+        if mat.ndim != 2 or mat.shape[0] != mat.shape[1]:
+            problems.append(f"{sub_id}: not square, shape {mat.shape}")
+            continue
+        off_diag = mat[~np.eye(len(mat), dtype=bool)]
+        n_nan = int(np.isnan(off_diag).sum())
+        n_inf = int(np.isinf(off_diag).sum())
+        if n_nan:
+            problems.append(f"{sub_id}: {n_nan} NaN value(s) off the diagonal")
+        if n_inf:
+            problems.append(f"{sub_id}: {n_inf} Inf value(s) off the diagonal")
+    if problems:
+        raise ValueError("Node-level input check failed:\n  " + "\n  ".join(problems))
 
 
 def _net_corr_to_wide(all_corr: dict[str, pd.DataFrame]) -> pd.DataFrame:

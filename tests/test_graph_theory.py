@@ -60,6 +60,57 @@ def test_network_strength_matches_averaged_matrix(apply_fisher_z):
     np.testing.assert_allclose(got.values, expected.values, rtol=1e-10)
 
 
+def _with_values(df: pd.DataFrame, fill) -> pd.DataFrame:
+    arr = df.to_numpy(copy=True)
+    fill(arr)
+    return pd.DataFrame(arr, index=df.index, columns=df.columns)
+
+
+def test_node_level_rejects_nan_and_inf_off_diagonal():
+    matrices, atlas = _toy_inputs()
+    good = matrices["s1"]
+    bad = {
+        "s_nan": _with_values(good, lambda a: a.__setitem__((0, 1), np.nan)),
+        "s_inf": _with_values(good, lambda a: a.__setitem__((2, 3), np.inf)),
+        "s_ok": good,
+    }
+    with pytest.raises(ValueError, match=r"s_nan.*NaN[\s\S]*s_inf.*Inf") as info:
+        compute_graph_metrics(bad, atlas, level="node", hemi_split=False, n_jobs=1)
+    assert "s_ok" not in str(info.value)
+
+
+def test_node_level_accepts_inf_diagonal():
+    matrices, atlas = _toy_inputs()
+    z = {"s1": _with_values(matrices["s1"], lambda a: np.fill_diagonal(a, np.inf))}
+    result = compute_graph_metrics(z, atlas, level="node", hemi_split=False, metrics=["strength"], n_jobs=1)
+    assert not result.node_df.isna().any().any()
+
+
+def _failing_method(corrmat):
+    raise RuntimeError("boom")
+
+
+def test_process_subject_raises_on_failure():
+    with pytest.raises(RuntimeError, match="boom"):
+        process_subject("s1", _random_corr(6, 2), [f"roi{i}" for i in range(6)], METRICS, _failing_method)
+
+
+def test_failed_subject_is_reported_and_left_nan():
+    matrices, atlas = _toy_inputs()
+    with pytest.warns(UserWarning, match=r"network / s1: RuntimeError: boom"):
+        result = compute_graph_metrics(
+            matrices, atlas, level="network", hemi_split=False, graph_method=_failing_method,
+        )
+    assert result.failed == {"network": {"s1": "RuntimeError: boom"}}
+    assert result.network_df.loc["s1"].isna().all()
+
+
+def test_unknown_graph_method_raises_before_computing():
+    matrices, atlas = _toy_inputs()
+    with pytest.raises(ValueError, match="graph_method"):
+        compute_graph_metrics(matrices, atlas, level="network", graph_method="nope")
+
+
 def _null_groups(n_nodes: int = 12, n_subjects: int = 10, seed: int = 0):
     rng = np.random.default_rng(seed)
     labels = [f"roi{i}" for i in range(n_nodes)]

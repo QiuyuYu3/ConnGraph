@@ -185,9 +185,12 @@ def spring_plot(
     net2color : {network_name: colour_string}.
     save_path : if given, save figure to this path at 150 dpi.
     """
-    edge_weights  = [d["weight"] for _, _, d in G.edges(data=True)]
-    strength_vals = np.array([d for _, d in G.degree(weight="weight")], dtype=float)
-    node_sizes    = np.clip(strength_vals / strength_vals.max() * node_size_scale, 50, node_size_scale)
+    edge_weights  = np.abs([d["weight"] for _, _, d in G.edges(data=True)])
+    strength_vals = np.array(
+        [sum(abs(a["weight"]) for a in G.adj[nd].values()) for nd in G], dtype=float
+    )
+    peak          = strength_vals.max(initial=0.0) or 1.0  # no edges: every node falls to the minimum size
+    node_sizes    = np.clip(strength_vals / peak * node_size_scale, 50, node_size_scale)
     node_colors   = [net2color[net] for net in network_labels]
 
     pos = nx.spring_layout(G, seed=seed, k=spring_k)
@@ -281,7 +284,7 @@ def circos_plot(
 
     label_R = R + node_radius + 0.04
     for i, (lbl, a) in enumerate(zip(sorted_labels, angles)):
-        deg      = np.degrees(a)
+        deg      = (np.degrees(a) + 180) % 360 - 180
         ha       = "left" if -90 < deg <= 90 else "right"
         rotation = deg if ha == "left" else deg + 180
         ax.text(label_R * np.cos(a), label_R * np.sin(a), lbl,
