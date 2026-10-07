@@ -18,7 +18,7 @@ from brainnet3d.graph_theory.aggregation import (
     build_net_hemi2rois,
     compute_net_corr,
 )
-from brainnet3d.graph_theory.metrics import METRIC_NAMES, process_subject
+from brainnet3d.graph_theory.metrics import METRIC_NAMES, _check_graph_method, process_subject
 
 
 @dataclass
@@ -45,6 +45,7 @@ def compute_graph_metrics(
     graph_method: str | Callable = "tmfg",
     n_jobs: int = -1,
     output_dir: str | None = None,
+    verbose: bool = True,
 ) -> GraphMetricsResult:
     """Compute graph-theory metrics from pre-computed connectivity matrices.
 
@@ -67,6 +68,7 @@ def compute_graph_metrics(
         Applied during graph construction in both network- and node-level steps.
     n_jobs : parallel workers for node-level computation; -1 = cpu_count - 1.
     output_dir : if given, saves CSV files there (directory is created if needed).
+    verbose : print node-level progress and the names of saved files.
 
     Returns
     -------
@@ -80,11 +82,7 @@ def compute_graph_metrics(
     """
     if metrics is None:
         metrics = list(METRIC_NAMES)
-    if not (callable(graph_method) or graph_method == "tmfg"):
-        raise ValueError(
-            f"graph_method={graph_method!r} is not recognised. "
-            "Pass \"tmfg\" or a callable that takes a corrmat and returns a nx.Graph."
-        )
+    _check_graph_method(graph_method)
     if level in ("node", "both"):
         _check_node_matrices(matrices)
 
@@ -129,7 +127,8 @@ def compute_graph_metrics(
         )
 
         workers = max(1, (os.cpu_count() or 2) - 1) if n_jobs == -1 else max(1, n_jobs)
-        print(f"[graph_theory] Node-level: {len(subject_ids)} subjects, {workers} workers")
+        if verbose:
+            print(f"[graph_theory] Node-level: {len(subject_ids)} subjects, {workers} workers")
 
         with ProcessPoolExecutor(max_workers=workers) as executor:
             futures = {
@@ -149,7 +148,8 @@ def compute_graph_metrics(
             for future in as_completed(futures):
                 done += 1
                 sid = futures[future]
-                print(f"  [{done}/{total}] {sid}")
+                if verbose:
+                    print(f"  [{done}/{total}] {sid}")
                 try:
                     res = future.result()
                 except Exception as e:
@@ -207,7 +207,7 @@ def compute_graph_metrics(
 
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
-        _save(result, output_dir)
+        _save(result, output_dir, verbose)
 
     return result
 
@@ -249,12 +249,13 @@ def _net_corr_to_wide(all_corr: dict[str, pd.DataFrame]) -> pd.DataFrame:
     return pd.DataFrame(rows).set_index("ID")
 
 
-def _save(result: GraphMetricsResult, output_dir: str) -> None:
+def _save(result: GraphMetricsResult, output_dir: str, verbose: bool) -> None:
     def _write(df: pd.DataFrame | None, name: str) -> None:
         if df is not None:
             out = df.reset_index().rename(columns={"index": "ID"})
             out.to_csv(os.path.join(output_dir, name), index=False)
-            print(f"  Saved {name}")
+            if verbose:
+                print(f"  Saved {name}")
 
     _write(result.network_df,       "network_graph_theory.csv")
     _write(result.node_df,          "node_graph_theory.csv")

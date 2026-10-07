@@ -4,6 +4,8 @@ Edge rendering: connectivity matrix + node positions → vedo Line/Tube objects.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 
 from brainnet3d.viz.colormap import (
@@ -86,7 +88,7 @@ def build_edges(
                 weights.append(w)
 
     if not rows:
-        print("[build_edges] No edges above threshold — returning empty list.")
+        warnings.warn("No edges pass the threshold; only nodes will be drawn.", stacklevel=3)
         return []
 
     weights  = np.array(weights, dtype=float)

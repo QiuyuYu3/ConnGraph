@@ -86,6 +86,15 @@ def test_node_level_accepts_inf_diagonal():
     assert not result.node_df.isna().any().any()
 
 
+def test_compute_graph_metrics_verbose_false_is_silent(tmp_path, capsys):
+    matrices, atlas = _toy_inputs()
+    compute_graph_metrics(
+        matrices, atlas, level="node", metrics=["strength"], n_jobs=1, output_dir=str(tmp_path), verbose=False,
+    )
+    assert capsys.readouterr().out == ""
+    assert (tmp_path / "node_graph_theory.csv").exists()
+
+
 def _failing_method(corrmat):
     raise RuntimeError("boom")
 

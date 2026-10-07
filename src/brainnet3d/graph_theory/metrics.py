@@ -4,6 +4,7 @@ Single-subject graph-theory metrics via TMFG + BCT.
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Callable
 
 import numpy as np
@@ -58,7 +59,7 @@ def process_subject(
         try:
             clust = bct.clustering_coef_wu_sign(A, coef_type="costantini")
         except Exception as e:
-            print(f"[{subj}] clustering_coef_wu_sign failed: {e}")
+            warnings.warn(f"[{subj}] clustering_coef_wu_sign failed: {e}", stacklevel=2)
             clust = np.full(len(node_labels), np.nan)
         out["clust_coeff"] = pd.Series(clust, index=node_labels).fillna(0).to_dict()
 
@@ -81,20 +82,23 @@ def process_subject(
     return out
 
 
+def _check_graph_method(method: str | Callable) -> None:
+    if not (callable(method) or method == "tmfg"):
+        raise ValueError(
+            f"graph_method={method!r} is not recognised. "
+            "Pass \"tmfg\" or a callable that takes a corrmat and returns a nx.Graph."
+        )
+
+
 def _build_graph(corrmat: np.ndarray, method: str | Callable):
     """Return a networkx Graph from a correlation matrix using the given method."""
+    _check_graph_method(method)
     if callable(method):
         return method(corrmat)
 
-    if method == "tmfg":
-        import collections
-        import collections.abc
-        if not hasattr(collections, "Sized"):
-            collections.Sized = collections.abc.Sized  # topcorr still uses the alias removed in Python 3.10
-        import topcorr as tpc
-        return tpc.tmfg(corrmat, absolute=True, threshold_mean=True)
-
-    raise ValueError(
-        f"graph_method='{method}' is not recognised. "
-        "Pass \"tmfg\" or a callable that takes a corrmat and returns a nx.Graph."
-    )
+    import collections
+    import collections.abc
+    if not hasattr(collections, "Sized"):
+        collections.Sized = collections.abc.Sized  # topcorr still uses the alias removed in Python 3.10
+    import topcorr as tpc
+    return tpc.tmfg(corrmat, absolute=True, threshold_mean=True)

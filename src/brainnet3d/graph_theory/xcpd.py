@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import glob
 import os
+import warnings
 
 import pandas as pd
 
@@ -21,6 +22,7 @@ def load_xcpd(
     space: str = "fsLR",
     subject_ids: list[str] | None = None,
     bad_node_threshold: float = 0.9,
+    verbose: bool = True,
 ) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
     """
     Load correlation matrices from an XCP-D BIDS derivatives directory.
@@ -48,6 +50,8 @@ def load_xcpd(
     bad_node_threshold : float
         Drop ROIs where the fraction of NaN values exceeds this threshold
         across any subject (union strategy, 0–1).
+    verbose : bool
+        Print how many subjects were found and loaded, and the atlas path.
 
     Returns
     -------
@@ -78,10 +82,12 @@ def load_xcpd(
             raise FileNotFoundError(
                 f"No sub-* directories found in: {xcpd_dir}"
             )
-        print(f"[load_xcpd] Found {len(subject_ids)} subject(s)")
+        if verbose:
+            print(f"[load_xcpd] Found {len(subject_ids)} subject(s)")
 
     # Load matrices
     matrices: dict[str, pd.DataFrame] = {}
+    skipped: list[str] = []
     pattern_template = os.path.join(
         xcpd_dir,
         "sub-{sub}",
@@ -95,13 +101,8 @@ def load_xcpd(
         pattern = pattern_template.format(sub=sub)
         matches = glob.glob(pattern)
 
-        if len(matches) == 0:
-            print(f"  [skip] sub-{sub}: no file found")
-            continue
-        if len(matches) > 1:
-            print(f"  [skip] sub-{sub}: multiple files matched — be more specific:")
-            for m in matches:
-                print(f"    {m}")
+        if len(matches) != 1:
+            skipped.append(_skip_reason(sub, matches))
             continue
 
         df = pd.read_csv(matches[0], sep="\t", index_col=0)
@@ -109,12 +110,14 @@ def load_xcpd(
         df.columns = df.columns.astype(str)
         matrices[sub] = df
 
+    _warn_skipped(skipped)
     if not matrices:
         raise RuntimeError(
             "No matrices could be loaded. Check xcpd_dir, atlas, session, task, space."
         )
 
-    print(f"[load_xcpd] Loaded {len(matrices)} matrix/matrices")
+    if verbose:
+        print(f"[load_xcpd] Loaded {len(matrices)} matrix/matrices")
 
     # Drop bad nodes (union across subjects)
     if bad_node_threshold < 1.0:
@@ -131,7 +134,8 @@ def load_xcpd(
             "compute_graph_metrics(atlas=...)."
         )
     atlas_df = pd.read_csv(atlas_path, sep="\t")
-    print(f"[load_xcpd] Atlas: {atlas_path} ({len(atlas_df)} ROIs)")
+    if verbose:
+        print(f"[load_xcpd] Atlas: {atlas_path} ({len(atlas_df)} ROIs)")
 
     return matrices, atlas_df
 
@@ -145,6 +149,7 @@ def load_xcpd_flat(
     space: str = "fsLR",
     subject_ids: list[str] | None = None,
     bad_node_threshold: float = 0.9,
+    verbose: bool = True,
 ) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
     """
     Load correlation matrices from a **flat directory** produced by the XCP-D
@@ -167,6 +172,8 @@ def load_xcpd_flat(
         Explicit list of bare subject IDs.  ``None`` → discover from filenames.
     bad_node_threshold : float
         Drop ROIs with NaN fraction above this threshold (union strategy).
+    verbose : bool
+        Print how many subjects were found and loaded, and the atlas path.
 
     Returns
     -------
@@ -198,9 +205,11 @@ def load_xcpd_flat(
                 f"No matching files found in {flat_dir}\n"
                 f"Pattern used: {glob_pattern}"
             )
-        print(f"[load_xcpd_flat] Found {len(subject_ids)} subject(s)")
+        if verbose:
+            print(f"[load_xcpd_flat] Found {len(subject_ids)} subject(s)")
 
     matrices: dict[str, pd.DataFrame] = {}
+    skipped: list[str] = []
     file_template = os.path.join(
         flat_dir,
         f"sub-{{sub}}_{session}_task-{task}*_space-{space}_seg-{atlas}{stem}",
@@ -209,13 +218,8 @@ def load_xcpd_flat(
     for sub in subject_ids:
         matches = glob.glob(file_template.format(sub=sub))
 
-        if len(matches) == 0:
-            print(f"  [skip] sub-{sub}: no file found")
-            continue
-        if len(matches) > 1:
-            print(f"  [skip] sub-{sub}: multiple files matched:")
-            for m in matches:
-                print(f"    {m}")
+        if len(matches) != 1:
+            skipped.append(_skip_reason(sub, matches))
             continue
 
         df = pd.read_csv(matches[0], sep="\t", index_col=0)
@@ -223,10 +227,12 @@ def load_xcpd_flat(
         df.columns = df.columns.astype(str)
         matrices[sub] = df
 
+    _warn_skipped(skipped)
     if not matrices:
         raise RuntimeError("No matrices could be loaded. Check flat_dir and parameters.")
 
-    print(f"[load_xcpd_flat] Loaded {len(matrices)} matrix/matrices")
+    if verbose:
+        print(f"[load_xcpd_flat] Loaded {len(matrices)} matrix/matrices")
 
     if bad_node_threshold < 1.0:
         matrices = _drop_bad_nodes(matrices, bad_node_threshold)
@@ -234,7 +240,8 @@ def load_xcpd_flat(
     if not os.path.exists(atlas_path):
         raise FileNotFoundError(f"Atlas file not found: {atlas_path}")
     atlas_df = pd.read_csv(atlas_path, sep="\t")
-    print(f"[load_xcpd_flat] Atlas: {atlas_path} ({len(atlas_df)} ROIs)")
+    if verbose:
+        print(f"[load_xcpd_flat] Atlas: {atlas_path} ({len(atlas_df)} ROIs)")
 
     return matrices, atlas_df
 
@@ -258,6 +265,20 @@ def _discover_subjects_flat(
         sub = fname.split("_")[0].removeprefix("sub-")
         subs.append(sub)
     return sorted(set(subs))
+
+
+def _skip_reason(sub: str, matches: list[str]) -> str:
+    if not matches:
+        return f"sub-{sub}: no file found"
+    return f"sub-{sub}: {len(matches)} files matched, be more specific: " + ", ".join(matches)
+
+
+def _warn_skipped(skipped: list[str]) -> None:
+    if skipped:
+        warnings.warn(
+            f"Skipped {len(skipped)} subject(s) without a unique matching file:\n  " + "\n  ".join(skipped),
+            stacklevel=3,
+        )
 
 
 def _discover_subjects(xcpd_dir: str) -> list[str]:

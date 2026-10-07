@@ -16,6 +16,7 @@ def save_three_views(
     panel_size: tuple[int, int] = (600, 500),
     cameras: dict[str, dict] | None = None,
     bg: str = "white",
+    verbose: bool = True,
 ) -> None:
     """
     Render a list of vedo actors from three orthogonal viewpoints and save
@@ -30,6 +31,7 @@ def save_three_views(
                   Each camera_dict must have keys: pos, focalPoint, viewup.
                   Default views are Left-lateral, Right-lateral, and Dorsal.
     bg          : background colour passed to vedo Plotter.
+    verbose     : print the saved path.
     """
     try:
         from vedo import Plotter as VPlotter
@@ -56,7 +58,8 @@ def save_three_views(
         draw.text((col * w + 10, 10), label, fill="black")
 
     canvas.save(output_path)
-    print(f"Saved: {output_path}")
+    if verbose:
+        print(f"Saved: {output_path}")
 
 
 def make_axis_arrows(

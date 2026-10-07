@@ -216,10 +216,11 @@ def _align_nodes(nodes_df: pd.DataFrame, mat_df: pd.DataFrame) -> pd.DataFrame:
     missing    = [r for r in roi_labels if r not in known]
 
     if missing:
-        print(
-            f"[warning] {len(missing)} ROI(s) in matrix not found in nodes file "
+        warnings.warn(
+            f"{len(missing)} ROI(s) in matrix not found in nodes file "
             f"(will be excluded from visualisation): {missing[:5]}"
-            + (" ..." if len(missing) > 5 else "")
+            + (" ..." if len(missing) > 5 else ""),
+            stacklevel=3,
         )
         roi_labels = [r for r in roi_labels if r in known]
 
