@@ -177,10 +177,10 @@ class BrainNetPlotter:
             all others.  Click the same node again or click empty space to reset.
         layout : None → use MNI coordinates from nodes_df.
                  "spring" → NetworkX Fruchterman-Reingold 3-D layout.
-                 "kamada_kawai" → NetworkX Kamada-Kawai 3-D layout.
+                 "kamada_kawai" → NetworkX Kamada-Kawai 3-D layout (edge length 1/|w|).
                  "spectral" → NetworkX spectral 3-D layout.
                  Brain surface is automatically hidden when a layout is used.
-        layout_seed : random seed for "spring" layout reproducibility.
+        layout_seed : random seed for "spring" and "kamada_kawai" layout reproducibility.
         """
         from vedo import Plotter
 
@@ -336,10 +336,14 @@ class BrainNetPlotter:
         adj[adj <= threshold] = 0
         np.fill_diagonal(adj, 0)
         G = nx.from_numpy_array(adj)
+        # kamada_kawai reads the edge attribute as a distance, so stronger edges get shorter lengths
+        nx.set_edge_attributes(G, {(u, v): 1.0 / w for u, v, w in G.edges(data="weight")}, "length")
 
         fn = {
             "spring":       lambda: nx.spring_layout(G, dim=3, seed=seed, weight="weight"),
-            "kamada_kawai": lambda: nx.kamada_kawai_layout(G, dim=3, weight="weight"),
+            "kamada_kawai": lambda: nx.kamada_kawai_layout(
+                G, dim=3, weight="length", pos=nx.random_layout(G, dim=3, seed=seed)
+            ),
             "spectral":     lambda: nx.spectral_layout(G, dim=3, weight="weight"),
         }.get(layout)
 

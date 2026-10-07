@@ -250,6 +250,23 @@ def test_layout_places_nodes_at_edge_endpoints(dataset, monkeypatch):
         np.testing.assert_allclose(ends[-1], centres[j], atol=1e-3)
 
 
+def test_kamada_kawai_puts_strong_edges_closer(dataset):
+    ring = np.zeros((4, 4))
+    for (i, j), w in {(0, 1): 0.95, (1, 2): 0.6, (2, 3): 0.95, (0, 3): 0.6}.items():
+        ring[i, j] = ring[j, i] = w
+    pos = bnv.BrainNetPlotter(dataset)._compute_layout(ring, "kamada_kawai", threshold=0.5, seed=0)
+    d = lambda i, j: np.linalg.norm(pos[i] - pos[j])
+    assert d(0, 1) < d(1, 2) and d(2, 3) < d(0, 3)
+
+
+def test_kamada_kawai_is_reproducible_with_seed(dataset):
+    matrix = dataset.mean_matrix().values
+    plotter = bnv.BrainNetPlotter(dataset)
+    a = plotter._compute_layout(matrix, "kamada_kawai", threshold=0.4, seed=3)
+    b = plotter._compute_layout(matrix, "kamada_kawai", threshold=0.4, seed=3)
+    np.testing.assert_array_equal(a, b)
+
+
 def test_highlight_edges_follow_hemisphere_filter(dataset, monkeypatch):
     source = dataset.mean_matrix().columns.tolist()
     r_labels = dataset.nodes_df.loc[dataset.nodes_df["hemisphere"] == "R", "label"].tolist()
