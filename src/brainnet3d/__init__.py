@@ -6,7 +6,7 @@ from brainnet3d.loaders                  import load, load_group, load_gordon_at
 from brainnet3d.core.dataset             import ConnectivityDataset
 from brainnet3d.viz.plotter              import BrainNetPlotter
 from brainnet3d.viz.network_graphs       import spring_plot, circos_plot, spring_plot_3d, matrix_heatmap
-from brainnet3d.viz.graph_utils          import density_graph, threshold_graph, detect_communities
+from brainnet3d.graph_theory.graph_utils import density_graph, threshold_graph, detect_communities
 from brainnet3d.viz.atlas                import load_nifti_atlas
 from brainnet3d.viz.surface              import get_fsLR_surface
 from brainnet3d.viz.views                import save_three_views, save_orbit_gif, make_axis_arrows

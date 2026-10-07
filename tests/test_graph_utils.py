@@ -2,7 +2,7 @@ import networkx as nx
 import numpy as np
 import pytest
 
-from brainnet3d.viz.graph_utils import density_graph
+from brainnet3d.graph_theory.graph_utils import density_graph
 
 
 def _random_corr(n: int, seed: int = 0) -> np.ndarray:
