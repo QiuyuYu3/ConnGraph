@@ -4,6 +4,8 @@ Aggregate ROI-level connectivity matrices to network-level average correlations.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 
@@ -25,24 +27,41 @@ def build_net_hemi2rois(
     atlas_df: pd.DataFrame,
     label_col: str = "label",
     network_col: str = "network_label",
+    hemi_col: str = "hemisphere",
 ) -> dict:
-    """Return {hemi_network_name: [roi_label, ...]} with hemisphere inferred from ROI prefix.
+    """Return {hemi_network_name: [roi_label, ...]}; hemisphere comes from hemi_col if present, else the label prefix.
 
-    ROIs starting with "L_" → left, "R_" → right, anything else → bilateral (B_).
+    Column values L/left/lh and R/right/rh (any case), or labels starting with "L_"/"R_",
+    give L and R; everything else is grouped as bilateral (B_).
     """
     df = atlas_df.dropna(subset=[network_col])
+    if hemi_col in df.columns:
+        hemis = [_HEMI_NAMES.get(str(h).strip().lower(), "B") for h in df[hemi_col]]
+    else:
+        hemis = [_hemi_from_prefix(roi) for roi in df[label_col]]
+
+    if df.shape[0] and not {"L", "R"} & set(hemis):
+        warnings.warn(
+            f"No ROI could be assigned to a hemisphere (no '{hemi_col}' column and no L_/R_ label prefix); "
+            "all ROIs are grouped as bilateral (B_).",
+            stacklevel=3,
+        )
+
     mapping: dict = {}
-    for _, row in df.iterrows():
-        roi = row[label_col]
-        net = row[network_col]
-        if isinstance(roi, str) and roi.startswith("L_"):
-            hemi = "L"
-        elif isinstance(roi, str) and roi.startswith("R_"):
-            hemi = "R"
-        else:
-            hemi = "B"
+    for roi, net, hemi in zip(df[label_col], df[network_col], hemis):
         mapping.setdefault(f"{hemi}_{net}", []).append(roi)
     return dict(sorted(mapping.items()))
+
+
+_HEMI_NAMES = {"l": "L", "left": "L", "lh": "L", "r": "R", "right": "R", "rh": "R"}
+
+
+def _hemi_from_prefix(roi) -> str:
+    if isinstance(roi, str) and roi.startswith("L_"):
+        return "L"
+    if isinstance(roi, str) and roi.startswith("R_"):
+        return "R"
+    return "B"
 
 
 def _fisher_z(corr_df: pd.DataFrame) -> pd.DataFrame:

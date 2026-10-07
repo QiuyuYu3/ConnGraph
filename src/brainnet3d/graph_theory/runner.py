@@ -47,6 +47,7 @@ def compute_graph_metrics(
     n_jobs: int = -1,
     output_dir: str | None = None,
     verbose: bool = True,
+    hemi_col: str = "hemisphere",
 ) -> GraphMetricsResult:
     """Compute graph-theory metrics from pre-computed connectivity matrices.
 
@@ -59,11 +60,12 @@ def compute_graph_metrics(
         Must contain at minimum label_col (ROI name) and network_col (network
         assignment).  No path assumptions — pass the DataFrame directly.
     level : "network" | "node" | "both"
-    hemi_split : compute network metrics split by hemisphere (L_/R_ prefix rule).
+    hemi_split : compute network metrics split by hemisphere (from hemi_col, else the L_/R_ label prefix).
     metrics : list from {"clust_coeff", "btwn_cent", "strength", "ge_local"}.
         Defaults to all four.
     label_col : atlas column with ROI labels (default "label").
     network_col : atlas column with network assignments (default "network_label").
+    hemi_col : atlas column with L/R hemisphere labels (default "hemisphere"); used by hemi_split when present.
     apply_fisher_z : Fisher-z transform before averaging (recommended for r-matrices).
     graph_method : "tmfg" (default) or a callable ``f(corrmat) -> nx.Graph``.
         Applied during graph construction in both network- and node-level steps.
@@ -168,7 +170,7 @@ def compute_graph_metrics(
 
     # Hemi-split network-level
     if hemi_split and level in ("network", "both"):
-        net_hemi2rois = build_net_hemi2rois(atlas, label_col, network_col)
+        net_hemi2rois = build_net_hemi2rois(atlas, label_col, network_col, hemi_col)
         all_net_hemi_corr = compute_net_corr(matrices, net_hemi2rois, apply_fisher_z)
 
         nets_hemi = list(next(iter(all_net_hemi_corr.values())).columns)

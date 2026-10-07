@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 
 from brainnet3d.graph_theory import compute_graph_metrics
-from brainnet3d.graph_theory.aggregation import build_net2rois, compute_net_corr
+from brainnet3d.graph_theory.aggregation import build_net2rois, build_net_hemi2rois, compute_net_corr
 from brainnet3d.graph_theory.metrics import process_subject
 from brainnet3d.graph_theory.nbs import run_nbs
 
@@ -58,6 +58,35 @@ def test_network_strength_matches_averaged_matrix(apply_fisher_z):
 
     got = result.network_df.loc["s1", [f"strength_{n}" for n in net_mat.index]].astype(float)
     np.testing.assert_allclose(got.values, expected.values, rtol=1e-10)
+
+
+def test_hemi_split_reads_hemisphere_column():
+    atlas = pd.DataFrame({
+        "label": ["a", "b", "c", "d"],
+        "network_label": ["net0", "net0", "net1", "net1"],
+        "hemisphere": ["LH", "right", "L", "midline"],
+    })
+    assert build_net_hemi2rois(atlas) == {"B_net1": ["d"], "L_net0": ["a"], "L_net1": ["c"], "R_net0": ["b"]}
+
+
+def test_hemi_split_falls_back_to_label_prefix():
+    atlas = pd.DataFrame({"label": ["L_a", "R_b", "x"], "network_label": ["n", "n", "n"]})
+    assert build_net_hemi2rois(atlas) == {"B_n": ["x"], "L_n": ["L_a"], "R_n": ["R_b"]}
+
+
+def test_hemi_split_warns_when_no_hemisphere_found():
+    atlas = pd.DataFrame({"label": ["LH_a", "RH_b"], "network_label": ["n", "n"]})
+    with pytest.warns(UserWarning, match="hemisphere"):
+        build_net_hemi2rois(atlas)
+
+
+def test_compute_graph_metrics_uses_custom_hemi_col():
+    matrices, atlas = _toy_inputs()
+    atlas["side"] = ["L", "R"] * (len(atlas) // 2)
+    result = compute_graph_metrics(
+        matrices, atlas, level="network", metrics=["strength"], hemi_col="side", verbose=False,
+    )
+    assert {c.split("_", 1)[1][0] for c in result.net_hemi_df.columns} == {"L", "R"}
 
 
 def _with_values(df: pd.DataFrame, fill) -> pd.DataFrame:
