@@ -1,0 +1,213 @@
+"""
+Top-level entry point: compute_graph_metrics.
+"""
+
+from __future__ import annotations
+
+import os
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from dataclasses import dataclass
+from collections.abc import Callable
+
+import numpy as np
+import pandas as pd
+
+from brainnet3d.graph_theory.aggregation import (
+    build_net2rois,
+    build_net_hemi2rois,
+    compute_net_corr,
+)
+from brainnet3d.graph_theory.metrics import METRIC_NAMES, process_subject
+
+
+@dataclass
+class GraphMetricsResult:
+    """Container for all outputs of compute_graph_metrics."""
+
+    network_df:       pd.DataFrame | None = None
+    node_df:          pd.DataFrame | None = None
+    net_hemi_df:      pd.DataFrame | None = None
+    net_corr_df:      pd.DataFrame | None = None
+    net_hemi_corr_df: pd.DataFrame | None = None
+
+
+def compute_graph_metrics(
+    matrices: dict[str, pd.DataFrame],
+    atlas: pd.DataFrame,
+    level: str = "both",
+    hemi_split: bool = True,
+    metrics: list[str] | None = None,
+    label_col: str = "label",
+    network_col: str = "network_label",
+    apply_fisher_z: bool = True,
+    graph_method: str | Callable = "tmfg",
+    n_jobs: int = -1,
+    output_dir: str | None = None,
+) -> GraphMetricsResult:
+    """Compute graph-theory metrics from pre-computed connectivity matrices.
+
+    Parameters
+    ----------
+    matrices : dict[str, pd.DataFrame]
+        {subject_id: N×N DataFrame} — square correlation matrices with ROI
+        labels as both index and columns.  Keys become row IDs in the output.
+    atlas : pd.DataFrame
+        Must contain at minimum label_col (ROI name) and network_col (network
+        assignment).  No path assumptions — pass the DataFrame directly.
+    level : "network" | "node" | "both"
+    hemi_split : compute network metrics split by hemisphere (L_/R_ prefix rule).
+    metrics : list from {"clust_coeff", "btwn_cent", "strength", "ge_local"}.
+        Defaults to all four.
+    label_col : atlas column with ROI labels (default "label").
+    network_col : atlas column with network assignments (default "network_label").
+    apply_fisher_z : Fisher-z transform before averaging (recommended for r-matrices).
+    graph_method : "tmfg" (default) or a callable ``f(corrmat) -> nx.Graph``.
+        Applied during graph construction in both network- and node-level steps.
+    n_jobs : parallel workers for node-level computation; -1 = cpu_count - 1.
+    output_dir : if given, saves CSV files there (directory is created if needed).
+
+    Returns
+    -------
+    GraphMetricsResult
+        .network_df       — subjects × (metric_network) flat columns
+        .node_df          — subjects × (metric_roi) flat columns
+        .net_hemi_df      — like network_df but hemisphere-split (hemi_split=True)
+        .net_corr_df      — wide-format pairwise network correlations
+        .net_hemi_corr_df — like net_corr_df but hemisphere-split
+    """
+    if metrics is None:
+        metrics = list(METRIC_NAMES)
+
+    subject_ids = list(matrices.keys())
+    result = GraphMetricsResult()
+
+    # Network-level
+    if level in ("network", "both"):
+        net2rois = build_net2rois(atlas, label_col, network_col)
+        all_net_corr = compute_net_corr(matrices, net2rois, apply_fisher_z)
+
+        nets = list(next(iter(all_net_corr.values())).columns)
+        net_df = pd.DataFrame(
+            index=subject_ids,
+            columns=pd.MultiIndex.from_product([metrics, nets]),
+        )
+        for sub_id in subject_ids:
+            if sub_id not in all_net_corr:
+                continue
+            corrmat = all_net_corr[sub_id].values.astype(float)
+            if apply_fisher_z:
+                corrmat = np.tanh(corrmat)
+            res = process_subject(sub_id, corrmat, list(nets), metrics, graph_method)
+            if res is None:
+                continue
+            for m in metrics:
+                for n in nets:
+                    net_df.at[sub_id, (m, n)] = res.get(m, {}).get(n, np.nan)
+
+        net_df.columns = ["_".join(c) for c in net_df.columns]
+        result.network_df = net_df
+        result.net_corr_df = _net_corr_to_wide(all_net_corr)
+
+    # Node-level
+    if level in ("node", "both"):
+        atlas_rois = atlas[label_col].dropna().tolist()
+        node_df = pd.DataFrame(
+            index=subject_ids,
+            columns=pd.MultiIndex.from_product([metrics, atlas_rois]),
+        )
+
+        workers = max(1, (os.cpu_count() or 2) - 1) if n_jobs == -1 else max(1, n_jobs)
+        print(f"[graph_theory] Node-level: {len(subject_ids)} subjects, {workers} workers")
+
+        with ProcessPoolExecutor(max_workers=workers) as executor:
+            futures = {
+                executor.submit(
+                    process_subject,
+                    sid,
+                    matrices[sid].values.astype(float),
+                    matrices[sid].columns.tolist(),
+                    metrics,
+                    graph_method,
+                ): sid
+                for sid in subject_ids
+                if sid in matrices
+            }
+            total = len(futures)
+            done = 0
+            for future in as_completed(futures):
+                done += 1
+                sid = futures[future]
+                print(f"  [{done}/{total}] {sid}")
+                res = future.result()
+                if res is None:
+                    continue
+                for m in metrics:
+                    if m not in res:
+                        continue
+                    for roi in atlas_rois:
+                        if roi in res[m]:
+                            node_df.at[sid, (m, roi)] = res[m][roi]
+
+        node_df.columns = ["_".join(c) for c in node_df.columns]
+        result.node_df = node_df
+
+    # Hemi-split network-level
+    if hemi_split and level in ("network", "both"):
+        net_hemi2rois = build_net_hemi2rois(atlas, label_col, network_col)
+        all_net_hemi_corr = compute_net_corr(matrices, net_hemi2rois, apply_fisher_z)
+
+        nets_hemi = list(next(iter(all_net_hemi_corr.values())).columns)
+        net_hemi_df = pd.DataFrame(
+            index=subject_ids,
+            columns=pd.MultiIndex.from_product([metrics, nets_hemi]),
+        )
+        for sub_id in subject_ids:
+            if sub_id not in all_net_hemi_corr:
+                continue
+            corrmat = all_net_hemi_corr[sub_id].values.astype(float)
+            if apply_fisher_z:
+                corrmat = np.tanh(corrmat)
+            res = process_subject(sub_id, corrmat, list(nets_hemi), metrics, graph_method)
+            if res is None:
+                continue
+            for m in metrics:
+                for n in nets_hemi:
+                    net_hemi_df.at[sub_id, (m, n)] = res.get(m, {}).get(n, np.nan)
+
+        net_hemi_df.columns = ["_".join(c) for c in net_hemi_df.columns]
+        result.net_hemi_df = net_hemi_df
+        result.net_hemi_corr_df = _net_corr_to_wide(all_net_hemi_corr)
+
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+        _save(result, output_dir)
+
+    return result
+
+
+def _net_corr_to_wide(all_corr: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """Flatten {sub_id: net×net DataFrame} to a wide DataFrame (upper triangle)."""
+    net_names = list(next(iter(all_corr.values())).columns)
+    rows = []
+    for sub_id, df in all_corr.items():
+        row: dict = {"ID": sub_id}
+        for i, n1 in enumerate(net_names):
+            for j in range(i, len(net_names)):
+                n2 = net_names[j]
+                row[f"{n1}__{n2}"] = df.loc[n1, n2]
+        rows.append(row)
+    return pd.DataFrame(rows).set_index("ID")
+
+
+def _save(result: GraphMetricsResult, output_dir: str) -> None:
+    def _write(df: pd.DataFrame | None, name: str) -> None:
+        if df is not None:
+            out = df.reset_index().rename(columns={"index": "ID"})
+            out.to_csv(os.path.join(output_dir, name), index=False)
+            print(f"  Saved {name}")
+
+    _write(result.network_df,       "network_graph_theory.csv")
+    _write(result.node_df,          "node_graph_theory.csv")
+    _write(result.net_hemi_df,      "network_graph_theory_hemi.csv")
+    _write(result.net_corr_df,      "network_correlation.csv")
+    _write(result.net_hemi_corr_df, "network_correlation_hemi.csv")
