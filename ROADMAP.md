@@ -21,7 +21,6 @@ Turn a connectivity matrix and a node table into graph-theory metrics and an int
 
 ## Milestones
 
-- **Force-directed layouts in the 3-D plotter**: keep nodes and edges aligned when `layout=` is used.
 - **Faster NBS**: run permutations in parallel.
 - **Plot annotations**: colour bar, legend, and a hover popup with node label and metrics.
 - **Interactive filtering**: edge-threshold slider and per-network show/hide.
