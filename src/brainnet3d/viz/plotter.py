@@ -192,7 +192,7 @@ class BrainNetPlotter:
                  "forceatlas2" → NetworkX ForceAtlas2 3-D layout weighted by |w|.
                  Brain surface is automatically hidden when a layout is used.
         layout_seed : random seed for "spring", "kamada_kawai" and "forceatlas2" layout reproducibility.
-        arrowaxis : add orientation arrows: "all", or a list drawn from "LR", "AP", "SI".
+        arrowaxis : add orientation arrows: "all", one of "LR", "AP", "SI", or a list of them.
         highlight_edges : (N, N) array marking edges to keep fully visible (e.g. NBSResult.adj),
                           ordered like the dataset matrix labels. Other edges are dimmed.
         highlight_level : dimming of non-highlighted edges (0 = none, 1 = invisible).

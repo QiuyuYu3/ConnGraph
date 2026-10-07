@@ -87,6 +87,13 @@ def _spring_plot_sizes(G):
     return np.array(widths, dtype=float), np.array(sizes, dtype=float)
 
 
+def test_axis_arrows_accept_single_axis_string():
+    assert len(bnv.make_axis_arrows("LR")) == 2
+    assert len(bnv.make_axis_arrows("all")) == 6
+    with pytest.raises(ValueError, match="'XY'"):
+        bnv.make_axis_arrows("XY")
+
+
 def test_spring_plot_negative_weights():
     G = nx.Graph()
     G.add_weighted_edges_from([(0, 1, 0.8), (1, 2, -0.6), (2, 3, 0.5)])

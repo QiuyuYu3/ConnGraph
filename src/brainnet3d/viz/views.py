@@ -72,8 +72,8 @@ def make_axis_arrows(
 
     Parameters
     ----------
-    axes   : axes to draw. "all" draws all three. Otherwise a list of any
-             subset of ["LR", "AP", "SI"].
+    axes   : axes to draw. "all" draws all three. Otherwise one of "LR", "AP", "SI",
+             or a list of any subset of them.
     origin : arrow base in MNI coordinates. Default is lower-left-anterior
              corner of a typical whole-brain view.
     length : arrow length in mm.
@@ -93,8 +93,8 @@ def make_axis_arrows(
     except ImportError:
         raise ImportError("vedo is required: pip install vedo")
 
-    if axes == "all":
-        axes = ["LR", "AP", "SI"]
+    if isinstance(axes, str):
+        axes = ["LR", "AP", "SI"] if axes == "all" else [axes]
 
     ox, oy, oz = origin
     axis_defs = {
