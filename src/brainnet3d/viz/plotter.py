@@ -122,6 +122,7 @@ class BrainNetPlotter:
         edge_width_range: tuple[float, float]      = (0.5, 4.0),
         edge_color:      str | tuple         = "weight",
         edge_cmap:       str                       = "RdBu_r",
+        edge_colorvminvmax: str | tuple | None  = "absmax",
         edge_alpha:      float                     = 0.7,
         use_tube:        bool                      = False,
 
@@ -170,6 +171,9 @@ class BrainNetPlotter:
         edge_color : "weight" → colormap. "node" → inherits node colour.
                      RGB tuple / colour name → uniform.
         edge_cmap  : colormap for edge_color="weight".
+        edge_colorvminvmax : colour limits for edge_color="weight".
+                     "absmax" (default) → symmetric ±max(|weight|), so 0 sits at the colormap centre.
+                     "minmax" → data min to max. (vmin, vmax) tuple → explicit limits.
         edge_alpha : edge transparency.
         use_tube   : use 3-D Tube instead of flat Line (slower).
 
@@ -185,8 +189,9 @@ class BrainNetPlotter:
                  "spring" → NetworkX Fruchterman-Reingold 3-D layout.
                  "kamada_kawai" → NetworkX Kamada-Kawai 3-D layout (edge length 1/|w|).
                  "spectral" → NetworkX spectral 3-D layout.
+                 "forceatlas2" → NetworkX ForceAtlas2 3-D layout weighted by |w|.
                  Brain surface is automatically hidden when a layout is used.
-        layout_seed : random seed for "spring" and "kamada_kawai" layout reproducibility.
+        layout_seed : random seed for "spring", "kamada_kawai" and "forceatlas2" layout reproducibility.
         arrowaxis : add orientation arrows: "all", or a list drawn from "LR", "AP", "SI".
         highlight_edges : (N, N) array marking edges to keep fully visible (e.g. NBSResult.adj),
                           ordered like the dataset matrix labels. Other edges are dimmed.
@@ -250,6 +255,7 @@ class BrainNetPlotter:
             edge_width_range = edge_width_range,
             edge_color       = edge_color,
             edge_cmap        = edge_cmap,
+            edge_colorvminvmax = edge_colorvminvmax,
             edge_alpha       = edge_alpha,
             node_colors      = node_colors_list,
             use_tube         = use_tube,
@@ -355,12 +361,13 @@ class BrainNetPlotter:
                 G, dim=3, weight="length", pos=nx.random_layout(G, dim=3, seed=seed)
             ),
             "spectral":     lambda: nx.spectral_layout(G, dim=3, weight="weight"),
+            "forceatlas2":  lambda: nx.forceatlas2_layout(G, dim=3, weight="weight", seed=seed),
         }.get(layout)
 
         if fn is None:
             raise ValueError(
                 f"layout='{layout}' not recognised. "
-                "Choose from: 'spring', 'kamada_kawai', 'spectral'."
+                "Choose from: 'spring', 'kamada_kawai', 'spectral', 'forceatlas2'."
             )
 
         pos = fn()

@@ -14,6 +14,7 @@ from brainnet3d.viz.colormap import (
     values_to_widths,
     _to_rgb,
 )
+from brainnet3d.viz.nodes import _resolve_vminvmax
 
 
 def build_edges(
@@ -25,6 +26,7 @@ def build_edges(
     edge_width_range: tuple[float, float] = (0.5, 4.0),
     edge_color:    str | tuple = "weight",
     edge_cmap:     str   = "RdBu_r",
+    edge_colorvminvmax: str | tuple | None = "absmax",
     edge_alpha:    float = 0.7,
     node_colors:   list | None = None,
     use_tube:      bool  = False,
@@ -102,7 +104,8 @@ def build_edges(
     if isinstance(edge_color, tuple):
         colors = [_to_rgb(edge_color)] * n_edges
     elif edge_color == "weight":
-        colors = edge_colors_from_weights(weights, cmap=edge_cmap)
+        vmin, vmax = _resolve_vminvmax(weights, edge_colorvminvmax)
+        colors = edge_colors_from_weights(weights, cmap=edge_cmap, vmin=vmin, vmax=vmax)
     elif edge_color == "node":
         if node_colors is None:
             raise ValueError("edge_color='node' requires node_colors to be provided.")
