@@ -110,6 +110,22 @@ def test_omst_matches_reference_built_with_networkx_and_bct():
     np.testing.assert_array_equal(build_adjacency(W, "omst"), best)
 
 
+def test_omst_stops_before_scoring_every_tree(monkeypatch):
+    from brainnet3d.graph_theory import sparsify
+
+    W = np.abs(_corr(60, seed=3))
+    remaining, n_trees = W.copy(), 0
+    while (tree := sparsify._spanning_mask(remaining, remaining > 0)).any():
+        remaining[tree] = 0
+        n_trees += 1
+
+    calls = []
+    real = sparsify.inverse_distances
+    monkeypatch.setattr(sparsify, "inverse_distances", lambda X: calls.append(1) or real(X))
+    build_adjacency(W, "omst")
+    assert len(calls) - 1 < n_trees // 2  # one call is for the full graph
+
+
 def test_percolation_keeps_the_highest_cutoff_that_stays_connected():
     W = _corr(20)
     A = build_adjacency(W, "percolation")

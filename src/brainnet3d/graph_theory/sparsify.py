@@ -227,9 +227,11 @@ def _omst(W: np.ndarray, S: np.ndarray) -> np.ndarray:
         kept = kept | tree
         remaining[tree] = 0
         efficiency = inverse_distances(np.where(kept, S, 0.0)).sum() / full_efficiency
-        score = efficiency - S[kept].sum() / total
-        if score > best_score:
-            best, best_score = kept, score
+        cost = S[kept].sum() / total
+        if efficiency - cost > best_score:
+            best, best_score = kept, efficiency - cost
+        if best_score >= 1 - cost:
+            break  # relative efficiency is at most 1 and later trees cost more, so none can score higher
     return _keep(W, best)
 
 
