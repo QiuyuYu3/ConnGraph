@@ -153,6 +153,7 @@ def compute_graph_metrics(
     if want_hemi:
         sizes["network_hemi"] = len(net_hemi2rois)
     _check_spanning_tree_fits(sizes, node_opts, net_opts)
+    _check_knn_fits(sizes, node_opts, net_opts)
 
     subject_ids = list(matrices.keys())
     result = GraphMetricsResult()
@@ -324,12 +325,26 @@ def _check_spanning_tree_fits(sizes: dict[str, int], node_opts: dict, net_opts: 
                 f"{level} ({n} nodes): a spanning tree needs {n - 1} edges, i.e. density >= 2/{n} = {2 / n:.3g}; "
                 f"got {', '.join(f'{d:g}' for d in low)}"
             )
+    _raise_size_problems("graph_method=\"mst_density\" is too sparse", problems)
+
+
+def _check_knn_fits(sizes: dict[str, int], node_opts: dict, net_opts: dict) -> None:
+    problems = {}
+    for level, n in sizes.items():
+        opts = node_opts if level == "node" else net_opts
+        if opts["graph_method"] == "knn" and int(opts["graph_params"]["k"]) > n - 1:
+            k = int(opts["graph_params"]["k"])
+            problems[level] = f"{level} ({n} nodes): k={k} is larger than the {n - 1} possible neighbours"
+    _raise_size_problems("graph_method=\"knn\" asks for too many neighbours", problems)
+
+
+def _raise_size_problems(header: str, problems: dict[str, str]) -> None:
     if not problems:
         return
     hint = "" if list(problems) == ["node"] else (
         "\nSet the network level separately with network_graph_method or network_graph_params."
     )
-    raise ValueError("graph_method=\"mst_density\" is too sparse:\n  " + "\n  ".join(problems.values()) + hint)
+    raise ValueError(header + ":\n  " + "\n  ".join(problems.values()) + hint)
 
 
 def _net_corr_to_wide(all_corr: dict[str, pd.DataFrame]) -> pd.DataFrame:

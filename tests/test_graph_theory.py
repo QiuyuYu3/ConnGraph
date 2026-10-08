@@ -342,6 +342,19 @@ def test_mst_density_below_spanning_tree_raises_before_computing(level, hemi_spl
         )
 
 
+@pytest.mark.parametrize("level, k, match", [
+    ("node", 12, r"node \(12 nodes\): k=12 .* 11 possible neighbours$"),
+    ("both", 5, r"network \(4 nodes\): k=5 .* 3 possible neighbours\n.*network_graph_method"),
+])
+def test_knn_beyond_the_graph_size_raises_before_computing(level, k, match):
+    matrices, atlas = _toy_inputs()
+    with pytest.raises(ValueError, match=match):
+        compute_graph_metrics(
+            matrices, atlas, level=level, hemi_split=False, graph_method="knn", graph_params={"k": k},
+            n_jobs=1, verbose=False,
+        )
+
+
 def test_network_graph_params_lift_mst_density_for_small_graphs():
     matrices, atlas = _toy_inputs()
     result = compute_graph_metrics(
