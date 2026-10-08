@@ -107,7 +107,7 @@ def compute_net_corr(
             for net2, rois2 in net2rois.items():
                 idx2 = [roi_labels.index(r) for r in rois2 if r in roi_labels]
 
-                if not idx1 or not idx2:
+                if not idx1 or not idx2 or (net1 == net2 and len(idx1) < 2):
                     pairs[(net1, net2)] = np.nan
                 elif net1 == net2:
                     sub = z_vals[np.ix_(idx1, idx1)]

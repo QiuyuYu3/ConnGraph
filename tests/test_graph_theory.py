@@ -69,6 +69,18 @@ def test_network_strength_matches_averaged_matrix(apply_fisher_z):
     np.testing.assert_allclose(got.values, expected.values, rtol=1e-10)
 
 
+def test_single_roi_network_has_no_within_mean_and_no_warning():
+    import warnings
+
+    matrices, _ = _toy_inputs()
+    net2rois = {"solo": ["roi0"], "pair": ["roi1", "roi2"]}
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        net_mat = compute_net_corr(matrices, net2rois)["s1"]
+    assert np.isnan(net_mat.loc["solo", "solo"])
+    assert np.isfinite(net_mat.loc["pair", "pair"]) and np.isfinite(net_mat.loc["solo", "pair"])
+
+
 def test_hemi_split_reads_hemisphere_column():
     atlas = pd.DataFrame({
         "label": ["a", "b", "c", "d"],
