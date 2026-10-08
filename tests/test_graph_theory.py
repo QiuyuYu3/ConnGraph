@@ -196,10 +196,11 @@ def test_network_level_leaves_out_unassigned_rois_by_default():
 def test_exclude_networks_chooses_the_labels_left_out(exclude, networks):
     matrices, atlas = _atlas_with_unassigned()
     result = compute_graph_metrics(
-        matrices, atlas, level="network", hemi_split=False, metrics=["strength"], exclude_networks=exclude,
-        verbose=False,
+        matrices, atlas, level="network", hemi_split=False, metrics=["strength"], graph_method="full",
+        exclude_networks=exclude, verbose=False,
     )
     assert set(result.network_df["strength.abs"].columns) == networks
+    assert not result.failed
 
 
 def test_verbose_reports_graph_method_sign_and_excluded_rois(capsys):
@@ -212,6 +213,55 @@ def test_verbose_reports_graph_method_sign_and_excluded_rois(capsys):
     assert re.search(r"Node-level.*graph_method=density, sign=positive", out)
     assert re.search(r"hemisphere.*graph_method=tmfg, sign=abs", out)
     assert re.search(r"leaving out 2 ROIs labelled 'None'", out)
+
+
+def test_params_record_the_options_each_level_used():
+    matrices, atlas = _atlas_with_unassigned()
+    result = compute_graph_metrics(
+        matrices, atlas, level="both", hemi_split=True, metrics=["strength"], graph_method="density",
+        graph_params={"density": np.array([0.4, 0.5])}, network_graph_method="tmfg", n_random=1, n_jobs=1,
+        verbose=False,
+    )
+    params = result.params
+    assert params["levels"]["node"] == {
+        "graph_method": "density", "graph_params": {"density": [0.4, 0.5]}, "sign": "positive",
+        "metrics": ["strength.abs", "strength.abs.norm"], "n_nodes": 12,
+    }
+    assert params["levels"]["network_hemi"]["graph_method"] == "tmfg"
+    assert params["levels"]["network_hemi"]["sign"] == "abs"
+    assert params["levels"]["network_hemi"]["n_nodes"] == 8
+    assert "network" not in params["levels"]
+    assert params["excluded_rois"] == {"None": 2}
+    assert params["subjects"] == ["s1"]
+    assert params["options"]["summary"] == "auc"
+    assert params["options"]["exclude_networks"] == ["None"]
+    assert "brainnet3d" in params["packages"] and "bctpy" in params["packages"]
+
+
+def test_params_seed_reproduces_an_unseeded_run():
+    matrices, atlas = _toy_inputs()
+    kwargs = dict(level="node", metrics=["clust_coeff.onnela"], graph_method="density",
+                  graph_params={"density": 0.5}, n_random=2, n_jobs=1, verbose=False)
+    first = compute_graph_metrics(matrices, atlas, **kwargs)
+    seed = first.params["options"]["random_seed"]
+    assert isinstance(seed, int)
+    again = compute_graph_metrics(matrices, atlas, random_seed=seed, **kwargs)
+    pd.testing.assert_frame_equal(first.node_df, again.node_df)
+    assert again.params["options"]["random_seed"] == seed
+
+
+def test_params_are_saved_as_json_and_name_a_callable_method(tmp_path):
+    import json
+
+    matrices, atlas = _toy_inputs()
+    result = compute_graph_metrics(
+        matrices, atlas, level="node", metrics=["strength"], graph_method=_keep_k_strongest,
+        graph_params={"k": 3}, n_jobs=1, output_dir=str(tmp_path), verbose=False,
+    )
+    saved = json.loads((tmp_path / "parameters.json").read_text(encoding="utf-8"))
+    assert saved == result.params
+    assert saved["levels"]["node"]["graph_method"] == "_keep_k_strongest"
+    assert saved["options"]["random_seed"] is None
 
 
 def _failing_method(corrmat):

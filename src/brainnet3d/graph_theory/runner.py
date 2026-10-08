@@ -4,10 +4,13 @@ Top-level entry point: compute_graph_metrics.
 
 from __future__ import annotations
 
+import json
 import os
+import platform
 import warnings
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from datetime import datetime
 from collections.abc import Callable
 
 import numpy as np
@@ -34,6 +37,7 @@ class GraphMetricsResult:
     net_hemi_corr_df: pd.DataFrame | None = None
     curves:           pd.DataFrame | None = None
     failed:           dict[str, dict[str, str]] = field(default_factory=dict)
+    params:           dict = field(default_factory=dict)
 
 
 def compute_graph_metrics(
@@ -116,11 +120,12 @@ def compute_graph_metrics(
         strength.bin (the degree) gets no ".norm". The signed clust_coeff.costantini averages near 0 on random
         networks, so its ratio is unstable and can change sign.
     random_swaps : average number of swaps per edge when randomizing (default 10).
-    random_seed : seed for reproducible random networks.
+    random_seed : seed for reproducible random networks; when None, the seed drawn is recorded in ``result.params``.
     exclude_networks : network labels whose ROIs are left out of the network level, e.g. unassigned parcels
         (default "None"); the node level keeps them. None or () keeps every label.
     n_jobs : parallel workers for node-level computation; -1 = cpu_count - 1.
-    output_dir : if given, saves CSV files there, one folder per level and one file per metric.
+    output_dir : if given, saves CSV files there, one folder per level and one file per metric, and
+        ``result.params`` as parameters.json.
     verbose : print each level's graph method and sign rule, node-level progress and the names of saved files.
 
     Returns
@@ -133,6 +138,7 @@ def compute_graph_metrics(
         .net_hemi_corr_df — like net_corr_df but hemisphere-split
         .curves           — long table (level, ID, metric, node, threshold, value) when return_curves is set
         .failed           — {level: {subject_id: error}} for subjects left as NaN rows
+        .params           — options, graph method and sign of each level, package versions and data summary
     """
     if not (isinstance(hemi_split, bool) or hemi_split == "both"):
         raise ValueError(f"hemi_split={hemi_split!r} is not recognised. Choose True, False or \"both\".")
@@ -159,7 +165,9 @@ def compute_graph_metrics(
     )
     if want_node:
         _check_node_matrices(matrices)
-    net_atlas = _drop_networks(atlas, network_col, exclude_networks, verbose) if want_network or want_hemi else atlas
+    net_atlas, excluded = (
+        _drop_networks(atlas, network_col, exclude_networks, verbose) if want_network or want_hemi else (atlas, {})
+    )
     net2rois = build_net2rois(net_atlas, label_col, network_col) if want_network else {}
     net_hemi2rois = build_net_hemi2rois(net_atlas, label_col, network_col, hemi_col) if want_hemi else {}
     sizes = {}
@@ -177,9 +185,10 @@ def compute_graph_metrics(
     curves: list[pd.DataFrame] = []
     shortfalls: list[str] = []
     # One seed per level and subject, so results do not depend on worker scheduling
+    root_seed = np.random.SeedSequence(random_seed)
     seeds = {
         lvl: dict(zip(subject_ids, ss.spawn(len(subject_ids))))
-        for lvl, ss in zip(("network", "node", "network_hemi"), np.random.SeedSequence(random_seed).spawn(3))
+        for lvl, ss in zip(("network", "node", "network_hemi"), root_seed.spawn(3))
     }
 
     if want_network:
@@ -267,6 +276,33 @@ def compute_graph_metrics(
             stacklevel=2,
         )
 
+    levels = {
+        lvl: _describe_level(opts, output_names(names, n_random), sizes[lvl])
+        for lvl, opts, names, wanted in (
+            ("node", node_opts, node_metrics, want_node),
+            ("network", net_opts, net_metrics, want_network),
+            ("network_hemi", net_opts, net_metrics, want_hemi),
+        )
+        if wanted
+    }
+    result.params = _jsonable({
+        "created": datetime.now().isoformat(timespec="seconds"),
+        "python": platform.python_version(),
+        "packages": _package_versions(),
+        "options": {
+            "level": level, "hemi_split": hemi_split, "label_col": label_col, "network_col": network_col,
+            "hemi_col": hemi_col, "apply_fisher_z": apply_fisher_z, "summary": summary,
+            "return_curves": return_curves, "normalize_weights": normalize_weights, "n_random": n_random,
+            "random_swaps": random_swaps, "random_seed": root_seed.entropy if n_random else None,
+            "exclude_networks": exclude_networks,
+        },
+        "levels": levels,
+        "subjects": subject_ids,
+        "excluded_rois": excluded,
+        "failed": result.failed,
+        "warnings": shortfalls,
+    })
+
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
         _save(result, output_dir, verbose)
@@ -310,21 +346,62 @@ def _network_level(
     return net_df.astype(float), _net_corr_to_wide(all_net_corr)
 
 
-def _drop_networks(atlas: pd.DataFrame, network_col: str, exclude, verbose: bool) -> pd.DataFrame:
+def _drop_networks(atlas: pd.DataFrame, network_col: str, exclude, verbose: bool) -> tuple[pd.DataFrame, dict]:
+    """Return the atlas without the excluded network labels, and the number of ROIs left out per label."""
     if exclude is None:
-        return atlas
+        return atlas, {}
     labels = [exclude] if isinstance(exclude, str) else list(exclude)
     drop = atlas[network_col].isin(labels)
+    counts = {str(k): int(v) for k, v in atlas.loc[drop, network_col].value_counts(sort=False).items()}
     if verbose and drop.any():
         names = ", ".join(repr(x) for x in sorted(atlas.loc[drop, network_col].unique(), key=str))
         print(f"[graph_theory] Network-level: leaving out {int(drop.sum())} ROIs labelled {names}")
-    return atlas[~drop]
+    return atlas[~drop], counts
+
+
+def _method_name(method: str | Callable) -> str:
+    return getattr(method, "__name__", repr(method)) if callable(method) else method
 
 
 def _describe_graph(opts: dict) -> str:
-    method = opts["graph_method"]
-    name = getattr(method, "__name__", repr(method)) if callable(method) else method
-    return f"graph_method={name}, sign={resolve_sign(method, opts['sign'])}"
+    return f"graph_method={_method_name(opts['graph_method'])}, sign={resolve_sign(opts['graph_method'], opts['sign'])}"
+
+
+def _describe_level(opts: dict, metrics: list[str], n_nodes: int) -> dict:
+    return {
+        "graph_method": _method_name(opts["graph_method"]),
+        "graph_params": opts["graph_params"] or {},
+        "sign": resolve_sign(opts["graph_method"], opts["sign"]),
+        "metrics": metrics,
+        "n_nodes": n_nodes,
+    }
+
+
+def _package_versions() -> dict[str, str | None]:
+    from importlib.metadata import PackageNotFoundError, version
+
+    import brainnet3d
+
+    versions: dict[str, str | None] = {"brainnet3d": brainnet3d.__version__}
+    for name in ("numpy", "scipy", "pandas", "networkx", "bctpy", "topcorr"):
+        try:
+            versions[name] = version(name)
+        except PackageNotFoundError:
+            versions[name] = None
+    return versions
+
+
+def _jsonable(value):
+    """Convert numpy values and tuples to plain JSON types; anything else unknown becomes its repr."""
+    if isinstance(value, dict):
+        return {str(k): _jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, np.ndarray)):
+        return [_jsonable(v) for v in value]
+    if isinstance(value, np.generic):
+        return value.item()
+    if value is None or isinstance(value, (str, bool, int, float)):
+        return value
+    return repr(value)
 
 
 def _collect_curves(curves: list[pd.DataFrame], level: str, sub_id: str, res: dict) -> None:
@@ -432,3 +509,7 @@ def _save(result: GraphMetricsResult, output_dir: str, verbose: bool) -> None:
     if result.curves is not None:
         for level, df in result.curves.groupby("level", sort=False):
             _write(df.drop(columns="level"), level, "curves.csv", index=False)
+    with open(os.path.join(output_dir, "parameters.json"), "w", encoding="utf-8") as f:
+        json.dump(result.params, f, indent=2)
+    if verbose:
+        print("  Saved parameters.json")
