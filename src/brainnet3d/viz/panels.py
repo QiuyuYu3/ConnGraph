@@ -213,6 +213,12 @@ def _legend_item(name: str, scene, a: dict, width_factor: float) -> dict | None:
         return dict(name=name, kind="sizes", title=col, values=shown, radii_mm=scaled)
 
     if name == "edge_color":
+        if a["edge_color"] == "sign" and weights.size:
+            pos, neg = (mcolors.to_rgb(c) for c in a["edge_sign_colors"])
+            entries = {"positive": pos} if (weights >= 0).any() else {}
+            if (weights < 0).any():
+                entries["negative"] = neg
+            return dict(name=name, kind="categories", title="edge sign", entries=entries)
         if a["edge_color"] != "weight" or weights.size == 0:
             return None
         vmin, vmax = _resolve_vminvmax(weights, a["edge_colorvminvmax"])

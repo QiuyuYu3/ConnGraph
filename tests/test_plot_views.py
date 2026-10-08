@@ -114,3 +114,15 @@ def test_invalid_panels_raise(dataset, views, match):
 def test_unsupported_keywords_raise(dataset, kwargs):
     with pytest.raises(TypeError):
         _views(dataset, **kwargs)
+
+
+def test_sign_legend_lists_edge_signs(dataset):
+    fig = bnv.BrainNetPlotter(dataset, subject_id="sub-01").plot_views(
+        views=[{"view": "L"}], panel_size=200, legend=["edge_color"], edge_threshold=0.02, edge_color="sign",
+    )
+    legend = _legends(fig)["edge_color"].get_legend()
+    assert [t.get_text() for t in legend.get_texts()] == ["positive", "negative"]
+    np.testing.assert_allclose(
+        [p.get_facecolor()[:3] for p in legend.get_patches()], [(1, 0.25, 0.25), (0.25, 0.25, 1)]
+    )
+    plt.close(fig)

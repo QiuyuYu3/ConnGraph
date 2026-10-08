@@ -32,6 +32,7 @@ def build_edges(
     use_tube:      bool  = False,
     highlight_edges: np.ndarray | None = None,
     highlight_level: float = 0.85,
+    edge_sign_colors: tuple = ((1.0, 0.25, 0.25), (0.25, 0.25, 1.0)),
 ) -> list:
     """
     Build vedo Line (or Tube) objects for all edges above threshold.
@@ -48,7 +49,7 @@ def build_edges(
     edge_width : float → uniform. "weight" → rescaled to edge_width_range.
     edge_width_range : (min_w, max_w) in pixels.
     edge_color : "weight" → colormap. "node" → inherits node colour.
-                 RGB tuple or colour name → uniform.
+                 "sign" → edge_sign_colors. RGB tuple or colour name → uniform.
     edge_cmap : colormap used when edge_color="weight".
     edge_alpha : transparency 0–1.
     node_colors : list of RGB tuples (required when edge_color="node").
@@ -59,6 +60,7 @@ def build_edges(
                       Pass None to disable (default).
     highlight_level : dimming strength for non-highlighted edges (0 = no dim,
                       1 = fully invisible). Default 0.85.
+    edge_sign_colors : (positive, negative) colours used when edge_color="sign".
 
     Returns
     -------
@@ -106,6 +108,9 @@ def build_edges(
     elif edge_color == "weight":
         vmin, vmax = _resolve_vminvmax(weights, edge_colorvminvmax)
         colors = edge_colors_from_weights(weights, cmap=edge_cmap, vmin=vmin, vmax=vmax)
+    elif edge_color == "sign":
+        pos, neg = (_to_rgb(c) for c in edge_sign_colors)
+        colors = [neg if w < 0 else pos for w in weights]
     elif edge_color == "node":
         if node_colors is None:
             raise ValueError("edge_color='node' requires node_colors to be provided.")
@@ -117,7 +122,7 @@ def build_edges(
         except ValueError:
             raise ValueError(
                 f"edge_color='{edge_color}' is not recognised. "
-                "Use 'weight', 'node', an RGB tuple, or a matplotlib colour name."
+                "Use 'weight', 'node', 'sign', an RGB tuple, or a matplotlib colour name."
             )
 
     dim_alpha = edge_alpha * (1.0 - highlight_level)

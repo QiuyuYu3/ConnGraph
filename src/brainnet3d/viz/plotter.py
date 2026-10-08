@@ -157,6 +157,7 @@ class BrainNetPlotter:
         arrowaxis:       str | list[str] | None = None,
         highlight_edges: np.ndarray | None      = None,
         highlight_level: float                     = 0.85,
+        edge_sign_colors: tuple                    = ((1.0, 0.25, 0.25), (0.25, 0.25, 1.0)),
     ) -> np.ndarray | None:
         """
         Render the brain network off screen and return the image; optionally open a window or write files.
@@ -188,7 +189,9 @@ class BrainNetPlotter:
         edge_width : float → uniform. "weight" → scaled to edge_width_range.
         edge_width_range : (min_w, max_w) in pixels.
         edge_color : "weight" → colormap. "node" → inherits node colour.
+                     "sign" → positive and negative edges in edge_sign_colors.
                      RGB tuple / colour name → uniform.
+        edge_sign_colors : (positive, negative) colours for edge_color="sign".
         edge_cmap  : colormap for edge_color="weight".
         edge_colorvminvmax : colour limits for edge_color="weight".
                      "absmax" (default) → symmetric ±max(|weight|), so 0 sits at the colormap centre.
@@ -394,6 +397,7 @@ class BrainNetPlotter:
             use_tube         = a["use_tube"],
             highlight_edges  = highlight_edges,
             highlight_level  = a["highlight_level"],
+            edge_sign_colors = a["edge_sign_colors"],
         )
 
         extras = make_axis_arrows(axes=a["arrowaxis"]) if a["arrowaxis"] is not None else []

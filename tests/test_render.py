@@ -328,3 +328,15 @@ def test_show_hemisphere_hides_other_surface(dataset, surfaces, monkeypatch):
     )
     meshes = [a for a in actors if not hasattr(a, "_node_idx") and not hasattr(a, "_endpoints")]
     assert len(meshes) == 1 and meshes[0].center_of_mass()[0] < 0
+
+
+def test_edge_colors_by_sign(dataset, monkeypatch):
+    actors = _plot_actors(
+        bnv.BrainNetPlotter(dataset, subject_id="sub-01"), monkeypatch,
+        edge_threshold=0.02, edge_color="sign", edge_sign_colors=("orange", "purple"),
+    )
+    edges = [a for a in actors if hasattr(a, "_endpoints")]
+    pos, neg = plt.matplotlib.colors.to_rgb("orange"), plt.matplotlib.colors.to_rgb("purple")
+    assert {e._weight > 0 for e in edges} == {True, False}
+    for e in edges:
+        np.testing.assert_allclose(e._orig_color, pos if e._weight > 0 else neg)
