@@ -148,6 +148,17 @@ def test_heatmap_strips_and_network_names_for_large_matrices():
     plt.close(fig)
 
 
+def test_strip_colours_do_not_depend_on_network_label_order():
+    from brainnet3d.viz.colormap import labels_to_colors
+
+    # a network-level matrix lists networks in its own order, unlike the node table
+    names = ["Visual", "Salience", "Default"]
+    fig, _ = bnv.matrix_heatmap(np.eye(3), labels=names, network_labels=names)
+    strip = next(np.asarray(_image(ax)) for ax in fig.axes if ax.images and _image(ax).shape[1] == 1)
+    np.testing.assert_allclose(strip[:, 0, :3], labels_to_colors(["Default", "Salience", "Visual"]))
+    plt.close(fig)
+
+
 def test_heatmap_roi_ticks_for_small_matrices(dataset):
     m = dataset.mean_matrix()
     nets = dataset.nodes_df.set_index("label").loc[m.columns, "network"].tolist()

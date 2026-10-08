@@ -374,6 +374,13 @@ def test_show_hemisphere_hides_other_surface(dataset, surfaces, monkeypatch):
     assert len(meshes) == 1 and meshes[0].center_of_mass()[0] < 0
 
 
+def test_surfaces_have_vertex_normals(surfaces):
+    from brainnet3d.viz.surface import load_surface
+
+    # without vertex normals each triangle is shaded flat, which shows as hatching on translucent folds
+    assert all(m.dataset.GetPointData().GetNormals() is not None for m in load_surface(*surfaces))
+
+
 def test_show_hemisphere_needs_hemisphere_column(dataset):
     nodes_df = dataset.nodes_df.drop(columns="hemisphere")
     plotter = bnv.BrainNetPlotter(bnv.ConnectivityDataset(dataset.matrices, nodes_df), subject_id="mean")

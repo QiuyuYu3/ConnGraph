@@ -5,6 +5,7 @@ Color mapping utilities: numeric arrays and categorical labels → RGB tuples.
 from __future__ import annotations
 
 import os
+import re
 import sys
 import warnings
 
@@ -45,16 +46,21 @@ def values_to_colors(
     return [cm(v)[:3] for v in normed]
 
 
+def natural_key(value) -> tuple:
+    """Sort key that compares the numbers inside a name by value, so "net2" comes before "net10"."""
+    return tuple(int(t) if t.isdigit() else t for t in re.split(r"(\d+)", str(value)))
+
+
 def labels_to_colors(
     labels: list[str],
     cmap:   str | None = None,
     palette: dict | None = None,
 ) -> list[RGB]:
-    """Map a list of string labels to (R, G, B) tuples; cmap None picks "Set3" up to 12 labels, else "tab20"."""
+    """Map string labels to (R, G, B) tuples in sorted label order, so the same labels get the same colours in any order; cmap None picks "Set3" up to 12 labels, else "tab20"."""
     if palette is not None:
         return [_to_rgb(palette.get(lbl, "grey")) for lbl in labels]
 
-    unique = list(dict.fromkeys(labels))
+    unique = sorted(dict.fromkeys(labels), key=natural_key)
     picked = cmap
     if cmap is None:
         picked = "Set3" if len(unique) <= 12 else "tab20"

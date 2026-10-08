@@ -68,6 +68,8 @@ def _build_mesh(path: str, color, alpha: float, smooth: int):
         .triangulate()
         .smooth(smooth)
         .extract_largest_region()
+        # vertex normals give smooth shading; without them folds seen edge-on show the triangle grid
+        .compute_normals(points=True, cells=False)
     )
     mesh.c(color).alpha(alpha).lighting("default")
     return mesh

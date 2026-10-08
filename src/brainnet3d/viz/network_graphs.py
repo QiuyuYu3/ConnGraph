@@ -133,7 +133,7 @@ def matrix_heatmap(
     matrix         : square N×N array of connectivity values.
     labels         : ROI label per node (length N).
     network_labels : network name per node (length N). Strip colours match the 3-D plot's
-                     node_color="network" when the nodes are in the same order.
+                     node_color="network" when both have the same set of networks.
     vmin, vmax     : colour scale limits.
     cmap           : colormap name.
     figsize        : figure size. Auto-calculated if None.

@@ -41,6 +41,14 @@ def test_too_few_colours_warning_points_at_caller():
     assert {w.filename for w in record} == {__file__}
 
 
+def test_category_colours_follow_sorted_names_not_input_order():
+    names = ["Visual", "net10", "Default", "net2", "Auditory"]
+    colours = dict(zip(names, labels_to_colors(names)))
+    assert dict(zip(names[::-1], labels_to_colors(names[::-1]))) == colours
+    ordered = ["Auditory", "Default", "Visual", "net2", "net10"]
+    assert [colours[n] for n in ordered] == [plt.get_cmap("Set3")(i)[:3] for i in range(5)]
+
+
 def test_numeric_node_colour_defaults_to_viridis():
     nodes = pd.DataFrame({"label": list("abcd"), "x": 0.0, "y": 0.0, "z": 0.0, "value": [0.0, 1.0, 2.0, 3.0]})
     spheres = build_nodes(nodes, node_color="value")

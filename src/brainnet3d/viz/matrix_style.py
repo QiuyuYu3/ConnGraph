@@ -4,8 +4,6 @@ Shared drawing for connectivity matrix plots: row order, network colour strips a
 
 from __future__ import annotations
 
-import re
-
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.cm import ScalarMappable
@@ -17,7 +15,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.cluster import hierarchy
 from scipy.spatial.distance import pdist, squareform
 
-from brainnet3d.viz.colormap import labels_to_colors
+from brainnet3d.viz.colormap import labels_to_colors, natural_key
 
 MATRIX_OPTIONS = (
     "network_labels", "order", "network_order", "tick_labels",
@@ -59,11 +57,6 @@ def matrix_order(
             members = members[_cluster_order(matrix[members])]
         idx.extend(members)
     return np.asarray(idx)
-
-
-def natural_key(value) -> tuple:
-    """Sort key that compares the numbers inside a name by value, so "net2" comes before "net10"."""
-    return tuple(int(t) if t.isdigit() else t for t in re.split(r"(\d+)", str(value)))
 
 
 def _network_sequence(nets: np.ndarray, network_order) -> list[str]:
