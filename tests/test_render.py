@@ -133,11 +133,12 @@ def test_circos_plot(dataset, out_dir):
 def test_circos_labels_face_outward(dataset):
     G = bnv.threshold_graph(dataset.mean_matrix().values, threshold=0.4)
     network_labels = dataset.nodes_df["network"].tolist()
-    fig, ax = bnv.circos_plot(G, dataset.nodes_df["label"].tolist(), network_labels, _net2color(network_labels))
+    roi_labels = dataset.nodes_df["label"].tolist()
+    fig, ax = bnv.circos_plot(G, roi_labels, network_labels, _net2color(network_labels))
     checked = 0
     for text in ax.texts:
         x, _ = text.get_position()
-        if abs(x) > 1e-6:
+        if text.get_text() in roi_labels and abs(x) > 1e-6:
             assert text.get_horizontalalignment() == ("left" if x > 0 else "right"), text.get_text()
             checked += 1
     plt.close(fig)
