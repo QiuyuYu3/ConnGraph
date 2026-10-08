@@ -4,6 +4,7 @@ BrainNetPlotter: the main user-facing visualisation class.
 
 from __future__ import annotations
 
+import inspect
 from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
@@ -13,6 +14,8 @@ from brainnet3d.core.dataset import ConnectivityDataset
 from brainnet3d.exceptions import DataValidationError
 
 if TYPE_CHECKING:
+    from matplotlib.figure import Figure
+
     from brainnet3d.graph_theory.runner import GraphMetricsResult
 from brainnet3d.viz.surface import load_surface
 from brainnet3d.viz.nodes   import build_nodes, _resolve_colors
@@ -31,6 +34,16 @@ class _Scene(NamedTuple):
     @property
     def actors(self) -> list:
         return self.surfaces + self.nodes + self.edges + self.extras
+
+
+_NOT_IN_PLOT_VIEWS = {
+    "show_hemisphere":    "set 'hemisphere' in each panel instead",
+    "screenshot":         "save the returned figure with fig.savefig",
+    "html":               "use plot(html=...) for an interactive page",
+    "interactive":        "use plot(interactive=True) for a window",
+    "highlight_on_click": "use plot(interactive=True, highlight_on_click=True)",
+    "title":              "set 'title' in each panel or call fig.suptitle",
+}
 
 
 class BrainNetPlotter:
@@ -254,6 +267,30 @@ class BrainNetPlotter:
 
         from brainnet3d.viz.views import _finish_render
         return _finish_render(plt, actors, interactive, screenshot=screenshot, html=html)
+
+    def plot_views(
+        self,
+        views:      list | None       = None,
+        legend:     bool | list[str]  = True,
+        panel_size: int               = 600,
+        titles:     bool              = True,
+        **kwargs,
+    ) -> Figure:
+        """Render panels of camera views off screen into one matplotlib Figure with a legend; kwargs are plot() styles."""
+        from brainnet3d.viz.panels import parse_views, views_figure
+
+        args   = self._plot_args(**kwargs)
+        panels = parse_views(views)
+        scene  = self._build_scene(args, "both")
+        return views_figure(scene, args, panels, legend, panel_size, titles)
+
+    def _plot_args(self, **kwargs) -> dict:
+        for name, hint in _NOT_IN_PLOT_VIEWS.items():
+            if name in kwargs:
+                raise TypeError(f"plot_views() does not take '{name}': {hint}.")
+        bound = inspect.signature(self.plot).bind(**kwargs)
+        bound.apply_defaults()
+        return dict(bound.arguments)
 
     def _build_scene(self, a: dict, hemisphere: str) -> _Scene:
         nodes_df = self._filter_hemisphere(self.dataset.nodes_df, hemisphere)

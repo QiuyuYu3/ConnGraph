@@ -4,6 +4,7 @@
 
 ### Added
 
+- Multi-view figures of the 3-D plot with colour bars and legends (`plot_views`).
 - Edge colour range option and a ForceAtlas2 layout in the 3-D plot.
 - A `verbose` option to silence progress messages.
 - Hemisphere-split metrics work with any atlas that has a hemisphere column.
@@ -14,10 +15,11 @@
 - **Graph metrics raise an error on NaN or Inf input** and report subjects that fail.
 - **Metric tables have two-level columns, so `result.node_df["strength"]` gives one metric for all ROIs.** Saved CSV files are unchanged.
 - Data problems are shown as warnings instead of printed text.
+- Node colours no longer repeat when there are more than 12 categories, and numeric node colours default to viridis.
 
 ### Fixed
 
-- Misplaced nodes with graph layouts, wrong edges highlighted when one hemisphere is shown, and display errors in spring and circos plots.
+- Misplaced nodes with graph layouts, wrong edges highlighted and the other surface still drawn when one hemisphere is shown, and display errors in spring and circos plots.
 
 ## [0.1.0] - 2026-10-07
 

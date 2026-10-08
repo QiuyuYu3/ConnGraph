@@ -141,6 +141,7 @@ def build_edges(
             obj = Line(p1, p2, c=c, alpha=alpha).lw(w)
 
         obj._endpoints  = (i, j)
+        obj._weight     = float(weights[idx])
         obj._orig_color = c
         obj._orig_alpha = alpha
         lines.append(obj)

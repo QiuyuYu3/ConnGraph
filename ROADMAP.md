@@ -22,6 +22,6 @@ Turn a connectivity matrix and a node table into graph-theory metrics and an int
 ## Milestones
 
 - **Faster NBS**: run permutations in parallel.
-- **Plot annotations**: colour bar, legend, and a hover popup with node label and metrics.
+- **Hover popup**: show node label and metrics when hovering over a node.
 - **Interactive filtering**: edge-threshold slider and per-network show/hide.
 - **EEG and fNIRS input**: accept channel-, sensor- or source-level connectivity from EEG and fNIRS (design under discussion).
