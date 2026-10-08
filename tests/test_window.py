@@ -24,8 +24,8 @@ def _actors_of(plt) -> list:
     return out
 
 
-def _open_window(plotter, monkeypatch, clicks=(), **kwargs) -> list:
-    """Run plot(interactive=True) off screen; return the actors in the window after each click."""
+def _open_window(plotter, monkeypatch, clicks=(), moves=(), **kwargs) -> list:
+    """Run plot(interactive=True) off screen; return the window state after each click, then after each mouse move."""
     import vedo
 
     snapshots = []
@@ -34,23 +34,33 @@ def _open_window(plotter, monkeypatch, clicks=(), **kwargs) -> list:
         def __init__(self, *a, **kw):
             kw["offscreen"] = True
             super().__init__(*a, **kw)
-            self._test_callback = None
+            self._test_callbacks = {}
 
         def add_callback(self, event_name, func, *a, **kw):
-            assert event_name == "LeftButtonPress"
-            self._test_callback = func
+            self._test_callbacks[event_name] = func
 
         def interactive(self):
             actors = _actors_of(self)
-            snapshots.append(_states(actors))
-            for target in clicks:
-                self._test_callback(_click_event(actors, target))
-                snapshots.append(_states(_actors_of(self)))
+            snapshots.append({**_states(actors), "hover": _hover_lines(self), "events": set(self._test_callbacks)})
+            for event_name, targets in (("LeftButtonPress", clicks), ("MouseMove", moves)):
+                for target in targets:
+                    self._test_callbacks[event_name](_click_event(actors, target))
+                    snapshots.append({**_states(_actors_of(self)), "hover": _hover_lines(self)})
             return self
 
     monkeypatch.setattr(vedo, "Plotter", _Headless)
     plotter.plot(interactive=True, **kwargs)
     return snapshots
+
+
+def _hover_lines(plt) -> list | None:
+    props = plt.renderer.GetViewProps()
+    props.InitTraversal()
+    for _ in range(props.GetNumberOfItems()):
+        p = props.GetNextProp()
+        if hasattr(p, "_hover_lines") and p.GetVisibility():
+            return p._hover_lines
+    return None
 
 
 def _node_mesh_or_spheres(actors):
@@ -208,3 +218,49 @@ def test_window_screenshot_matches_static_render(dataset, monkeypatch, scene_kwa
     plotter.plot(**scene_kwargs, screenshot=str(tmp_path / "static.png"))
     _open_window(plotter, monkeypatch, **scene_kwargs, screenshot=str(tmp_path / "window.png"))
     assert (tmp_path / "static.png").read_bytes() == (tmp_path / "window.png").read_bytes()
+
+
+def test_hover_shows_card_for_node(dataset, monkeypatch, scene_kwargs):
+    plotter = bnv.BrainNetPlotter(dataset, subject_id="mean")
+    nodes = plotter.dataset.nodes_df.reset_index(drop=True)
+    snaps = _open_window(plotter, monkeypatch, moves=(5, 5, None, 17, "surface"), **scene_kwargs)
+    assert "MouseMove" in snaps[0]["events"]
+    assert snaps[0]["hover"] is None
+
+    def card(k):
+        row = nodes.loc[k]
+        return [row["label"], ("Network", row["network"]), ("Hemisphere", {"L": "Left", "R": "Right"}[row["hemisphere"]])]
+
+    assert [s["hover"] for s in snaps[1:]] == [card(5), card(5), None, card(17), None]
+    for s in snaps[1:]:
+        assert s["edges"] == snaps[0]["edges"] and s["nodes"] == snaps[0]["nodes"]
+
+
+def test_hover_lists_numeric_columns_used_for_style(dataset, monkeypatch, scene_kwargs):
+    nodes = dataset.nodes_df.reset_index(drop=True).copy()
+    size = np.linspace(1.0, 2.0, len(nodes))
+    nodes["strength"] = size
+    nodes["degree"] = np.arange(len(nodes)) * 1000.0
+    plotter = bnv.BrainNetPlotter(bnv.load(next(iter(dataset.matrices.values())), nodes))
+    snaps = _open_window(plotter, monkeypatch, moves=(3,), **{**scene_kwargs, "node_size": "strength", "node_color": "degree"})
+    assert snaps[1]["hover"][3:] == [("strength", f"{size[3]:.4g}"), ("degree", "3000")]
+
+
+def test_hover_can_be_turned_off(dataset, monkeypatch, scene_kwargs):
+    plotter = bnv.BrainNetPlotter(dataset, subject_id="mean")
+    snaps = _open_window(plotter, monkeypatch, hover_info=False, **scene_kwargs)
+    assert "MouseMove" not in snaps[0]["events"]
+
+
+def test_hover_card_image_has_rounded_transparent_corners():
+    from brainnet3d.viz.window import _card_image
+
+    img = _card_image("L_Default_1", (0.2, 0.4, 0.8), [("Network", "Default"), ("strength", "1.5")])
+    assert img.dtype == np.uint8 and img.shape[2] == 4
+    assert img[0, 0, 3] == 0 and img[-1, -1, 3] == 0
+    assert img[img.shape[0] // 2, img.shape[1] // 2, 3] > 200
+
+
+def test_plot_views_rejects_hover_info(dataset):
+    with pytest.raises(TypeError, match="hover_info"):
+        bnv.BrainNetPlotter(dataset, subject_id="mean").plot_views(hover_info=True)

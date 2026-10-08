@@ -44,6 +44,7 @@ _NOT_IN_PLOT_VIEWS = {
     "html":               "use plot(html=...) for an interactive page",
     "interactive":        "use plot(interactive=True) for a window",
     "highlight_on_click": "use plot(interactive=True, highlight_on_click=True)",
+    "hover_info":         "use plot(interactive=True) for node labels on hover",
     "title":              "set 'title' in each panel or call fig.suptitle",
 }
 
@@ -168,6 +169,7 @@ class BrainNetPlotter:
         highlight_edge_rule: str                   = "both",
         highlight_endpoints: bool                  = False,
         edge_bundling:   bool | float              = False,
+        hover_info:      bool                      = True,
     ) -> np.ndarray | None:
         """
         Render the brain network off screen and return the image; optionally open a window or write files.
@@ -242,6 +244,8 @@ class BrainNetPlotter:
                         True → strength 1. A number sets the strength: 0.5 is lighter, and above
                         about 1.5 most edges are pulled into the middle of the brain.
                         False or 0 (default) → straight lines.
+        hover_info : in the interactive window, show a node's label, network, hemisphere and the
+                     numeric columns used for node size or colour while the mouse rests on it.
         """
         # every argument, so plot_views can build the same scene from one dict
         args = dict(locals())
@@ -268,6 +272,23 @@ class BrainNetPlotter:
                     plt.render()
 
                 plt.add_callback("LeftButtonPress", _on_click)
+
+            if hover_info and window.node_mesh is not None:
+                from brainnet3d.viz.window import HoverCard
+
+                columns = [
+                    c for c in dict.fromkeys((node_size, node_color))
+                    if isinstance(c, str) and c in scene.nodes_df.columns
+                    and pd.api.types.is_numeric_dtype(scene.nodes_df[c])
+                ]
+                hover = HoverCard(scene.nodes_df, scene.node_colors, columns, window.node_mesh._node_centers)
+                window_actors += hover.actors
+
+                def _on_move(evt):
+                    if hover.update(window.node_at(evt.actor, evt.picked3d), plt.renderer):
+                        plt.render()
+
+                plt.add_callback("MouseMove", _on_move)
 
         from brainnet3d.viz.views import _finish_render
         return _finish_render(plt, actors, interactive, screenshot=screenshot, html=html, window_actors=window_actors)

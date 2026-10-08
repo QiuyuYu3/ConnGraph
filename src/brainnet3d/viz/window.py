@@ -114,3 +114,142 @@ def _polylines(paths: list):
     poly.SetPoints(vpts)
     poly.SetLines(cells)
     return Mesh(poly)
+
+
+class HoverCard:
+    """Card with a node's label and values, drawn next to the node under the mouse."""
+
+    def __init__(self, nodes_df, node_colors: list, value_columns: list[str], centres: np.ndarray):
+        from vtkmodules.vtkRenderingCore import vtkActor2D, vtkImageMapper, vtkPolyDataMapper2D
+        from vedo import vtkclasses as vtki
+
+        self._nodes_df = nodes_df.reset_index(drop=True)
+        self._node_colors = node_colors
+        self._columns = value_columns
+        self._centres = np.asarray(centres, dtype=float)
+        self._images: dict = {}
+        self._shown: tuple | None = None
+
+        self._mapper = vtkImageMapper()
+        self._mapper.SetColorWindow(255)
+        self._mapper.SetColorLevel(127.5)
+        self.card = vtkActor2D()
+        self.card.SetMapper(self._mapper)
+        self.card._hover_lines = None
+
+        self._leader_points = vtki.vtkPoints()
+        self._leader_points.SetNumberOfPoints(2)
+        line = vtki.vtkCellArray()
+        line.InsertNextCell(2)
+        line.InsertCellPoint(0)
+        line.InsertCellPoint(1)
+        poly = vtki.vtkPolyData()
+        poly.SetPoints(self._leader_points)
+        poly.SetLines(line)
+        leader_mapper = vtkPolyDataMapper2D()
+        leader_mapper.SetInputData(poly)
+        self.leader = vtkActor2D()
+        self.leader.SetMapper(leader_mapper)
+        self.leader.GetProperty().SetColor(0.3, 0.3, 0.3)
+        self.leader.GetProperty().SetLineWidth(1.5)
+        self.hide()
+
+    @property
+    def actors(self) -> list:
+        return [self.leader, self.card]
+
+    def lines(self, node_idx: int) -> list:
+        row = self._nodes_df.loc[node_idx]
+        out: list = [str(row["label"])]
+        if "network" in row.index:
+            out.append(("Network", str(row["network"])))
+        if "hemisphere" in row.index:
+            out.append(("Hemisphere", {"L": "Left", "R": "Right"}.get(row["hemisphere"], str(row["hemisphere"]))))
+        out += [(col, f"{float(row[col]):.4g}") for col in self._columns]
+        return out
+
+    def hide(self) -> bool:
+        changed = self._shown is not None
+        self._shown = None
+        self.card.VisibilityOff()
+        self.leader.VisibilityOff()
+        self.card._hover_lines = None
+        return changed
+
+    def update(self, node_idx: int | None, renderer) -> bool:
+        """Show the card for node_idx (None hides it); True when the window needs a render."""
+        if node_idx is None:
+            return self.hide()
+        from vedo import vtkclasses as vtki
+
+        coord = vtki.vtkCoordinate()
+        coord.SetCoordinateSystemToWorld()
+        coord.SetValue(*self._centres[node_idx])
+        x, y = coord.GetComputedDoubleDisplayValue(renderer)
+        state = (node_idx, round(x), round(y))
+        if state == self._shown:
+            return False
+        self._shown = state
+
+        image = self._image(node_idx)
+        w, h, _ = image.GetDimensions()
+        width, height = renderer.GetSize()
+        # place the card up and right of the node, flipped when it would leave the window
+        left = x + 18 if x + 18 + w <= width else x - 18 - w
+        bottom = y + 14 if y + 14 + h <= height else y - 14 - h
+        self.card.SetPosition(int(left), int(bottom))
+        corner_x = left if left > x else left + w
+        corner_y = bottom + 6 if bottom > y else bottom + h - 6
+        self._leader_points.SetPoint(0, x, y, 0)
+        self._leader_points.SetPoint(1, corner_x, corner_y, 0)
+        self._leader_points.Modified()
+        self._mapper.SetInputData(image)
+        self.card._hover_lines = self.lines(node_idx)
+        self.card.VisibilityOn()
+        self.leader.VisibilityOn()
+        return True
+
+    def _image(self, node_idx: int):
+        if node_idx not in self._images:
+            from vedo import vtkclasses as vtki
+            from vtkmodules.util.numpy_support import numpy_to_vtk
+
+            title, *fields = self.lines(node_idx)
+            rgba = _card_image(title, tuple(self._node_colors[node_idx]), fields)
+            h, w = rgba.shape[:2]
+            data = vtki.vtkImageData()
+            data.SetDimensions(w, h, 1)
+            scalars = numpy_to_vtk(np.flipud(rgba).reshape(-1, 4), deep=True)
+            scalars.SetNumberOfComponents(4)
+            data.GetPointData().SetScalars(scalars)
+            self._images[node_idx] = data
+        return self._images[node_idx]
+
+
+def _card_image(title: str, dot_rgb: tuple, fields: list) -> np.ndarray:
+    """Rounded white card with a coloured dot, a bold title and name/value rows, as RGBA pixels."""
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.figure import Figure
+    from matplotlib.patches import Circle, FancyBboxPatch
+
+    longest_row = max((len(name) + len(value) for name, value in fields), default=0)
+    w_px = max(230, 9 * len(title) + 60, 7 * longest_row + 60)
+    h_px = 44 + 22 * len(fields)
+    fig = Figure(figsize=(w_px / 100, h_px / 100), dpi=100)
+    fig.patch.set_alpha(0)
+    FigureCanvasAgg(fig)
+    ax = fig.add_axes((0, 0, 1, 1))
+    ax.set_xlim(0, w_px)
+    ax.set_ylim(0, h_px)
+    ax.axis("off")
+    ax.add_patch(FancyBboxPatch((4, 4), w_px - 8, h_px - 8, boxstyle="round,pad=0,rounding_size=7",
+                                fc="white", ec=(0.82, 0.82, 0.82), lw=0.5, alpha=0.97))
+    top = h_px - 22
+    ax.add_patch(Circle((18, top + 1), 5.5, color=dot_rgb))
+    ax.text(30, top, title, fontsize=7.15, fontweight="bold", color="#222", va="center")
+    for k, (name, value) in enumerate(fields):
+        y = top - 26 - 22 * k
+        ax.text(16, y, name, fontsize=6.5, color="#777", va="center")
+        ax.text(w_px - 16, y, value, fontsize=6.5, color="#222", va="center", ha="right")
+    fig.canvas.draw()
+    return np.asarray(fig.canvas.buffer_rgba()).copy()
