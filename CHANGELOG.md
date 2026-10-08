@@ -8,6 +8,7 @@
 - Highlight chosen nodes or the nodes of highlighted edges, and colour edges by sign, in the 3-D plot.
 - Matrix heatmaps can order nodes by clustering or a chosen network order and draw boxes around networks.
 - Spring plots can shade each network and colour edges by sign or weight.
+- A network layout for the 3-D plot and the 2-D and 3-D spring plots that gives each network its own region.
 - Edge colour range option and a ForceAtlas2 layout in the 3-D plot.
 - A `verbose` option to silence progress messages.
 - Hemisphere-split metrics work with any atlas that has a hemisphere column.
@@ -18,7 +19,7 @@
 - **Graph metrics raise an error on NaN or Inf input** and report subjects that fail.
 - **Metric tables have two-level columns, so `result.node_df["strength"]` gives one metric for all ROIs.** Saved CSV files are unchanged.
 - Data problems are shown as warnings instead of printed text.
-- Node colours no longer repeat when there are more than 12 categories, and numeric node colours default to viridis.
+- Node colours no longer repeat when there are more than 12 categories, numeric node colours default to viridis, and 3-D spring plots colour nodes by network when network labels are given.
 - Node tables read from file keep the label "None" as text instead of treating it as missing.
 - Matrix heatmaps and NBS plots show network colour strips, label networks instead of every ROI in large matrices, and leave a constant diagonal blank; the third NBS panel shows the group difference with significant edges marked instead of hiding the rest.
 - Circos plots draw curved chords coloured and sized by weight, with a ring of network names in place of the legend.

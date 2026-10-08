@@ -216,8 +216,10 @@ class BrainNetPlotter:
                  "kamada_kawai" → NetworkX Kamada-Kawai 3-D layout (edge length 1/|w|).
                  "spectral" → NetworkX spectral 3-D layout.
                  "forceatlas2" → NetworkX ForceAtlas2 3-D layout weighted by |w|.
+                 "network" → each network (nodes table "network" column) in its own ball,
+                 placed closer to networks it shares more |w| with; spring layout inside.
                  Brain surface is automatically hidden when a layout is used.
-        layout_seed : random seed for "spring", "kamada_kawai" and "forceatlas2" layout reproducibility.
+        layout_seed : random seed for "spring", "kamada_kawai", "forceatlas2" and "network" layout reproducibility.
         arrowaxis : add orientation arrows: "all", one of "LR", "AP", "SI", or a list of them.
         highlight_edges : (N, N) array marking edges to keep fully visible (e.g. NBSResult.adj),
                           ordered like the dataset matrix labels. Other edges are dimmed.
@@ -359,7 +361,8 @@ class BrainNetPlotter:
 
         show_surface = a["show_surface"]
         if a["layout"] is not None:
-            positions = self._compute_layout(matrix, a["layout"], a["edge_threshold"], a["layout_seed"])
+            groups = nodes_df["network"].astype(str).tolist() if "network" in nodes_df.columns else None
+            positions = self._compute_layout(matrix, a["layout"], a["edge_threshold"], a["layout_seed"], groups)
             show_surface = False
         else:
             positions = nodes_df[["x", "y", "z"]].values.astype(float)
@@ -510,9 +513,14 @@ class BrainNetPlotter:
         layout: str,
         threshold: float,
         seed: int,
+        groups: list | None = None,
     ) -> np.ndarray:
         import networkx as nx
 
+        from brainnet3d.viz.layouts import grouped_layout
+
+        if layout == "network" and groups is None:
+            raise ValueError("layout='network' needs a 'network' column in the nodes table.")
         adj = np.abs(matrix)
         adj[adj <= threshold] = 0
         np.fill_diagonal(adj, 0)
@@ -527,12 +535,13 @@ class BrainNetPlotter:
             ),
             "spectral":     lambda: nx.spectral_layout(G, dim=3, weight="weight"),
             "forceatlas2":  lambda: nx.forceatlas2_layout(G, dim=3, weight="weight", seed=seed),
+            "network":      lambda: grouped_layout(G, groups, dim=3, seed=seed),
         }.get(layout)
 
         if fn is None:
             raise ValueError(
                 f"layout='{layout}' not recognised. "
-                "Choose from: 'spring', 'kamada_kawai', 'spectral', 'forceatlas2'."
+                "Choose from: 'spring', 'kamada_kawai', 'spectral', 'forceatlas2', 'network'."
             )
 
         pos = fn()

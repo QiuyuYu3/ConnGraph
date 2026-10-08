@@ -10,6 +10,7 @@ from matplotlib.path import Path
 from scipy.spatial import ConvexHull
 
 from brainnet3d.viz.colormap import labels_to_colors, values_to_colors, values_to_widths
+from brainnet3d.viz.layouts import grouped_layout
 
 
 def spring_plot_3d(
@@ -27,18 +28,19 @@ def spring_plot_3d(
     interactive: bool = False,
     save_path: str | None = None,
     html: str | None = None,
+    layout: str = "spring",
 ) -> np.ndarray | None:
     """
     Interactive 3-D spring-layout graph rendered with vedo.
 
-    Coloring priority: node_colors > (network_labels + net2color) > tab20 by index.
+    Coloring priority: node_colors > network_labels (net2color, or the default network colours) > tab20 by index.
 
     Parameters
     ----------
     G               : nx.Graph with optional 'weight' edge attributes.
     node_colors     : per-node color list (length N); any vedo-accepted format.
     network_labels  : subnetwork name per node, length N.
-    net2color       : {network_name: colour_string}.
+    net2color       : {network_name: colour_string}. None → the 3-D plot's default network colours.
     node_radius     : sphere radius in layout units.
     edge_color      : colour for all edges.
     edge_lw         : edge line width.
@@ -49,6 +51,8 @@ def spring_plot_3d(
     interactive     : if True, open a vedo window and return None; otherwise render off screen.
     save_path       : save a screenshot to this path (PNG/JPG).
     html            : save a standalone interactive HTML page (needs brainnet3d[html]).
+    layout          : "spring" (default) or "network" (each network in its own ball,
+                      placed closer to networks it shares more |weight| with; needs network_labels).
 
     Returns
     -------
@@ -61,12 +65,23 @@ def spring_plot_3d(
 
     nodes = list(G.nodes())
     n = len(nodes)
-    pos = nx.spring_layout(G, dim=3, seed=seed)
+    if layout == "network":
+        if network_labels is None:
+            raise ValueError("layout='network' needs network_labels.")
+        pos = grouped_layout(G, network_labels, dim=3, seed=seed)
+        # bring the layout into the [-1, 1] range that the spring layout uses
+        peak = max(float(np.abs(p).max()) for p in pos.values()) or 1.0
+        pos = {nd: p / peak for nd, p in pos.items()}
+    elif layout == "spring":
+        pos = nx.spring_layout(G, dim=3, seed=seed)
+    else:
+        raise ValueError(f"layout='{layout}' not recognised. Choose: 'spring', 'network'.")
     pos_scaled = {nd: np.array(pos[nd]) * scale for nd in nodes}
 
     if node_colors is not None:
         colors = list(node_colors)
-    elif network_labels is not None and net2color is not None:
+    elif network_labels is not None:
+        net2color = _network_colors(network_labels, net2color)
         colors = [net2color[network_labels[i]] for i in range(n)]
     else:
         cmap = plt.get_cmap("tab20")
@@ -182,7 +197,8 @@ def spring_plot(
     edge_color: str | tuple = "grey",
     edge_cmap: str = "RdBu_r",
     edge_sign_colors: tuple = ((1.0, 0.25, 0.25), (0.25, 0.25, 1.0)),
-    network_hulls: bool = False,
+    network_hulls: bool | None = None,
+    layout: str = "spring",
 ) -> tuple[plt.Figure, plt.Axes]:
     """
     Spring-layout 2-D plot of a brain network.
@@ -197,7 +213,15 @@ def spring_plot(
     edge_color : colour name or RGB tuple; "weight" → edge_cmap centred on 0;
                  "sign" → edge_sign_colors (positive, negative).
     network_hulls : shade a rounded convex hull behind each network's nodes.
+                    None (default) → only with layout="network".
+    layout : "spring" (default) → spring layout of the whole graph (uses spring_k).
+             "network" → each network in its own disc, placed closer to networks it
+             shares more |weight| with; spring layout of the network's own edges inside.
     """
+    if layout not in ("spring", "network"):
+        raise ValueError(f"layout='{layout}' not recognised. Choose: 'spring', 'network'.")
+    if network_hulls is None:
+        network_hulls = layout == "network"
     net2color     = _network_colors(network_labels, net2color)
     weights       = np.array([d["weight"] for _, _, d in G.edges(data=True)], dtype=float)
     edge_weights  = np.abs(weights)
@@ -208,9 +232,14 @@ def spring_plot(
     node_sizes    = np.clip(strength_vals / peak * node_size_scale, 50, node_size_scale)
     node_colors   = [net2color[net] for net in network_labels]
 
-    pos = nx.spring_layout(G, seed=seed, k=spring_k)
+    if layout == "network":
+        pos = grouped_layout(G, network_labels, dim=2, seed=seed)
+    else:
+        pos = nx.spring_layout(G, seed=seed, k=spring_k)
 
     fig, ax = plt.subplots(figsize=figsize)
+    if layout == "network":
+        ax.set_aspect("equal")
     if network_hulls:
         xy  = np.array([pos[i] for i in range(len(network_labels))])
         pad = 0.025 * (np.ptp(xy, axis=0).max() or 1.0)
