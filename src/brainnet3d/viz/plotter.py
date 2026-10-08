@@ -4,7 +4,7 @@ BrainNetPlotter: the main user-facing visualisation class.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
 import pandas as pd
@@ -15,8 +15,22 @@ from brainnet3d.exceptions import DataValidationError
 if TYPE_CHECKING:
     from brainnet3d.graph_theory.runner import GraphMetricsResult
 from brainnet3d.viz.surface import load_surface
-from brainnet3d.viz.nodes   import build_nodes
+from brainnet3d.viz.nodes   import build_nodes, _resolve_colors
 from brainnet3d.viz.edges   import build_edges
+from brainnet3d.viz.views   import make_axis_arrows
+
+
+class _Scene(NamedTuple):
+    nodes_df:    pd.DataFrame
+    surfaces:    list
+    nodes:       list
+    edges:       list
+    extras:      list
+    node_colors: list
+
+    @property
+    def actors(self) -> list:
+        return self.surfaces + self.nodes + self.edges + self.extras
 
 
 class BrainNetPlotter:
@@ -189,79 +203,14 @@ class BrainNetPlotter:
                           ordered like the dataset matrix labels. Other edges are dimmed.
         highlight_level : dimming of non-highlighted edges (0 = none, 1 = invisible).
         """
+        # every argument, so plot_views can build the same scene from one dict
+        args = dict(locals())
+        del args["self"]
         from vedo import Plotter
 
-        nodes_df  = self._filter_hemisphere(self.dataset.nodes_df, show_hemisphere)
-        if self._extra_cols:
-            for col_name, label_to_val in self._extra_cols.items():
-                nodes_df[col_name] = nodes_df["label"].map(label_to_val)
-        matrix    = self._get_matrix(nodes_df)
-        if highlight_edges is not None:
-            highlight_edges = self._align_to_nodes(highlight_edges, nodes_df)
-
-        if layout is not None:
-            positions = self._compute_layout(matrix, layout, edge_threshold, layout_seed)
-            show_surface = False
-        else:
-            positions = nodes_df[["x", "y", "z"]].values.astype(float)
-
-        actors: list = []
-
-        # Surface
-        if show_hemisphere != "both":
-            surface_L = surface_L if show_hemisphere.upper() == "L" else None
-            surface_R = surface_R if show_hemisphere.upper() == "R" else None
-        if show_surface and (surface_L or surface_R):
-            meshes = load_surface(
-                surface_L=surface_L,
-                surface_R=surface_R,
-                color=surface_color,
-                alpha=surface_alpha,
-            )
-            actors.extend(meshes)
-
-        # Nodes
-        node_spheres = build_nodes(
-            nodes_df           = nodes_df,
-            node_size          = node_size,
-            node_size_range    = node_size_range,
-            node_color         = node_color,
-            node_cmap          = node_cmap,
-            node_colorvminvmax = node_colorvminvmax,
-            node_alpha         = node_alpha,
-            node_res           = node_res,
-            palette            = node_palette,
-            positions          = positions,
-        )
-        actors.extend(node_spheres)
-
-        # Edges
-        from brainnet3d.viz.nodes import _resolve_colors
-        node_colors_list = _resolve_colors(
-            node_color, node_cmap, node_colorvminvmax, nodes_df, len(nodes_df), node_palette
-        )
-
-        edge_lines = build_edges(
-            matrix           = matrix,
-            positions        = positions,
-            threshold        = edge_threshold,
-            threshold_dir    = edge_threshold_dir,
-            edge_width       = edge_width,
-            edge_width_range = edge_width_range,
-            edge_color       = edge_color,
-            edge_cmap        = edge_cmap,
-            edge_colorvminvmax = edge_colorvminvmax,
-            edge_alpha       = edge_alpha,
-            node_colors      = node_colors_list,
-            use_tube         = use_tube,
-            highlight_edges  = highlight_edges,
-            highlight_level  = highlight_level,
-        )
-        actors.extend(edge_lines)
-
-        if arrowaxis is not None:
-            from brainnet3d.viz.views import make_axis_arrows
-            actors.extend(make_axis_arrows(axes=arrowaxis))
+        scene      = self._build_scene(args, show_hemisphere)
+        actors     = scene.actors
+        edge_lines = scene.edges
 
         # Render
         plt = Plotter(title=title, bg=background, axes=0, offscreen=not interactive)
@@ -305,6 +254,73 @@ class BrainNetPlotter:
 
         from brainnet3d.viz.views import _finish_render
         return _finish_render(plt, actors, interactive, screenshot=screenshot, html=html)
+
+    def _build_scene(self, a: dict, hemisphere: str) -> _Scene:
+        nodes_df = self._filter_hemisphere(self.dataset.nodes_df, hemisphere)
+        for col_name, label_to_val in self._extra_cols.items():
+            nodes_df[col_name] = nodes_df["label"].map(label_to_val)
+        matrix = self._get_matrix(nodes_df)
+        highlight_edges = a["highlight_edges"]
+        if highlight_edges is not None:
+            highlight_edges = self._align_to_nodes(highlight_edges, nodes_df)
+
+        show_surface = a["show_surface"]
+        if a["layout"] is not None:
+            positions = self._compute_layout(matrix, a["layout"], a["edge_threshold"], a["layout_seed"])
+            show_surface = False
+        else:
+            positions = nodes_df[["x", "y", "z"]].values.astype(float)
+
+        surfaces: list = []
+        if show_surface:
+            paths = {
+                h: path for h, path in (("L", a["surface_L"]), ("R", a["surface_R"]))
+                if path and (hemisphere == "both" or hemisphere.upper() == h)
+            }
+            surfaces = load_surface(
+                surface_L=paths.get("L"),
+                surface_R=paths.get("R"),
+                color=a["surface_color"],
+                alpha=a["surface_alpha"],
+            )
+            for h, mesh in zip(paths, surfaces):
+                mesh._hemisphere = h
+
+        node_spheres = build_nodes(
+            nodes_df           = nodes_df,
+            node_size          = a["node_size"],
+            node_size_range    = a["node_size_range"],
+            node_color         = a["node_color"],
+            node_cmap          = a["node_cmap"],
+            node_colorvminvmax = a["node_colorvminvmax"],
+            node_alpha         = a["node_alpha"],
+            node_res           = a["node_res"],
+            palette            = a["node_palette"],
+            positions          = positions,
+        )
+        node_colors = _resolve_colors(
+            a["node_color"], a["node_cmap"], a["node_colorvminvmax"], nodes_df, len(nodes_df), a["node_palette"]
+        )
+
+        edge_lines = build_edges(
+            matrix           = matrix,
+            positions        = positions,
+            threshold        = a["edge_threshold"],
+            threshold_dir    = a["edge_threshold_dir"],
+            edge_width       = a["edge_width"],
+            edge_width_range = a["edge_width_range"],
+            edge_color       = a["edge_color"],
+            edge_cmap        = a["edge_cmap"],
+            edge_colorvminvmax = a["edge_colorvminvmax"],
+            edge_alpha       = a["edge_alpha"],
+            node_colors      = node_colors,
+            use_tube         = a["use_tube"],
+            highlight_edges  = highlight_edges,
+            highlight_level  = a["highlight_level"],
+        )
+
+        extras = make_axis_arrows(axes=a["arrowaxis"]) if a["arrowaxis"] is not None else []
+        return _Scene(nodes_df, surfaces, node_spheres, edge_lines, extras, node_colors)
 
     def _get_matrix(self, nodes_df: pd.DataFrame) -> np.ndarray:
         if self.subject_id == "mean":
