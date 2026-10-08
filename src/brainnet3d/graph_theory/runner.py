@@ -55,6 +55,7 @@ def compute_graph_metrics(
     network_graph_params: dict | None = None,
     summary: str = "auc",
     return_curves: bool = False,
+    normalize_weights: bool = False,
 ) -> GraphMetricsResult:
     """Compute graph-theory metrics from pre-computed connectivity matrices.
 
@@ -94,8 +95,13 @@ def compute_graph_metrics(
         A list of values for "threshold" or "density" computes each metric at every value and
         reduces the curve with ``summary``.
     graph_params : parameters of graph_method, e.g. {"density": 0.1} or {"density": [0.2, 0.25, 0.3]}.
-    sign : "abs" keeps negative weights and ranks edges by |w|; "positive" removes negative weights
-        first. Default: "abs" for tmfg and callables, "positive" for the other methods.
+    sign : how negative weights are treated.
+        "abs"       rank edges by |w| and keep the sign (signed variants use it, the others use |w|)
+        "signed"    rank edges by w, so negative edges are kept only when needed; not for omst
+        "positive"  remove negative weights first
+        "negative"  keep only negative weights, as positive magnitudes
+        Default: "abs" for tmfg and callables, "positive" for the other methods.
+    normalize_weights : divide each matrix by its largest |w| after the sign rule (default False).
     network_graph_method, network_graph_params : network level override; defaults to graph_method and graph_params.
     summary : how a parameter range is reduced: "auc" (trapezoidal area, default) or "mean" (area / range width).
     return_curves : also keep the per-value metrics of a parameter range in ``result.curves``.
@@ -118,7 +124,7 @@ def compute_graph_metrics(
         raise ValueError(f"hemi_split={hemi_split!r} is not recognised. Choose True, False or \"both\".")
 
     node_opts = dict(graph_method=graph_method, graph_params=graph_params, sign=sign,
-                     summary=summary, return_curves=return_curves)
+                     summary=summary, return_curves=return_curves, normalize_weights=normalize_weights)
     net_opts = dict(node_opts)
     if network_graph_method is not None:
         net_opts.update(graph_method=network_graph_method, graph_params=network_graph_params)
@@ -140,11 +146,12 @@ def compute_graph_metrics(
     subject_ids = list(matrices.keys())
     result = GraphMetricsResult()
     curves: list[pd.DataFrame] = []
+    shortfalls: list[str] = []
 
     if want_network:
         net2rois = build_net2rois(atlas, label_col, network_col)
         result.network_df, result.net_corr_df = _network_level(
-            "network", matrices, net2rois, apply_fisher_z, net_metrics, net_opts, result, curves,
+            "network", matrices, net2rois, apply_fisher_z, net_metrics, net_opts, result, curves, shortfalls,
         )
 
     if want_node:
@@ -188,17 +195,24 @@ def compute_graph_metrics(
                         if roi in res[m]:
                             node_df.at[sid, (m, roi)] = res[m][roi]
                 _collect_curves(curves, "node", sid, res)
+                _collect_shortfall(shortfalls, "node", sid, res)
 
         result.node_df = node_df.astype(float)
 
     if want_hemi:
         net_hemi2rois = build_net_hemi2rois(atlas, label_col, network_col, hemi_col)
         result.net_hemi_df, result.net_hemi_corr_df = _network_level(
-            "network_hemi", matrices, net_hemi2rois, apply_fisher_z, net_metrics, net_opts, result, curves,
+            "network_hemi", matrices, net_hemi2rois, apply_fisher_z, net_metrics, net_opts, result, curves, shortfalls,
         )
 
     if curves:
         result.curves = pd.concat(curves, ignore_index=True)
+
+    if shortfalls:
+        warnings.warn(
+            "Fewer edges than requested, because the sign rule left too few edges:\n" + "\n".join(shortfalls),
+            stacklevel=2,
+        )
 
     if result.failed:
         lines = [
@@ -227,6 +241,7 @@ def _network_level(
     opts: dict,
     result: GraphMetricsResult,
     curves: list[pd.DataFrame],
+    shortfalls: list[str],
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     all_net_corr = compute_net_corr(matrices, net2rois, apply_fisher_z)
     nets = list(next(iter(all_net_corr.values())).columns)
@@ -247,6 +262,7 @@ def _network_level(
             for n in nets:
                 net_df.at[sub_id, (m, n)] = res[m].get(n, np.nan)
         _collect_curves(curves, level, sub_id, res)
+        _collect_shortfall(shortfalls, level, sub_id, res)
     return net_df.astype(float), _net_corr_to_wide(all_net_corr)
 
 
@@ -255,6 +271,11 @@ def _collect_curves(curves: list[pd.DataFrame], level: str, sub_id: str, res: di
         curves.append(res["curves"].assign(level=level, ID=sub_id)[
             ["level", "ID", "metric", "node", "threshold", "value"]
         ])
+
+
+def _collect_shortfall(shortfalls: list[str], level: str, sub_id: str, res: dict) -> None:
+    if "shortfall" in res:
+        shortfalls.append(f"  {level} / {sub_id}: {res['shortfall']}")
 
 
 def _record_failure(result: GraphMetricsResult, level: str, sub_id: str, exc: Exception) -> None:

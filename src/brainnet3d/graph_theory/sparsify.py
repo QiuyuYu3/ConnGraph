@@ -22,15 +22,27 @@ _PARAMS = {
 }
 GRAPH_METHODS = tuple(_PARAMS)
 SWEEP_PARAMS = {"absolute": "threshold", "density": "density", "mst_density": "density"}
+SIGNS = ("abs", "signed", "positive", "negative")
 
 
 def resolve_sign(method: str | Callable, sign: str | None) -> str:
     """Return the sign rule; None means "abs" for tmfg and callables, "positive" for the other methods."""
     if sign is None:
         return "abs" if callable(method) or method == "tmfg" else "positive"
-    if sign not in ("abs", "positive"):
-        raise ValueError(f"sign={sign!r} is not recognised. Choose \"abs\" or \"positive\".")
+    if sign not in SIGNS:
+        raise ValueError(f"sign={sign!r} is not recognised. Choose one of {', '.join(SIGNS)}.")
+    if sign == "signed" and method == "omst":
+        raise ValueError("sign=\"signed\" is not available for graph_method=\"omst\", which needs positive edge lengths.")
     return sign
+
+
+def apply_sign(W: np.ndarray, sign: str) -> np.ndarray:
+    """Drop the weights the sign rule excludes; "negative" turns negative weights into positive magnitudes."""
+    if sign == "positive":
+        return np.clip(W, 0, None)
+    if sign == "negative":
+        return np.clip(-W, 0, None)
+    return W
 
 
 def check_graph_method(method: str | Callable, params: dict | None) -> tuple[str | None, np.ndarray | None]:
@@ -73,8 +85,19 @@ def _check_value(method: str, name: str, value) -> None:
         raise ValueError(f"threshold must be finite, got {value}.")
 
 
-def build_adjacency(W: np.ndarray, method: str | Callable, params: dict | None = None) -> np.ndarray:
-    """Return the symmetric adjacency matrix (signed weights of kept edges) for a zero-diagonal matrix."""
+def requested_edges(n: int, method: str | Callable, params: dict) -> int | None:
+    """Number of edges a fixed-size method asks for, or None when the method does not fix it."""
+    if method in ("density", "mst_density"):
+        return _n_edges(n, params["density"])
+    if method == "eco":
+        return _n_edges(n, min(1.0, 3 / (n - 1)))
+    return None
+
+
+def build_adjacency(
+    W: np.ndarray, method: str | Callable, params: dict | None = None, signed: bool = False,
+) -> np.ndarray:
+    """Return the symmetric adjacency matrix (weights of kept edges); edges are ranked by w if signed, else by |w|."""
     params = params or {}
     if callable(method):
         graph = method(W, **params)
@@ -82,7 +105,7 @@ def build_adjacency(W: np.ndarray, method: str | Callable, params: dict | None =
             return np.asarray(graph, dtype=float)
         import networkx as nx
         return nx.to_numpy_array(graph, nodelist=range(len(W)))
-    return _BUILDERS[method](W, **params)
+    return _BUILDERS[method](W, W if signed else np.abs(W), **params)
 
 
 def inverse_distances(W: np.ndarray) -> np.ndarray:
@@ -102,31 +125,39 @@ def _n_edges(n: int, density: float) -> int:
     return int(np.floor(density * n * (n - 1) / 2 + 0.5))
 
 
-def _keep_strongest(W: np.ndarray, n_edges: int, base: np.ndarray | None = None) -> np.ndarray:
-    """Keep the edges in `base`, then the strongest remaining edges by |w| up to n_edges in total."""
-    n = len(W)
-    rows, cols = np.triu_indices(n, k=1)
-    weights = np.abs(W[rows, cols])
-    keep = np.zeros(weights.size, dtype=bool) if base is None else base[rows, cols].copy()
+def _keep(W: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    # Mirror the upper triangle so the result is exactly symmetric even if W is not
+    upper = np.triu(np.where(mask & (W != 0), W, 0.0), 1)
+    return upper + upper.T
 
-    candidates = np.flatnonzero(~keep & (weights > 0))
-    order = candidates[np.argsort(-weights[candidates], kind="stable")]
+
+def _keep_strongest(W: np.ndarray, S: np.ndarray, n_edges: int, base: np.ndarray) -> np.ndarray:
+    """Keep the edges in `base`, then the highest-scoring remaining edges up to n_edges in total."""
+    rows, cols = np.triu_indices(len(W), k=1)
+    keep = base[rows, cols].copy()
+    candidates = np.flatnonzero(~keep & (W[rows, cols] != 0))
+    order = candidates[np.argsort(-S[rows, cols][candidates], kind="stable")]
     keep[order[:max(n_edges - int(keep.sum()), 0)]] = True
 
-    out = np.zeros_like(W)
-    out[rows[keep], cols[keep]] = W[rows[keep], cols[keep]]
-    return out + out.T
+    mask = np.zeros(W.shape, dtype=bool)
+    mask[rows[keep], cols[keep]] = True
+    return _keep(W, mask | mask.T)
 
 
-def _spanning_mask(absW: np.ndarray) -> np.ndarray:
-    """Symmetric mask of the maximum spanning forest of |w| (the minimum spanning forest of 1/|w|)."""
+def _spanning_mask(S: np.ndarray, exists: np.ndarray) -> np.ndarray:
+    """Symmetric mask of the spanning forest that keeps the highest scores among existing edges."""
     from scipy.sparse.csgraph import minimum_spanning_tree
 
-    tree = minimum_spanning_tree(_lengths(absW)).toarray() > 0
+    # Kruskal depends only on edge order, so rank lengths work for signed scores too
+    rows, cols = np.nonzero(np.triu(exists, 1))
+    order = np.argsort(-S[rows, cols], kind="stable")
+    lengths = np.zeros(S.shape)
+    lengths[rows[order], cols[order]] = np.arange(1, order.size + 1)
+    tree = minimum_spanning_tree(lengths).toarray() > 0
     return tree | tree.T
 
 
-def _tmfg(W: np.ndarray) -> np.ndarray:
+def _tmfg(W: np.ndarray, S: np.ndarray) -> np.ndarray:
     import collections
     import collections.abc
     if not hasattr(collections, "Sized"):
@@ -134,86 +165,85 @@ def _tmfg(W: np.ndarray) -> np.ndarray:
     import networkx as nx
     import topcorr as tpc
 
-    return nx.to_numpy_array(tpc.tmfg(W, absolute=True, threshold_mean=True), nodelist=range(len(W)))
+    graph = tpc.tmfg(S, absolute=False, threshold_mean=True)
+    return _keep(W, nx.to_numpy_array(graph, nodelist=range(len(W))) != 0)
 
 
-def _full(W: np.ndarray) -> np.ndarray:
-    return W.copy()
+def _full(W: np.ndarray, S: np.ndarray) -> np.ndarray:
+    return _keep(W, np.ones(W.shape, dtype=bool))
 
 
-def _absolute(W: np.ndarray, threshold: float) -> np.ndarray:
+def _absolute(W: np.ndarray, S: np.ndarray, threshold: float) -> np.ndarray:
     import bct
-    return np.sign(W) * bct.threshold_absolute(np.abs(W), threshold)
+    return _keep(W, bct.threshold_absolute(S, threshold) != 0)
 
 
-def _density(W: np.ndarray, density: float) -> np.ndarray:
+def _density(W: np.ndarray, S: np.ndarray, density: float) -> np.ndarray:
     import bct
-    return np.sign(W) * bct.threshold_proportional(np.abs(W), density)
+    return _keep(W, bct.threshold_proportional(S, density) != 0)
 
 
-def _eco(W: np.ndarray) -> np.ndarray:
+def _eco(W: np.ndarray, S: np.ndarray) -> np.ndarray:
     # Mean degree 3
-    return _density(W, min(1.0, 3 / (len(W) - 1)))
+    return _density(W, S, min(1.0, 3 / (len(W) - 1)))
 
 
-def _knn(W: np.ndarray, k: int) -> np.ndarray:
+def _knn(W: np.ndarray, S: np.ndarray, k: int) -> np.ndarray:
     n = len(W)
     k = int(k)
     if k > n - 1:
         raise ValueError(f"k={k} is larger than the {n - 1} possible neighbours.")
-    absW = np.abs(W)
-    nearest = np.argsort(-absW, axis=1, kind="stable")[:, :k]
+    ranked = np.where(np.eye(n, dtype=bool), -np.inf, S)
+    nearest = np.argsort(-ranked, axis=1, kind="stable")[:, :k]
     mask = np.zeros(W.shape, dtype=bool)
     mask[np.repeat(np.arange(n), k), nearest.ravel()] = True
-    mask = (mask | mask.T) & (absW > 0)
-    return np.where(mask, W, 0.0)
+    return _keep(W, mask | mask.T)
 
 
-def _mst(W: np.ndarray) -> np.ndarray:
-    return np.where(_spanning_mask(np.abs(W)), W, 0.0)
+def _mst(W: np.ndarray, S: np.ndarray) -> np.ndarray:
+    return _keep(W, _spanning_mask(S, W != 0))
 
 
-def _mst_density(W: np.ndarray, density: float) -> np.ndarray:
-    tree = _spanning_mask(np.abs(W))
+def _mst_density(W: np.ndarray, S: np.ndarray, density: float) -> np.ndarray:
+    tree = _spanning_mask(S, W != 0)
     n_edges = _n_edges(len(W), density)
     n_tree = int(tree.sum()) // 2
     if n_edges < n_tree:
         raise ValueError(f"density={density} keeps {n_edges} edges, fewer than the {n_tree} of the spanning tree.")
-    return _keep_strongest(W, n_edges, base=tree)
+    return _keep_strongest(W, S, n_edges, base=tree)
 
 
-def _omst(W: np.ndarray) -> np.ndarray:
+def _omst(W: np.ndarray, S: np.ndarray) -> np.ndarray:
     # Add orthogonal spanning trees one at a time; keep the set maximising efficiency (relative to the full graph) minus cost
-    absW = np.abs(W)
-    total = absW.sum()
-    full_efficiency = inverse_distances(absW).sum()
-    remaining = absW.copy()
+    total = S.sum()
+    full_efficiency = inverse_distances(S).sum()
+    remaining = S.copy()
     kept = np.zeros(W.shape, dtype=bool)
     best, best_score = kept, -np.inf
     while True:
-        tree = _spanning_mask(remaining)
+        tree = _spanning_mask(remaining, remaining > 0)
         if not tree.any():
             break
         kept = kept | tree
         remaining[tree] = 0
-        efficiency = inverse_distances(np.where(kept, absW, 0.0)).sum() / full_efficiency
-        score = efficiency - absW[kept].sum() / total
+        efficiency = inverse_distances(np.where(kept, S, 0.0)).sum() / full_efficiency
+        score = efficiency - S[kept].sum() / total
         if score > best_score:
             best, best_score = kept, score
-    return np.where(best, W, 0.0)
+    return _keep(W, best)
 
 
-def _percolation(W: np.ndarray) -> np.ndarray:
-    # The highest cutoff that keeps the largest component whole is the weakest edge of its maximum spanning tree
+def _percolation(W: np.ndarray, S: np.ndarray) -> np.ndarray:
+    # The highest cutoff that keeps the largest component whole is the weakest edge of its spanning tree
     from scipy.sparse.csgraph import connected_components
 
-    absW = np.abs(W)
-    _, labels = connected_components((absW > 0).astype(float), directed=False)
+    exists = W != 0
+    _, labels = connected_components(exists.astype(float), directed=False)
     giant = labels == np.bincount(labels).argmax()
-    tree = _spanning_mask(np.where(np.outer(giant, giant), absW, 0.0))
+    tree = _spanning_mask(S, exists & np.outer(giant, giant))
     if not tree.any():
         return np.zeros_like(W)
-    return np.where(absW >= absW[tree].min(), W, 0.0)
+    return _keep(W, S >= S[tree].min())
 
 
 _BUILDERS = {

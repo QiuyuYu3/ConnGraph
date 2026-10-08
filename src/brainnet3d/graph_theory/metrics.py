@@ -10,9 +10,11 @@ import numpy as np
 import pandas as pd
 
 from brainnet3d.graph_theory.sparsify import (
+    apply_sign,
     build_adjacency,
     check_graph_method,
     inverse_distances,
+    requested_edges,
     resolve_sign,
 )
 
@@ -66,8 +68,9 @@ def check_options(
         for m in names:
             if m.split(".")[0] in ("clust_coeff", "ge_local"):
                 constant[m] = "is always 0 on a spanning tree (graph_method=\"mst\")"
-    if resolve_sign(graph_method, sign) == "positive" and "strength.neg" in names:
-        constant["strength.neg"] = "is always 0 when negative weights are removed (sign=\"positive\")"
+    resolved = resolve_sign(graph_method, sign)
+    if resolved in ("positive", "negative") and "strength.neg" in names:
+        constant["strength.neg"] = f"is always 0 when only one sign of weights is kept (sign=\"{resolved}\")"
 
     if constant and metrics == "all":
         return [m for m in names if m not in constant]
@@ -86,25 +89,31 @@ def process_subject(
     sign: str | None = None,
     summary: str = "auc",
     return_curves: bool = False,
+    normalize_weights: bool = False,
 ) -> dict:
-    """Return {"subj", "metric.variant": {label: value}, ["curves"]} for one subject; options as in compute_graph_metrics."""
+    """Return {"subj", "metric.variant": {label: value}, ["curves"], ["shortfall"]} for one subject; options as in compute_graph_metrics."""
     names = check_options(metrics, graph_method, graph_params, sign, summary)
     params = dict(graph_params or {})
     sweep, values = check_graph_method(graph_method, params)
 
     mat = np.array(corrmat, dtype=float)
     np.fill_diagonal(mat, 0)
-    if resolve_sign(graph_method, sign) == "positive":
-        mat[mat < 0] = 0
+    resolved = resolve_sign(graph_method, sign)
+    mat = apply_sign(mat, resolved)
+    if normalize_weights and np.abs(mat).max() > 0:
+        import bct
+        mat = bct.weight_conversion(mat, "normalize")
+    signed = resolved == "signed"
+    settings = [params] if sweep is None else [{**params, sweep: v} for v in values]
 
     curves = None
     if sweep is None:
-        A = build_adjacency(mat, graph_method, params)
+        A = build_adjacency(mat, graph_method, params, signed)
         results = {m: compute_metric(m, A) for m in names}
     else:
         stacked: dict[str, list] = {m: [] for m in names}
-        for value in values:
-            A = build_adjacency(mat, graph_method, {**params, sweep: value})
+        for setting in settings:
+            A = build_adjacency(mat, graph_method, setting, signed)
             for m in names:
                 stacked[m].append(compute_metric(m, A))
         curves = {m: np.vstack(rows) for m, rows in stacked.items()}
@@ -115,7 +124,23 @@ def process_subject(
         out[m] = dict(zip(node_labels, vals))
     if return_curves and curves is not None:
         out["curves"] = _curves_frame(curves, values, node_labels)
+    shortfall = _shortfall(mat, graph_method, settings)
+    if shortfall:
+        out["shortfall"] = shortfall
     return out
+
+
+def _shortfall(mat: np.ndarray, method: str | Callable, settings: list[dict]) -> str | None:
+    """Describe settings that ask for more edges than the matrix has after the sign rule, if any."""
+    if callable(method):
+        return None
+    available = int(np.count_nonzero(np.triu(mat, 1)))
+    short = [s for s in settings if (requested_edges(len(mat), method, s) or 0) > available]
+    if not short:
+        return None
+    asked = ", ".join(f"{requested_edges(len(mat), method, s)} ({', '.join(f'{k}={v:g}' for k, v in s.items()) or method})"
+                      for s in short)
+    return f"{available} edges available, asked for {asked}"
 
 
 def compute_metric(name: str, A: np.ndarray) -> np.ndarray:

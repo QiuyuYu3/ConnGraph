@@ -12,7 +12,7 @@
 - Edge colour range option in the 3-D, circos and spring plots, and a ForceAtlas2 layout in the 3-D plot.
 - A `verbose` option to silence progress messages.
 - Hemisphere-split metrics work with any atlas that has a hemisphere column.
-- Graph metrics can build the graph in ten ways (TMFG stays the default), compute several variants of each metric, and integrate metrics over a range of densities or thresholds.
+- Graph metrics can build the graph in ten ways (TMFG stays the default), compute several variants of each metric, integrate metrics over a range of densities or thresholds, treat negative weights in four ways, and scale each subject's weights by its largest weight.
 
 ### Changed
 

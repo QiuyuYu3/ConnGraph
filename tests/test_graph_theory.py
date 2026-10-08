@@ -338,6 +338,47 @@ def test_sign_positive_removes_negative_weights():
     np.testing.assert_allclose([res["strength.abs"][lbl] for lbl in labels], np.clip(corr, 0, None).sum(axis=1))
 
 
+def test_sign_negative_keeps_negative_magnitudes():
+    n = 10
+    corr = _random_corr(n, 2)
+    labels = [f"roi{i}" for i in range(n)]
+    res = process_subject("s1", corr, labels, ["strength.abs", "strength.pos"], "full", sign="negative")
+    np.fill_diagonal(corr, 0)
+    expected = -np.clip(corr, None, 0).sum(axis=1)
+    np.testing.assert_allclose([res["strength.abs"][lbl] for lbl in labels], expected)
+    np.testing.assert_allclose([res["strength.pos"][lbl] for lbl in labels], expected)
+    with pytest.raises(ValueError, match="strength.neg"):
+        process_subject("s1", corr, labels, ["strength.neg"], "full", sign="negative")
+
+
+def test_normalize_weights_divides_by_the_largest_weight():
+    n = 10
+    corr = _random_corr(n, 2)
+    labels = [f"roi{i}" for i in range(n)]
+    raw = process_subject("s1", corr, labels, ["strength.abs"], "full", sign="abs")
+    scaled = process_subject("s1", corr, labels, ["strength.abs"], "full", sign="abs", normalize_weights=True)
+    off_diag = corr[~np.eye(n, dtype=bool)]
+    np.testing.assert_allclose(
+        [scaled["strength.abs"][lbl] for lbl in labels],
+        [raw["strength.abs"][lbl] / np.abs(off_diag).max() for lbl in labels],
+    )
+
+
+def test_too_few_positive_edges_warns_once_with_subjects():
+    matrices, atlas = _toy_inputs()
+    corr = matrices["s1"].to_numpy(copy=True)
+    corr -= corr[np.triu_indices(len(corr), 1)].mean()  # many negative weights
+    matrices = {sid: pd.DataFrame(corr, index=atlas["label"], columns=atlas["label"]) for sid in ("s1", "s2")}
+    n_pos = int((np.triu(corr, 1) > 0).sum())
+    with pytest.warns(UserWarning, match=rf"node / s1: {n_pos} edges available, asked for 59") as record:
+        compute_graph_metrics(
+            matrices, atlas, level="node", metrics=["strength.bin"], graph_method="density",
+            graph_params={"density": [0.2, 0.9]}, n_jobs=1, verbose=False,
+        )
+    assert len([w for w in record if "Fewer edges" in str(w.message)]) == 1
+    assert "s2" in str(record[0].message)
+
+
 def _null_groups(n_nodes: int = 12, n_subjects: int = 10, seed: int = 0):
     rng = np.random.default_rng(seed)
     labels = [f"roi{i}" for i in range(n_nodes)]

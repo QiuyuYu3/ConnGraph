@@ -131,4 +131,38 @@ def test_resolve_sign_defaults_by_method():
     assert resolve_sign("density", None) == "positive"
     assert resolve_sign("density", "abs") == "abs"
     with pytest.raises(ValueError, match="sign"):
-        resolve_sign("density", "negative")
+        resolve_sign("density", "both")
+    with pytest.raises(ValueError, match="omst"):
+        resolve_sign("omst", "signed")
+
+
+def test_signed_density_matches_bct_on_the_raw_matrix():
+    bct = pytest.importorskip("bct")
+    W = _corr(30)
+    W = W - W[np.triu_indices(30, 1)].mean()  # many negative weights
+    np.fill_diagonal(W, 0)
+    for density in (0.2, 0.6):
+        np.testing.assert_array_equal(
+            build_adjacency(W, "density", {"density": density}, signed=True),
+            bct.threshold_proportional(W, density),
+        )
+    assert (build_adjacency(W, "density", {"density": 0.6}, signed=True) < 0).any()
+
+
+def test_signed_tmfg_matches_topcorr_without_absolute():
+    pytest.importorskip("topcorr")
+    import topcorr as tpc
+
+    W = _corr(20)
+    W = W - W[np.triu_indices(20, 1)].mean()
+    np.fill_diagonal(W, 0)
+    expected = nx.to_numpy_array(tpc.tmfg(W, absolute=False, threshold_mean=True), nodelist=range(20))
+    np.testing.assert_array_equal(build_adjacency(W, "tmfg", signed=True), expected)
+
+
+def test_signed_mst_is_the_maximum_spanning_tree_of_signed_weights():
+    W = _corr(20)
+    W = W - W[np.triu_indices(20, 1)].mean()
+    np.fill_diagonal(W, 0)
+    reference = nx.maximum_spanning_tree(nx.from_numpy_array(W))
+    np.testing.assert_array_equal(build_adjacency(W, "mst", signed=True) != 0, nx.to_numpy_array(reference) != 0)
