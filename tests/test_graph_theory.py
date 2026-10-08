@@ -518,3 +518,54 @@ def test_run_nbs_is_reproducible_with_seed():
     b = run_nbs(g1, g2, thresh=1.5, k=50, seed=1, verbose=False)
     np.testing.assert_array_equal(a.pval, b.pval)
     np.testing.assert_array_equal(a.null, b.null)
+
+
+def _effect_groups(n_subjects: int = 10, seed: int = 0):
+    g1, g2 = _null_groups(n_nodes=16, n_subjects=n_subjects, seed=seed)
+    for m in g2.values():
+        m.iloc[:6, :6] += 1.2
+    return g1, g2
+
+
+@pytest.mark.parametrize("paired, tail", [(False, "both"), (False, "left"), (False, "right"), (True, "both")])
+def test_run_nbs_matches_bct_serial(paired, tail):
+    bct = pytest.importorskip("bct")
+    import contextlib
+    import io
+
+    g1, g2 = _effect_groups()
+    x = np.stack([m.values for m in g1.values()], axis=2)
+    y = np.stack([m.values for m in g2.values()], axis=2)
+    with contextlib.redirect_stdout(io.StringIO()):
+        pval, adj, null = bct.nbs_bct(x, y, 1.0, k=60, tail=tail, paired=paired, seed=3)
+    res = run_nbs(g1, g2, thresh=1.0, k=60, tail=tail, paired=paired, seed=3, verbose=False)
+    np.testing.assert_array_equal(res.pval, pval)
+    np.testing.assert_array_equal(res.adj, adj)
+    np.testing.assert_array_equal(res.null, null)
+
+
+def test_run_nbs_is_silent_without_verbose(capsys):
+    pytest.importorskip("bct")
+    g1, g2 = _effect_groups()
+    run_nbs(g1, g2, thresh=1.0, k=20, seed=0, verbose=False)
+    assert capsys.readouterr().out == ""
+
+
+def test_run_nbs_does_not_use_edgewise_bct_loop(monkeypatch):
+    bct = pytest.importorskip("bct")
+
+    def _fail(*args, **kwargs):
+        raise AssertionError("bct.nbs_bct was called")
+
+    monkeypatch.setattr(bct, "nbs_bct", _fail)
+    monkeypatch.setattr(bct.nbs, "nbs_bct", _fail)
+    g1, g2 = _effect_groups()
+    res = run_nbs(g1, g2, thresh=1.0, k=20, seed=0, verbose=False)
+    assert res.null.shape == (20,)
+
+
+def test_run_nbs_rejects_threshold_with_no_edges():
+    bct = pytest.importorskip("bct")
+    g1, g2 = _effect_groups()
+    with pytest.raises(bct.BCTParamError, match="Unsuitable threshold"):
+        run_nbs(g1, g2, thresh=1e6, k=5, seed=0, verbose=False)

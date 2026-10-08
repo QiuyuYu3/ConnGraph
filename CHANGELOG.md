@@ -20,7 +20,7 @@
 - **Graph metrics raise an error on NaN or Inf input** and report subjects that fail.
 - **Metric tables have two-level columns, and metric names include the variant, so `result.node_df["strength.abs"]` gives one metric for all ROIs.** Results are saved as one CSV file per level and metric.
 - **Network-level metrics are computed on the hemisphere-split graph by default;** the whole-network graph is optional.
-- The default clustering coefficient and betweenness are computed much faster, with the same results.
+- The default clustering coefficient, betweenness and NBS permutations are computed much faster, with the same results.
 - Data problems are shown as warnings instead of printed text.
 - Category colours no longer repeat when there are more than 12 categories, neighbouring categories get different hues, and each category keeps its colour across plots whatever the node order; numeric node colours default to viridis, and 3-D spring plots colour nodes by network when network labels are given.
 - Node tables read from file keep the label "None" as text instead of treating it as missing.
