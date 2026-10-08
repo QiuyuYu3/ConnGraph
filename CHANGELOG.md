@@ -16,6 +16,7 @@
 - **Metric tables have two-level columns, so `result.node_df["strength"]` gives one metric for all ROIs.** Saved CSV files are unchanged.
 - Data problems are shown as warnings instead of printed text.
 - Node colours no longer repeat when there are more than 12 categories, and numeric node colours default to viridis.
+- Node tables read from file keep the label "None" as text instead of treating it as missing.
 
 ### Fixed
 
