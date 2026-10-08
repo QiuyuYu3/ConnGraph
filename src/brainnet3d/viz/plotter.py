@@ -276,7 +276,47 @@ class BrainNetPlotter:
         titles:     bool              = True,
         **kwargs,
     ) -> Figure:
-        """Render panels of camera views off screen into one matplotlib Figure with a legend; kwargs are plot() styles."""
+        """
+        Render several camera views off screen and return them as one matplotlib Figure with a legend.
+
+        Example
+        -------
+        >>> fig = p.plot_views(
+        ...     views=[[{"view": "L", "hemisphere": "L"}, {"view": "R", "hemisphere": "L"}],
+        ...            [{"view": "R", "hemisphere": "R"}, {"view": "L", "hemisphere": "R"}]],
+        ...     node_color="network", node_size="strength", surface_alpha=0.5,
+        ... )
+        >>> fig.savefig("network.png")
+
+        Parameters
+        ----------
+        views : panels as dicts; a list of dicts is one row, a list of such lists is several rows.
+                Default: [{"view": "L"}, {"view": "S"}, {"view": "R"}].
+                Panel keys:
+                "view" (required) → side the camera looks from: "L", "R", "S", "I", "A" or "P".
+                "hemisphere" → "both" (default), "L" or "R"; drops the other hemisphere's
+                               nodes, surface and any edge touching it.
+                "title" → panel title; otherwise generated, e.g. "Left hemisphere, medial".
+        legend : True → a legend for every style mapped to data: node colour (category swatches
+                 or colour bar), node size and edge colour. False → no legend.
+                 List of "node_color", "node_size", "edge_color", "edge_width" → just those.
+        panel_size : render size of each panel in pixels before cropping. A 600-pixel panel is
+                     4 inches wide; the figure DPI scales with panel_size, so fig.savefig keeps
+                     the rendered resolution and the layout looks the same at any size.
+        titles : draw a title above each panel.
+        **kwargs : any style argument of plot(), e.g. node_color, node_size, edge_threshold,
+                   surface_L, surface_alpha, background. Not accepted: show_hemisphere
+                   (use the panel "hemisphere" key), screenshot (use fig.savefig), html,
+                   interactive, highlight_on_click and title.
+
+        Notes
+        -----
+        Colour and size ranges are computed over all nodes and edges, so they match across
+        panels and may differ from plot(show_hemisphere=...), which uses one hemisphere only.
+        Panels use a parallel projection at one common scale, so the node size legend matches
+        the drawn spheres. With the default surface_alpha a lateral and a medial panel look
+        alike; raise surface_alpha (around 0.5) so nodes behind the surface fade.
+        """
         from brainnet3d.viz.panels import parse_views, views_figure
 
         args   = self._plot_args(**kwargs)
