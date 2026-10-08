@@ -100,13 +100,15 @@ def compute_graph_metrics(
         "mst_density"     spanning tree plus the strongest edges up to {"density": d}
         "omst"            orthogonal spanning trees, as many as maximise global efficiency minus cost
         "percolation"     highest |w| cutoff that keeps the largest component connected
+        "disparity"       edges whose share of either end's strength is significant at {"alpha": a}
+        "pmfg"            planar maximally filtered graph; much slower than tmfg on large graphs
         or a callable ``f(matrix, **graph_params)`` returning an undirected nx.Graph or a symmetric adjacency array.
-        A list of values for "threshold" or "density" computes each metric at every value and
+        A list of values for "threshold", "density" or "alpha" computes each metric at every value and
         reduces the curve with ``summary``.
     graph_params : parameters of graph_method, e.g. {"density": 0.1} or {"density": [0.2, 0.25, 0.3]}.
     sign : how negative weights are treated.
         "abs"       rank edges by |w| and keep the sign (signed variants use it, the others use |w|)
-        "signed"    rank edges by w, so negative edges are kept only when needed; not for omst
+        "signed"    rank edges by w, so negative edges are kept only when needed; not for omst or disparity
         "positive"  remove negative weights first
         "negative"  keep only negative weights, as positive magnitudes
         Default: "abs" for tmfg and callables, "positive" for the other methods.

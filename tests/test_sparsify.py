@@ -4,7 +4,10 @@ import pytest
 
 from brainnet3d.graph_theory.sparsify import GRAPH_METHODS, build_adjacency, inverse_distances, resolve_sign
 
-PARAMS = {"absolute": {"threshold": 0.2}, "density": {"density": 0.1}, "knn": {"k": 3}, "mst_density": {"density": 0.1}}
+PARAMS = {
+    "absolute": {"threshold": 0.2}, "density": {"density": 0.1}, "knn": {"k": 3}, "mst_density": {"density": 0.1},
+    "disparity": {"alpha": 0.05},
+}
 
 
 def _corr(n: int, seed: int = 0) -> np.ndarray:
@@ -27,7 +30,7 @@ def _connected(A: np.ndarray) -> bool:
 @pytest.mark.parametrize("method", GRAPH_METHODS)
 def test_adjacency_keeps_input_weights_symmetrically(method):
     pytest.importorskip("bct")
-    if method == "tmfg":
+    if method in ("tmfg", "pmfg"):
         pytest.importorskip("topcorr")
     W = _corr(20)
     A = build_adjacency(W, method, PARAMS.get(method))
@@ -150,6 +153,67 @@ def test_percolation_keeps_the_highest_cutoff_that_stays_connected():
     np.testing.assert_array_equal(A != 0, np.abs(W) >= cutoff)
     assert _connected(A)
     assert not _connected(np.where(np.abs(W) > cutoff, W, 0.0))
+
+
+@pytest.mark.parametrize("alpha, kept", [
+    (0.05, [(0, 1)]),
+    (0.6, [(0, 1), (0, 2), (0, 3), (2, 3)]),
+])
+def test_disparity_by_hand(alpha, kept):
+    # Node 0 splits 10 over weights 8, 1, 1; nodes 2 and 3 split 2 evenly; node 1 has one edge
+    W = np.zeros((4, 4))
+    for (i, j), w in {(0, 1): 8, (0, 2): 1, (0, 3): 1, (2, 3): 1}.items():
+        W[i, j] = W[j, i] = w
+    A = build_adjacency(W, "disparity", {"alpha": alpha})
+    assert sorted(zip(*np.nonzero(np.triu(A, 1)))) == kept
+
+
+def _disparity_reference(W: np.ndarray, alpha: float) -> np.ndarray:
+    graph = nx.from_numpy_array(W)
+    keep = np.zeros(W.shape, dtype=bool)
+    for i in graph:
+        k = graph.degree(i)
+        s = graph.degree(i, weight="weight")
+        for j in graph[i]:
+            if k > 1 and (1 - graph[i][j]["weight"] / s) ** (k - 1) < alpha:
+                keep[i, j] = keep[j, i] = True
+    return keep
+
+
+@pytest.mark.parametrize("alpha", [0.05, 0.1, 0.5])
+def test_disparity_matches_a_networkx_reference(alpha):
+    W = np.abs(_corr(30, seed=4))
+    A = build_adjacency(W, "disparity", {"alpha": alpha})
+    expected = _disparity_reference(W, alpha)
+    assert expected.any() and not expected.all()
+    np.testing.assert_array_equal(A != 0, expected)
+
+
+def test_disparity_needs_non_negative_weights():
+    with pytest.raises(ValueError, match="disparity"):
+        resolve_sign("disparity", "signed")
+    assert resolve_sign("disparity", None) == "positive"
+
+
+def test_pmfg_is_planar_with_3n_minus_6_edges_and_contains_the_mst():
+    pytest.importorskip("topcorr")
+    W = _corr(20)
+    A = build_adjacency(W, "pmfg")
+    assert _n_edges(A) == 3 * (20 - 2)
+    assert nx.check_planarity(nx.from_numpy_array(A))[0]
+    tree = build_adjacency(W, "mst") != 0
+    assert (A[tree] != 0).all()
+
+
+def test_signed_pmfg_matches_topcorr():
+    pytest.importorskip("topcorr")
+    import topcorr as tpc
+
+    W = _corr(20)
+    W = W - W[np.triu_indices(20, 1)].mean()
+    np.fill_diagonal(W, 0)
+    expected = nx.to_numpy_array(tpc.pmfg(W), nodelist=range(20))
+    np.testing.assert_array_equal(build_adjacency(W, "pmfg", signed=True), expected)
 
 
 def test_inverse_distances_give_bct_global_efficiency():

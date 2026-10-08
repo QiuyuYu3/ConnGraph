@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Two more ways to build the graph for graph metrics: the disparity filter, also over a range of significance levels, and the planar maximally filtered graph (PMFG).
+
 ### Fixed
 
 - 3-D edges drawn as tubes take the chosen edge colour; they were always drawn gold.

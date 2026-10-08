@@ -376,6 +376,21 @@ def test_density_range_matches_proportional_threshold_loop():
         np.testing.assert_allclose(got, expected * scale)
 
 
+def test_disparity_alpha_range_integrates_single_runs():
+    n = 30
+    corr = _random_corr(n, 3)
+    labels = [f"roi{i}" for i in range(n)]
+    alphas = [0.05, 0.1, 0.2]
+    curve = [
+        np.array(list(process_subject("s1", corr, labels, ["strength"], "disparity", {"alpha": a})["strength.abs"].values()))
+        for a in alphas
+    ]
+    assert not np.allclose(curve[0], curve[2])
+    expected = sum((curve[i] + curve[i + 1]) / 2 * (alphas[i + 1] - alphas[i]) for i in range(2))
+    res = process_subject("s1", corr, labels, ["strength"], "disparity", {"alpha": alphas})
+    np.testing.assert_allclose([res["strength.abs"][lbl] for lbl in labels], expected)
+
+
 def test_return_curves_keeps_values_at_each_density(tmp_path):
     matrices, atlas = _toy_inputs()
     result = compute_graph_metrics(

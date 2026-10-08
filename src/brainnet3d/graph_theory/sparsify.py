@@ -19,9 +19,11 @@ _PARAMS = {
     "mst_density": ("density",),
     "omst":        (),
     "percolation": (),
+    "disparity":   ("alpha",),
+    "pmfg":        (),
 }
 GRAPH_METHODS = tuple(_PARAMS)
-SWEEP_PARAMS = {"absolute": "threshold", "density": "density", "mst_density": "density"}
+SWEEP_PARAMS = {"absolute": "threshold", "density": "density", "mst_density": "density", "disparity": "alpha"}
 SIGNS = ("abs", "signed", "positive", "negative")
 
 
@@ -31,8 +33,8 @@ def resolve_sign(method: str | Callable, sign: str | None) -> str:
         return "abs" if callable(method) or method == "tmfg" else "positive"
     if sign not in SIGNS:
         raise ValueError(f"sign={sign!r} is not recognised. Choose one of {', '.join(SIGNS)}.")
-    if sign == "signed" and method == "omst":
-        raise ValueError("sign=\"signed\" is not available for graph_method=\"omst\", which needs positive edge lengths.")
+    if sign == "signed" and method in ("omst", "disparity"):
+        raise ValueError(f"sign=\"signed\" is not available for graph_method={method!r}, which needs non-negative weights.")
     return sign
 
 
@@ -83,6 +85,8 @@ def _check_value(method: str, name: str, value) -> None:
         raise ValueError(f"k must be a positive integer, got {value}.")
     if name == "threshold" and not np.isfinite(value):
         raise ValueError(f"threshold must be finite, got {value}.")
+    if name == "alpha" and not 0 < value <= 1:
+        raise ValueError(f"alpha must be in (0, 1], got {value}.")
 
 
 def requested_edges(n: int, method: str | Callable, params: dict) -> int | None:
@@ -160,16 +164,27 @@ def _spanning_mask(S: np.ndarray, exists: np.ndarray) -> np.ndarray:
     return tree | tree.T
 
 
-def _tmfg(W: np.ndarray, S: np.ndarray) -> np.ndarray:
+def _topcorr():
     import collections
     import collections.abc
     if not hasattr(collections, "Sized"):
         collections.Sized = collections.abc.Sized  # topcorr still uses the alias removed in Python 3.10
-    import networkx as nx
-    import topcorr as tpc
+    import topcorr
+    return topcorr
 
-    graph = tpc.tmfg(S, absolute=False, threshold_mean=True)
-    return _keep(W, nx.to_numpy_array(graph, nodelist=range(len(W))) != 0)
+
+def _graph_mask(graph, n: int) -> np.ndarray:
+    import networkx as nx
+    return nx.to_numpy_array(graph, nodelist=range(n)) != 0
+
+
+def _tmfg(W: np.ndarray, S: np.ndarray) -> np.ndarray:
+    graph = _topcorr().tmfg(S, absolute=False, threshold_mean=True)
+    return _keep(W, _graph_mask(graph, len(W)))
+
+
+def _pmfg(W: np.ndarray, S: np.ndarray) -> np.ndarray:
+    return _keep(W, _graph_mask(_topcorr().pmfg(S), len(W)))
 
 
 def _full(W: np.ndarray, S: np.ndarray) -> np.ndarray:
@@ -251,6 +266,15 @@ def _percolation(W: np.ndarray, S: np.ndarray) -> np.ndarray:
     return _keep(W, S >= S[tree].min())
 
 
+def _disparity(W: np.ndarray, S: np.ndarray, alpha: float) -> np.ndarray:
+    # An edge is kept if, seen from either end, its share of the strength is unlikely under a uniform random split
+    exists = S > 0
+    strength = S.sum(axis=1, keepdims=True)
+    share = np.divide(S, strength, out=np.zeros_like(S), where=strength > 0)
+    pvalues = (1 - share) ** (exists.sum(axis=1, keepdims=True) - 1)
+    return _keep(W, exists & ((pvalues < alpha) | (pvalues.T < alpha)))
+
+
 _BUILDERS = {
     "tmfg":        _tmfg,
     "full":        _full,
@@ -262,4 +286,6 @@ _BUILDERS = {
     "mst_density": _mst_density,
     "omst":        _omst,
     "percolation": _percolation,
+    "disparity":   _disparity,
+    "pmfg":        _pmfg,
 }
