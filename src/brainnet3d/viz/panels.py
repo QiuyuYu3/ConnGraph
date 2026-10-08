@@ -147,7 +147,8 @@ def _crop(image: np.ndarray, background, pad: int) -> np.ndarray:
     return image[r0:r1, c0:c1]
 
 
-def views_figure(scene, a: dict, panels: list[list[dict]], legend, panel_size: int, titles: bool) -> Figure:
+def views_figure(scene, a: dict, panels: list[list[dict]], legend, panel_size: int, titles: bool,
+                 width: float | None = None) -> Figure:
     lo, hi = _bounds(scene.actors)
     parallel_scale = 0.5 * float((hi - lo).max()) * 1.03
     px_per_mm = panel_size / (2 * parallel_scale)
@@ -155,6 +156,10 @@ def views_figure(scene, a: dict, panels: list[list[dict]], legend, panel_size: i
 
     # keep line widths proportional to the panel so larger renders look the same
     width_factor = panel_size / _REF_PANEL_PX
+    if width is not None:
+        # panels are shown at a set width, so thicken lines by the same ratio to print as thick as by default
+        widths_px = [[_panel_width_px(scene, p, px_per_mm, panel_size) for p in row] for row in panels]
+        width_factor *= _fit_dpi(widths_px, width) / dpi
     if width_factor != 1 and not a["use_tube"]:
         for e in scene.edges:
             e.lw(e.properties.GetLineWidth() * width_factor)
@@ -172,7 +177,21 @@ def views_figure(scene, a: dict, panels: list[list[dict]], legend, panel_size: i
     fg = "white" if np.mean(mcolors.to_rgb(a["background"])) < 0.5 else "black"
     style = {"text.color": fg, "axes.labelcolor": fg, "xtick.color": fg, "ytick.color": fg, "axes.edgecolor": fg}
     with plt.rc_context(style):
-        return _compose(images, labels, items, dpi, px_per_mm, a["background"], has_titles=titles)
+        return _compose(images, labels, items, dpi, px_per_mm, a["background"], has_titles=titles, width=width)
+
+
+def _panel_width_px(scene, panel: dict, px_per_mm: float, size: int) -> float:
+    # width of the cropped render, known before rendering from the extent across the view
+    lo, hi = _bounds(panel_actors(scene, panel["hemisphere"]))
+    across = 1 if panel["view"] in "LR" else 0
+    return min(size, (hi - lo)[across] * px_per_mm + 2 * max(2, size // 100) + 1)
+
+
+def _fit_dpi(widths_px: list[list[float]], width: float) -> float:
+    room = [width - 2 * _MARGIN - _GAP * (len(row) - 1) for row in widths_px]
+    if min(room) <= 0:
+        raise ValueError(f"width={width} leaves no room for the panels; use a larger width.")
+    return max(sum(row) / r for row, r in zip(widths_px, room))
 
 
 def legend_items(scene, a: dict, legend, width_factor: float = 1.0) -> list[dict]:
@@ -266,34 +285,46 @@ def _number(value: float) -> str:
     return f"{value:.3g}" if abs(value) < 1000 else f"{value:,.0f}"
 
 
-def _legend_size(item: dict, dpi: float, px_per_mm: float) -> tuple[float, float]:
+def _legend_size(item: dict, dpi: float, px_per_mm: float, avail: float = math.inf) -> tuple[float, float]:
     line = _FONT / 72 * 1.5
     if item["kind"] == "categories":
         n = len(item["entries"])
-        nrows = min(n, 5)
-        ncol = math.ceil(n / nrows)
         longest = max(len(k) for k in item["entries"])
-        return ncol * (0.45 + 0.075 * longest), 0.35 + nrows * line
+        col_w = 0.45 + 0.075 * longest
+        full = math.ceil(n / min(n, 5))
+        item["ncol"] = full if math.isinf(avail) else min(full, max(1, int(avail // col_w)))
+        nrows = min(n, 5) if item["ncol"] == full else math.ceil(n / item["ncol"])
+        return item["ncol"] * col_w, 0.35 + nrows * line
     if item["kind"] == "colorbar":
-        return 2.4, 0.85
+        return min(2.4, avail), 0.85
     if item["kind"] == "sizes":
         diam = 2 * item["radii_mm"] * px_per_mm / dpi
         return max(1.6, diam.sum() + 0.4 * (len(diam) + 1)), 0.35 + diam.max() + 0.3
     return 1.6, 0.35 + len(item["values"]) * line
 
 
-def _compose(images, labels, items, dpi: float, px_per_mm: float, background, has_titles: bool) -> Figure:
+def _compose(images, labels, items, dpi: float, px_per_mm: float, background, has_titles: bool,
+             width: float | None = None) -> Figure:
     title_h = _TITLE_H if has_titles else 0.0
+    avail = math.inf if width is None else width - 2 * _MARGIN
+    if width is not None:
+        # display the same pixels at the dpi that lets the widest row fill the width, so resolution is kept
+        dpi = _fit_dpi([[im.shape[1] for im in row] for row in images], width)
     sizes = [[(im.shape[1] / dpi, im.shape[0] / dpi) for im in row] for row in images]
     row_w = [sum(w for w, _ in row) + _GAP * (len(row) - 1) for row in sizes]
     row_h = [max(h for _, h in row) + title_h for row in sizes]
+    title_size = _TITLE_FONT + 1
+    if width is not None:
+        fits = [_title_size(t, w + _GAP) for row, ws in zip(labels, sizes) for t, (w, _) in zip(row, ws) if t]
+        title_size = min(fits, default=title_size)
 
-    legend_sizes = [_legend_size(it, dpi, px_per_mm) for it in items]
-    legend_w = sum(w for w, _ in legend_sizes) + _GAP * max(len(items) - 1, 0)
-    legend_h = max((h for _, h in legend_sizes), default=0.0)
+    legend_sizes = [_legend_size(it, dpi, px_per_mm, avail) for it in items]
+    legend_rows = _pack_rows([w for w, _ in legend_sizes], avail)
+    legend_w = [sum(legend_sizes[i][0] for i in r) + _GAP * (len(r) - 1) for r in legend_rows]
+    legend_h = [max(legend_sizes[i][1] for i in r) for r in legend_rows]
 
-    fig_w = max(max(row_w), legend_w) + 2 * _MARGIN
-    fig_h = 2 * _MARGIN + sum(row_h) + _GAP * (len(images) - 1) + (_GAP + legend_h if items else 0.0)
+    fig_w = width if width is not None else max(max(row_w), max(legend_w, default=0.0)) + 2 * _MARGIN
+    fig_h = 2 * _MARGIN + sum(row_h) + _GAP * (len(images) - 1) + sum(_GAP + h for h in legend_h)
     fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=background)
 
     def add_axes(x, top, w, h, label):
@@ -308,15 +339,37 @@ def _compose(images, labels, items, dpi: float, px_per_mm: float, background, ha
             ax.set_axis_off()
             if labels[r][c]:
                 fig.text((x + w / 2) / fig_w, 1 - (top + title_h / 2) / fig_h, labels[r][c],
-                         ha="center", va="center", fontsize=_TITLE_FONT + 1)
+                         ha="center", va="center", fontsize=title_size)
             x += w + _GAP
         top += rh + _GAP
 
-    x = (fig_w - legend_w) / 2
-    for item, (w, h) in zip(items, legend_sizes):
-        _draw_legend(add_axes, item, x, top, w, legend_h, dpi, px_per_mm)
-        x += w + _GAP
+    for r, rw, rh in zip(legend_rows, legend_w, legend_h):
+        x = (fig_w - rw) / 2
+        for i in r:
+            _draw_legend(add_axes, items[i], x, top, legend_sizes[i][0], rh, dpi, px_per_mm)
+            x += legend_sizes[i][0] + _GAP
+        top += rh + _GAP
     return fig
+
+
+def _pack_rows(widths: list[float], avail: float) -> list[list[int]]:
+    rows: list[list[int]] = []
+    used = 0.0
+    for i, w in enumerate(widths):
+        if rows and used + _GAP + w <= avail:
+            rows[-1].append(i)
+            used += _GAP + w
+        else:
+            rows.append([i])
+            used = w
+    return rows
+
+
+def _title_size(text: str, room: float) -> float:
+    # shrink a title that would run past its panel, down to 6 pt; 0.55 em is a typical average glyph width
+    size = _TITLE_FONT + 1
+    estimate = 0.55 * size / 72 * len(text)
+    return size if estimate <= room else max(6.0, size * room / estimate)
 
 
 def _draw_legend(add_axes, item: dict, x: float, top: float, w: float, h: float, dpi: float, px_per_mm: float) -> None:
@@ -338,8 +391,7 @@ def _draw_legend(add_axes, item: dict, x: float, top: float, w: float, h: float,
 
     if kind == "categories":
         handles = [Patch(facecolor=c, edgecolor="0.4", linewidth=0.5, label=k) for k, c in item["entries"].items()]
-        nrows = min(len(handles), 5)
-        ax.legend(handles=handles, loc="upper center", ncol=math.ceil(len(handles) / nrows), frameon=False,
+        ax.legend(handles=handles, loc="upper center", ncol=item["ncol"], frameon=False,
                   title=item["title"], fontsize=_FONT, title_fontsize=_TITLE_FONT, borderaxespad=0, columnspacing=1.0)
         return
 

@@ -301,6 +301,7 @@ class BrainNetPlotter:
         legend:     bool | str | list[str] = True,
         panel_size: int               = 600,
         titles:     bool              = True,
+        width:      float | None      = None,
         **kwargs,
     ) -> Figure:
         """
@@ -331,6 +332,10 @@ class BrainNetPlotter:
                      4 inches wide; the figure DPI scales with panel_size, so fig.savefig keeps
                      the rendered resolution and the layout looks the same at any size.
         titles : draw a title above each panel.
+        width : figure width in inches, e.g. 7 for two journal columns or 3.5 for one. Panels
+                scale to fit at the same rendered resolution, text keeps its point size, and
+                legend entries wrap onto more rows when they do not fit. None → about 4 inches
+                per panel.
         **kwargs : any style argument of plot(), e.g. node_color, node_size, edge_threshold,
                    surface_L, surface_alpha, background. Not accepted: show_hemisphere
                    (use the panel "hemisphere" key), screenshot (use fig.savefig), html,
@@ -349,7 +354,7 @@ class BrainNetPlotter:
         args   = self._plot_args(**kwargs)
         panels = parse_views(views)
         scene  = self._build_scene(args, "both")
-        return views_figure(scene, args, panels, legend, panel_size, titles)
+        return views_figure(scene, args, panels, legend, panel_size, titles, width)
 
     def _plot_args(self, **kwargs) -> dict:
         for name, hint in _NOT_IN_PLOT_VIEWS.items():

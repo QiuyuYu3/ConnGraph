@@ -94,6 +94,39 @@ def test_legend_accepts_one_name(dataset):
     plt.close(fig)
 
 
+_THREE = [{"view": "L", "hemisphere": "L"}, {"view": "S"}, {"view": "R", "hemisphere": "L"}]
+
+
+def test_width_sets_figure_width(dataset):
+    fig = _views(dataset, views=_THREE, width=3.5, node_color="network")
+    assert fig.get_size_inches()[0] == pytest.approx(3.5)
+    assert max(ax.get_position().x1 for ax in _panels(fig)) <= 1.0
+    plt.close(fig)
+
+
+def test_width_wraps_legend_rows(dataset):
+    names = ["node_color", "node_size", "edge_color", "edge_width"]
+    one_row = _legends(_views(dataset, legend=names, node_color="network", node_size="x", edge_threshold=0.3))
+    wrapped = _legends(_views(dataset, width=3.5, legend=names, node_color="network", node_size="x", edge_threshold=0.3))
+    assert one_row["node_size"].get_position().y1 == pytest.approx(one_row["edge_width"].get_position().y1)
+    assert wrapped["node_size"].get_position().y1 > wrapped["edge_width"].get_position().y1
+    plt.close("all")
+
+
+def test_width_keeps_one_title_size_and_print_line_widths(dataset):
+    kwargs = dict(views=_THREE, edge_threshold=0.3, legend=["edge_width"])
+    wide, narrow = _views(dataset, **kwargs), _views(dataset, width=3.5, **kwargs)
+    assert len({t.get_fontsize() for t in narrow.texts}) == 1
+    widths = [[line.get_linewidth() for line in _legends(f)["edge_width"].lines] for f in (wide, narrow)]
+    np.testing.assert_allclose(widths[1], widths[0], rtol=0.15)
+    plt.close("all")
+
+
+def test_width_too_small_raises(dataset):
+    with pytest.raises(ValueError, match="width"):
+        _views(dataset, views=_THREE, width=0.5)
+
+
 def test_legend_values_are_round_numbers():
     from brainnet3d.viz.panels import _number, _round_values
 

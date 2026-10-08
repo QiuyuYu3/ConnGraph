@@ -4,7 +4,7 @@
 
 ### Added
 
-- Multi-view figures of the 3-D plot with colour bars and legends (`plot_views`).
+- Multi-view figures of the 3-D plot with colour bars and legends, at a chosen figure width (`plot_views`).
 - Highlight chosen nodes or the nodes of highlighted edges, colour edges by sign, and bundle edges that run close together, in the 3-D plot.
 - Matrix heatmaps and circos plots can order nodes by clustering, by a chosen network order or by how strongly networks connect; heatmaps can also draw boxes around networks.
 - Spring plots can shade each network and colour edges by sign or weight.
