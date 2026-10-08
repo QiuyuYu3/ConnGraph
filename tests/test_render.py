@@ -340,3 +340,107 @@ def test_edge_colors_by_sign(dataset, monkeypatch):
     assert {e._weight > 0 for e in edges} == {True, False}
     for e in edges:
         np.testing.assert_allclose(e._orig_color, pos if e._weight > 0 else neg)
+
+
+_ALL_EDGES = dict(edge_threshold=-1.0, edge_threshold_dir="above", node_alpha=1.0, edge_alpha=0.5, highlight_level=0.8)
+
+
+def _alphas(actors):
+    nodes = {a._node_idx: a.alpha() for a in actors if hasattr(a, "_node_idx")}
+    edges = {a._endpoints: a._orig_alpha for a in actors if hasattr(a, "_endpoints")}
+    return nodes, edges
+
+
+@pytest.mark.parametrize("rule, keep", [("both", np.logical_and), ("any", np.logical_or)])
+def test_highlight_nodes_dims_the_rest(dataset, monkeypatch, rule, keep):
+    actors = _plot_actors(
+        bnv.BrainNetPlotter(dataset, subject_id="mean"), monkeypatch,
+        highlight_nodes={"network": "Default"}, highlight_edge_rule=rule, **_ALL_EDGES,
+    )
+    nodes, edges = _alphas(actors)
+    chosen = (dataset.nodes_df["network"] == "Default").to_numpy()
+    np.testing.assert_allclose([nodes[k] for k in sorted(nodes)], np.where(chosen, 1.0, 0.2))
+    for (i, j), alpha in edges.items():
+        assert alpha == pytest.approx(0.5 if keep(chosen[i], chosen[j]) else 0.1)
+
+
+def test_highlight_nodes_forms_agree(dataset, monkeypatch):
+    nodes_df = dataset.nodes_df.assign(is_default=dataset.nodes_df["network"] == "Default")
+    plotter = bnv.BrainNetPlotter(bnv.ConnectivityDataset(dataset.matrices, nodes_df), subject_id="mean")
+    labels = nodes_df.loc[nodes_df["is_default"], "label"].tolist()
+    results = [
+        _alphas(_plot_actors(plotter, monkeypatch, highlight_nodes=form, **_ALL_EDGES))
+        for form in ({"network": ["Default"]}, labels, "is_default")
+    ]
+    assert results[0] == results[1] == results[2]
+
+
+def test_highlight_nodes_ignores_labels_of_hidden_hemisphere(dataset, monkeypatch):
+    actors = _plot_actors(
+        bnv.BrainNetPlotter(dataset, subject_id="mean"), monkeypatch, show_hemisphere="R",
+        highlight_nodes=dataset.nodes_df["label"].tolist()[:2] + [dataset.nodes_df["label"].iloc[-1]], **_ALL_EDGES,
+    )
+    nodes, _ = _alphas(actors)
+    assert sorted(nodes.values()) == pytest.approx([0.2] * (len(nodes) - 1) + [1.0])
+
+
+@pytest.mark.parametrize("value, error", [
+    (["no_such_roi"], ValueError),
+    ([0, 1], ValueError),
+    ({"no_such_column": 1}, ValueError),
+    ("network", ValueError),
+    (3.0, TypeError),
+])
+def test_highlight_nodes_rejects_bad_input(dataset, value, error):
+    with pytest.raises(error, match="highlight_nodes"):
+        bnv.BrainNetPlotter(dataset, subject_id="mean").plot(highlight_nodes=value)
+
+
+def _edge_marks(dataset, pairs):
+    source = dataset.mean_matrix().columns.tolist()
+    marks = np.zeros((len(source), len(source)))
+    for a, b in pairs:
+        marks[source.index(a), source.index(b)] = 1
+    return marks
+
+
+def test_highlight_nodes_and_edges_intersect(dataset, monkeypatch):
+    labels = dataset.nodes_df["label"].tolist()
+    default = dataset.nodes_df.loc[dataset.nodes_df["network"] == "Default", "label"].tolist()
+    visual = dataset.nodes_df.loc[dataset.nodes_df["network"] == "Visual", "label"].tolist()
+    marks = _edge_marks(dataset, [(default[0], default[1]), (visual[0], visual[1])])
+
+    actors = _plot_actors(
+        bnv.BrainNetPlotter(dataset, subject_id="mean"), monkeypatch,
+        highlight_nodes={"network": "Default"}, highlight_edges=marks, **_ALL_EDGES,
+    )
+    _, edges = _alphas(actors)
+    bright = {frozenset((labels[i], labels[j])) for (i, j), alpha in edges.items() if alpha == pytest.approx(0.5)}
+    assert bright == {frozenset((default[0], default[1]))}
+
+
+def test_highlight_endpoints(dataset, monkeypatch):
+    labels = dataset.nodes_df["label"].tolist()
+    a, b = labels[0], labels[-1]
+    actors = _plot_actors(
+        bnv.BrainNetPlotter(dataset, subject_id="mean"), monkeypatch,
+        highlight_edges=_edge_marks(dataset, [(a, b)]), highlight_endpoints=True, **_ALL_EDGES,
+    )
+    nodes, edges = _alphas(actors)
+    assert {labels[k] for k, alpha in nodes.items() if alpha == 1.0} == {a, b}
+    assert [labels[i] + labels[j] for (i, j), alpha in edges.items() if alpha == pytest.approx(0.5)] == [a + b]
+
+
+def test_highlight_endpoints_needs_edges(dataset):
+    with pytest.raises(ValueError, match="highlight_endpoints"):
+        bnv.BrainNetPlotter(dataset, subject_id="mean").plot(highlight_endpoints=True)
+
+
+def test_highlight_edge_rule_is_checked(dataset):
+    with pytest.raises(ValueError, match="highlight_edge_rule"):
+        bnv.BrainNetPlotter(dataset, subject_id="mean").plot(highlight_nodes={"network": "Default"}, highlight_edge_rule="all")
+
+
+def test_highlight_nodes_without_match_warns(dataset, monkeypatch):
+    with pytest.warns(UserWarning, match="matches no node"):
+        _plot_actors(bnv.BrainNetPlotter(dataset, subject_id="mean"), monkeypatch, highlight_nodes={"network": "Nope"})

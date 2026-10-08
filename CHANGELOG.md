@@ -5,6 +5,7 @@
 ### Added
 
 - Multi-view figures of the 3-D plot with colour bars and legends (`plot_views`).
+- Highlight chosen nodes or the nodes of highlighted edges, and colour edges by sign, in the 3-D plot.
 - Edge colour range option and a ForceAtlas2 layout in the 3-D plot.
 - A `verbose` option to silence progress messages.
 - Hemisphere-split metrics work with any atlas that has a hemisphere column.

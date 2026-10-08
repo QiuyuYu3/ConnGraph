@@ -5,6 +5,7 @@ BrainNetPlotter: the main user-facing visualisation class.
 from __future__ import annotations
 
 import inspect
+import warnings
 from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
@@ -158,6 +159,9 @@ class BrainNetPlotter:
         highlight_edges: np.ndarray | None      = None,
         highlight_level: float                     = 0.85,
         edge_sign_colors: tuple                    = ((1.0, 0.25, 0.25), (0.25, 0.25, 1.0)),
+        highlight_nodes: list | dict | str | None  = None,
+        highlight_edge_rule: str                   = "both",
+        highlight_endpoints: bool                  = False,
     ) -> np.ndarray | None:
         """
         Render the brain network off screen and return the image; optionally open a window or write files.
@@ -217,7 +221,15 @@ class BrainNetPlotter:
         arrowaxis : add orientation arrows: "all", one of "LR", "AP", "SI", or a list of them.
         highlight_edges : (N, N) array marking edges to keep fully visible (e.g. NBSResult.adj),
                           ordered like the dataset matrix labels. Other edges are dimmed.
-        highlight_level : dimming of non-highlighted edges (0 = none, 1 = invisible).
+        highlight_nodes : nodes to keep fully visible; the rest are dimmed. A list of labels,
+                          {column: value or list of values} (every column must match), or the
+                          name of a boolean column.
+        highlight_edge_rule : with highlight_nodes, an edge stays bright when "both" (default) or
+                          "any" of its ends are highlighted. With highlight_edges as well, an edge
+                          must meet both conditions.
+        highlight_endpoints : with highlight_edges, also highlight the nodes those edges touch
+                          and dim the other nodes.
+        highlight_level : dimming of non-highlighted nodes and edges (0 = none, 1 = invisible).
         """
         # every argument, so plot_views can build the same scene from one dict
         args = dict(locals())
@@ -343,6 +355,7 @@ class BrainNetPlotter:
         highlight_edges = a["highlight_edges"]
         if highlight_edges is not None:
             highlight_edges = self._align_to_nodes(highlight_edges, nodes_df)
+        node_mask, bright_edges = self._highlight(a, nodes_df, highlight_edges)
 
         show_surface = a["show_surface"]
         if a["layout"] is not None:
@@ -378,6 +391,10 @@ class BrainNetPlotter:
             palette            = a["node_palette"],
             positions          = positions,
         )
+        if node_mask is not None:
+            for s in node_spheres:
+                if not node_mask[s._node_idx]:
+                    s.alpha(a["node_alpha"] * (1.0 - a["highlight_level"]))
         node_colors = _resolve_colors(
             a["node_color"], a["node_cmap"], a["node_colorvminvmax"], nodes_df, len(nodes_df), a["node_palette"]
         )
@@ -395,13 +412,69 @@ class BrainNetPlotter:
             edge_alpha       = a["edge_alpha"],
             node_colors      = node_colors,
             use_tube         = a["use_tube"],
-            highlight_edges  = highlight_edges,
+            highlight_edges  = bright_edges,
             highlight_level  = a["highlight_level"],
             edge_sign_colors = a["edge_sign_colors"],
         )
 
         extras = make_axis_arrows(axes=a["arrowaxis"]) if a["arrowaxis"] is not None else []
         return _Scene(nodes_df, surfaces, node_spheres, edge_lines, extras, node_colors)
+
+    def _highlight(
+        self,
+        a: dict,
+        nodes_df: pd.DataFrame,
+        marked: np.ndarray | None,
+    ) -> tuple[np.ndarray | None, np.ndarray | None]:
+        if a["highlight_edge_rule"] not in ("both", "any"):
+            raise ValueError(
+                f"highlight_edge_rule='{a['highlight_edge_rule']}' not recognised. Choose: 'both', 'any'."
+            )
+        if a["highlight_endpoints"] and marked is None:
+            raise ValueError("highlight_endpoints=True needs highlight_edges.")
+
+        marked = None if marked is None else (marked != 0) | (marked != 0).T
+        node_mask = None
+        if a["highlight_nodes"] is not None:
+            node_mask = self._select_nodes(a["highlight_nodes"], nodes_df)
+            if not node_mask.any():
+                warnings.warn("highlight_nodes matches no node in this view; every node is dimmed.", stacklevel=4)
+        if a["highlight_endpoints"]:
+            touched = marked.any(axis=1)
+            node_mask = touched if node_mask is None else node_mask & touched
+
+        if node_mask is None:
+            return None, marked
+        rule = np.logical_and if a["highlight_edge_rule"] == "both" else np.logical_or
+        by_nodes = rule.outer(node_mask, node_mask)
+        return node_mask, by_nodes if marked is None else marked & by_nodes
+
+    def _select_nodes(self, selection, nodes_df: pd.DataFrame) -> np.ndarray:
+        if isinstance(selection, str):
+            if selection not in nodes_df.columns or not pd.api.types.is_bool_dtype(nodes_df[selection]):
+                raise ValueError(f"highlight_nodes='{selection}' must name a boolean column of the nodes table.")
+            return nodes_df[selection].to_numpy(dtype=bool)
+
+        if isinstance(selection, dict):
+            mask = np.ones(len(nodes_df), dtype=bool)
+            for col, value in selection.items():
+                if col not in nodes_df.columns:
+                    raise ValueError(f"highlight_nodes column '{col}' not found in the nodes table.")
+                values = list(value) if isinstance(value, (list, tuple, set)) else [value]
+                mask &= nodes_df[col].isin(values).to_numpy()
+            return mask
+
+        if isinstance(selection, (list, tuple, set, pd.Index, pd.Series)):
+            unknown = set(selection) - set(self.dataset.nodes_df["label"])
+            if unknown:
+                raise ValueError(
+                    f"highlight_nodes has labels not in the nodes table: {sorted(map(str, unknown))[:5]}"
+                )
+            return nodes_df["label"].isin(list(selection)).to_numpy()
+
+        raise TypeError(
+            "highlight_nodes must be a list of node labels, a {column: value} dict, or a boolean column name."
+        )
 
     def _get_matrix(self, nodes_df: pd.DataFrame) -> np.ndarray:
         if self.subject_id == "mean":

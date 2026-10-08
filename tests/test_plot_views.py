@@ -126,3 +126,9 @@ def test_sign_legend_lists_edge_signs(dataset):
         [p.get_facecolor()[:3] for p in legend.get_patches()], [(1, 0.25, 0.25), (0.25, 0.25, 1)]
     )
     plt.close(fig)
+
+
+def test_plot_views_accepts_highlight(dataset):
+    fig = _views(dataset, views=[{"view": "L", "hemisphere": "L"}], highlight_nodes={"network": "Default"})
+    assert len(_panels(fig)) == 1
+    plt.close(fig)
