@@ -4,13 +4,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import networkx as nx
-from matplotlib.colors import to_rgb
+from matplotlib.cm import ScalarMappable
+from matplotlib.colors import Normalize, to_rgb
 from matplotlib.patches import PathPatch, Polygon, Wedge
 from matplotlib.path import Path
 from scipy.spatial import ConvexHull
 
 from brainnet3d.viz.colormap import labels_to_colors, values_to_colors, values_to_widths
 from brainnet3d.viz.layouts import grouped_layout
+from brainnet3d.viz.nodes import _resolve_vminvmax
 
 
 def spring_plot_3d(
@@ -202,6 +204,7 @@ def spring_plot(
     edge_sign_colors: tuple = ((1.0, 0.25, 0.25), (0.25, 0.25, 1.0)),
     network_hulls: bool | None = None,
     layout: str = "spring",
+    edge_colorvminvmax: str | tuple | None = "absmax",
 ) -> tuple[plt.Figure, plt.Axes]:
     """
     Spring-layout 2-D plot of a brain network.
@@ -220,6 +223,9 @@ def spring_plot(
     layout : "spring" (default) → spring layout of the whole graph (uses spring_k).
              "network" → each network in its own disc, placed closer to networks it
              shares more |weight| with; spring layout of the network's own edges inside.
+    edge_colorvminvmax : colour limits for edge_color="weight", as in plot(). "absmax" (default)
+                         → ±max(|weight|), 0 at the colormap centre. "minmax" → data min to max.
+                         (vmin, vmax) tuple → explicit limits.
     """
     if layout not in ("spring", "network"):
         raise ValueError(f"layout='{layout}' not recognised. Choose: 'spring', 'network'.")
@@ -251,7 +257,7 @@ def spring_plot(
             ax.add_patch(_hull_patch(xy[members], pad, net2color[net]))
     nx.draw_networkx_edges(G, pos, ax=ax,
                            width=np.power(edge_weights, 1.5),
-                           edge_color=_edge_colors(weights, edge_color, edge_cmap, edge_sign_colors),
+                           edge_color=_edge_colors(weights, edge_color, edge_cmap, edge_sign_colors, edge_colorvminvmax),
                            alpha=edge_alpha)
     nx.draw_networkx_nodes(G, pos, ax=ax,
                            node_color=node_colors, node_size=node_sizes, alpha=0.9)
@@ -293,6 +299,8 @@ def circos_plot(
     order: str | None = "network",
     network_order: list[str] | None = None,
     order_matrix: np.ndarray | None = None,
+    edge_colorvminvmax: str | tuple | None = "absmax",
+    edge_colorbar: bool = True,
 ) -> tuple[plt.Figure, plt.Axes]:
     """
     Circos-style plot: nodes arranged in a circle grouped by subnetwork.
@@ -325,6 +333,10 @@ def circos_plot(
     network_order : network names in display order, as in matrix_heatmap.
     order_matrix : N×N matrix used to order the nodes. None → the edge weights of G, which
                    may be sparse after thresholding; pass the full matrix for a better order.
+    edge_colorvminvmax : colour limits for edge_color="weight", as in plot(). "absmax" (default)
+                         → ±max(|weight|), 0 at the colormap centre. "minmax" → data min to max.
+                         (vmin, vmax) tuple → explicit limits.
+    edge_colorbar : with edge_color="weight", draw a small edge colour bar in the lower right corner.
     """
     from brainnet3d.viz.matrix_style import _groups, is_contiguous, matrix_order, merge_heights
 
@@ -383,7 +395,7 @@ def circos_plot(
         raise ValueError(f"edge_style='{edge_style}' not recognised. Choose: 'curved', 'straight'.")
     edges   = sorted((e for e in G.edges(data="weight", default=1.0) if e[0] != e[1]), key=lambda e: abs(e[2]))
     weights = np.array([w for _, _, w in edges], dtype=float)
-    colors  = _edge_colors(weights, edge_color, edge_cmap, edge_sign_colors)
+    colors  = _edge_colors(weights, edge_color, edge_cmap, edge_sign_colors, edge_colorvminvmax)
     if isinstance(edge_width, (int, float)):
         widths = np.full(len(edges), float(edge_width))
     else:
@@ -431,6 +443,15 @@ def circos_plot(
         ax.legend(handles=legend_handles, title="Subnetwork",
                   loc="upper right", fontsize=10, framealpha=0.8,
                   bbox_to_anchor=(1.15, 1.05))
+
+    if edge_colorbar and isinstance(edge_color, str) and edge_color == "weight" and len(edges):
+        vmin, vmax = _resolve_vminvmax(weights, edge_colorvminvmax)
+        # the lower right corner lies outside the ring and its labels
+        cax = ax.inset_axes([0.74, 0.03, 0.24, 0.012])
+        bar = fig.colorbar(ScalarMappable(Normalize(vmin, vmax), edge_cmap), cax=cax, orientation="horizontal",
+                           alpha=edge_alpha)
+        bar.ax.tick_params(labelsize=8)
+        cax.set_title("edge weight", fontsize=9)
 
     if save_path:
         fig.savefig(save_path, dpi=150, bbox_inches="tight")
@@ -499,10 +520,12 @@ def _network_colors(network_labels: list, net2color: dict | None) -> dict:
     return dict(zip(network_labels, labels_to_colors([str(x) for x in network_labels])))
 
 
-def _edge_colors(weights: np.ndarray, edge_color, cmap: str, sign_colors: tuple) -> list:
+def _edge_colors(weights: np.ndarray, edge_color, cmap: str, sign_colors: tuple, vminvmax="absmax") -> list:
     if isinstance(edge_color, str) and edge_color == "weight":
-        peak = float(np.abs(weights).max(initial=0.0)) or 1.0
-        return values_to_colors(weights, cmap=cmap, vmin=-peak, vmax=peak)
+        if weights.size == 0:
+            return []
+        vmin, vmax = _resolve_vminvmax(weights, vminvmax)
+        return values_to_colors(weights, cmap=cmap, vmin=vmin, vmax=vmax)
     if isinstance(edge_color, str) and edge_color == "sign":
         pos, neg = (to_rgb(c) for c in sign_colors)
         return [neg if w < 0 else pos for w in weights]

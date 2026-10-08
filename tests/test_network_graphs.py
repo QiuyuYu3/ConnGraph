@@ -10,7 +10,7 @@ from matplotlib.patches import Circle, PathPatch, Polygon, Wedge
 from matplotlib.path import Path
 
 import brainnet3d as bnv
-from brainnet3d.viz.colormap import labels_to_colors
+from brainnet3d.viz.colormap import labels_to_colors, values_to_colors
 from brainnet3d.viz.matrix_style import matrix_order, merge_heights
 
 SIGN = ((1.0, 0.25, 0.25), (0.25, 0.25, 1.0))
@@ -204,4 +204,39 @@ def test_spring_edge_colours(signed_graph):
     lines = [c for c in ax.collections if isinstance(c, LineCollection)]
     colours = {tuple(np.round(c[:3], 6)) for c in lines[0].get_edgecolor()}
     assert colours == {SIGN[0], SIGN[1]}
+    plt.close(fig)
+
+
+def test_spring_edge_colour_range(signed_graph):
+    G, labels, nets = signed_graph
+    fig, ax = bnv.spring_plot(G, labels, nets, edge_color="weight", edge_colorvminvmax="minmax")
+    lines = [c for c in ax.collections if isinstance(c, LineCollection)]
+    w = np.array([d["weight"] for _, _, d in G.edges(data=True)])
+    np.testing.assert_allclose(lines[0].get_edgecolor()[:, :3], values_to_colors(w, cmap="RdBu_r", vmin=w.min(), vmax=w.max()))
+    plt.close(fig)
+
+
+def _colour_bars(ax):
+    return [c for c in ax.child_axes if hasattr(c, "_colorbar")]
+
+
+@pytest.mark.parametrize("vminvmax", ["absmax", "minmax", (0.0, 0.1)])
+def test_circos_edge_colour_range_and_colour_bar(signed_graph, vminvmax):
+    G, labels, nets = signed_graph
+    fig, ax = bnv.circos_plot(G, labels, nets, edge_colorvminvmax=vminvmax)
+    w = np.array(sorted((w for _, _, w in G.edges(data="weight")), key=abs))
+    peak = np.abs(w).max()
+    lo, hi = {"absmax": (-peak, peak), "minmax": (w.min(), w.max())}.get(vminvmax, vminvmax)
+    np.testing.assert_allclose([p.get_edgecolor()[:3] for p in _chords(ax)], values_to_colors(w, "RdBu_r", lo, hi))
+    bars = _colour_bars(ax)
+    assert len(bars) == 1
+    np.testing.assert_allclose(bars[0].get_xlim(), (lo, hi))
+    plt.close(fig)
+
+
+@pytest.mark.parametrize("kwargs", [dict(edge_colorbar=False), dict(edge_color="sign"), dict(edge_color="grey")])
+def test_circos_colour_bar_only_for_weight_colours(signed_graph, kwargs):
+    G, labels, nets = signed_graph
+    fig, ax = bnv.circos_plot(G, labels, nets, **kwargs)
+    assert not _colour_bars(ax)
     plt.close(fig)
