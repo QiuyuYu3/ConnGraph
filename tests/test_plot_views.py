@@ -4,6 +4,7 @@ import pytest
 from matplotlib.figure import Figure
 
 import brainnet3d as bnv
+from brainnet3d.exceptions import DataValidationError
 from brainnet3d.viz.colormap import labels_to_colors
 
 
@@ -87,6 +88,12 @@ def test_edge_width_legend_on_request(dataset):
     plt.close(fig)
 
 
+def test_legend_accepts_one_name(dataset):
+    fig = _views(dataset, legend="node_color", node_color="network")
+    assert set(_legends(fig)) == {"node_color"}
+    plt.close(fig)
+
+
 def test_legend_false_draws_none(dataset):
     fig = _views(dataset, legend=False, node_color="network", node_size="x")
     assert _legends(fig) == {}
@@ -104,10 +111,18 @@ def test_requested_legend_without_data_warns(dataset):
     ([{"view": "L", "hemi": "L"}], "hemi"),
     ([{"view": "L", "hemisphere": "both sides"}], "hemisphere"),
     ([], "no panels"),
+    ([[{"view": "L"}], []], "empty row"),
 ])
 def test_invalid_panels_raise(dataset, views, match):
     with pytest.raises(ValueError, match=match):
         _views(dataset, views=views)
+
+
+def test_hemisphere_panel_needs_hemisphere_column(dataset):
+    nodes_df = dataset.nodes_df.drop(columns="hemisphere")
+    plotter = bnv.BrainNetPlotter(bnv.ConnectivityDataset(dataset.matrices, nodes_df), subject_id="mean")
+    with pytest.raises(DataValidationError, match="hemisphere"):
+        plotter.plot_views(views=[{"view": "R", "hemisphere": "L"}], panel_size=200)
 
 
 @pytest.mark.parametrize("kwargs", [dict(show_hemisphere="L"), dict(screenshot="a.png"), dict(not_a_style=1)])

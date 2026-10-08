@@ -321,6 +321,15 @@ def test_highlight_edges_shape_mismatch_raises(dataset):
         bnv.BrainNetPlotter(dataset, subject_id="mean").plot(highlight_edges=np.zeros((3, 3)))
 
 
+def test_no_edges_warning_points_at_caller(dataset):
+    plotter = bnv.BrainNetPlotter(dataset, subject_id="mean")
+    for call in (lambda: plotter.plot(edge_threshold=2.0), lambda: plotter.plot_views(edge_threshold=2.0, panel_size=200)):
+        with pytest.warns(UserWarning, match="No edges") as record:
+            call()
+        assert {w.filename for w in record if "No edges" in str(w.message)} == {__file__}
+    plt.close("all")
+
+
 def test_show_hemisphere_hides_other_surface(dataset, surfaces, monkeypatch):
     left, right = surfaces
     actors = _plot_actors(
@@ -371,9 +380,9 @@ def test_highlight_nodes_forms_agree(dataset, monkeypatch):
     labels = nodes_df.loc[nodes_df["is_default"], "label"].tolist()
     results = [
         _alphas(_plot_actors(plotter, monkeypatch, highlight_nodes=form, **_ALL_EDGES))
-        for form in ({"network": ["Default"]}, labels, "is_default")
+        for form in ({"network": ["Default"]}, labels, "is_default", np.array(labels), {"network": np.array(["Default"])})
     ]
-    assert results[0] == results[1] == results[2]
+    assert all(r == results[0] for r in results[1:])
 
 
 def test_highlight_nodes_ignores_labels_of_hidden_hemisphere(dataset, monkeypatch):

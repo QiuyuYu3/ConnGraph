@@ -92,7 +92,7 @@ def build_edges(
                 weights.append(w)
 
     if not rows:
-        warnings.warn("No edges pass the threshold; only nodes will be drawn.", stacklevel=3)
+        warnings.warn("No edges pass the threshold; only nodes will be drawn.", stacklevel=4)
         return []
 
     weights  = np.array(weights, dtype=float)

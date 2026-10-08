@@ -52,6 +52,8 @@ def parse_views(views) -> list[list[dict]]:
 
     if not any(parsed):
         raise ValueError("views has no panels.")
+    if not all(parsed):
+        raise ValueError("views has an empty row; remove it or give it panels.")
     return parsed
 
 
@@ -84,10 +86,11 @@ def panel_actors(scene, hemisphere: str) -> list:
         return scene.actors
 
     nodes_df = scene.nodes_df
-    if "hemisphere" in nodes_df.columns:
-        keep = (nodes_df["hemisphere"].astype(str).str.upper() == hemisphere).to_numpy()
-    else:
-        keep = np.ones(len(nodes_df), dtype=bool)
+    if "hemisphere" not in nodes_df.columns:
+        raise DataValidationError(
+            f"A panel with hemisphere='{hemisphere}' needs a 'hemisphere' column in the nodes table."
+        )
+    keep = (nodes_df["hemisphere"].astype(str).str.upper() == hemisphere).to_numpy()
     if not keep.any():
         raise DataValidationError(
             f"No nodes found for hemisphere='{hemisphere}'. Check the 'hemisphere' column in your nodes file."
@@ -174,7 +177,10 @@ def views_figure(scene, a: dict, panels: list[list[dict]], legend, panel_size: i
 def legend_items(scene, a: dict, legend, width_factor: float = 1.0) -> list[dict]:
     if legend is False:
         return []
-    names = LEGEND_NAMES[:3] if legend is True else list(legend)
+    if legend is True:
+        names = list(LEGEND_NAMES[:3])
+    else:
+        names = [legend] if isinstance(legend, str) else list(legend)
     unknown = set(names) - set(LEGEND_NAMES)
     if unknown:
         raise ValueError(f"Unknown legend entries {sorted(unknown)}. Choose from: {', '.join(LEGEND_NAMES)}.")

@@ -288,7 +288,7 @@ class BrainNetPlotter:
     def plot_views(
         self,
         views:      list | None       = None,
-        legend:     bool | list[str]  = True,
+        legend:     bool | str | list[str] = True,
         panel_size: int               = 600,
         titles:     bool              = True,
         **kwargs,
@@ -316,7 +316,7 @@ class BrainNetPlotter:
                 "title" → panel title; otherwise generated, e.g. "Left hemisphere, medial".
         legend : True → a legend for every style mapped to data: node colour (category swatches
                  or colour bar), node size and edge colour. False → no legend.
-                 List of "node_color", "node_size", "edge_color", "edge_width" → just those.
+                 One of "node_color", "node_size", "edge_color", "edge_width", or a list of them → just those.
         panel_size : render size of each panel in pixels before cropping. A 600-pixel panel is
                      4 inches wide; the figure DPI scales with panel_size, so fig.savefig keeps
                      the rendered resolution and the layout looks the same at any size.
@@ -463,11 +463,11 @@ class BrainNetPlotter:
             for col, value in selection.items():
                 if col not in nodes_df.columns:
                     raise ValueError(f"highlight_nodes column '{col}' not found in the nodes table.")
-                values = list(value) if isinstance(value, (list, tuple, set)) else [value]
+                values = list(value) if isinstance(value, (list, tuple, set, np.ndarray)) else [value]
                 mask &= nodes_df[col].isin(values).to_numpy()
             return mask
 
-        if isinstance(selection, (list, tuple, set, pd.Index, pd.Series)):
+        if isinstance(selection, (list, tuple, set, np.ndarray, pd.Index, pd.Series)):
             unknown = set(selection) - set(self.dataset.nodes_df["label"])
             if unknown:
                 raise ValueError(
