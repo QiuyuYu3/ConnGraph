@@ -274,6 +274,29 @@ def test_kamada_kawai_is_reproducible_with_seed(dataset):
     np.testing.assert_array_equal(a, b)
 
 
+def test_forceatlas2_layout_is_reproducible_with_seed(dataset):
+    matrix = dataset.mean_matrix().values
+    plotter = bnv.BrainNetPlotter(dataset)
+    a = plotter._compute_layout(matrix, "forceatlas2", threshold=0.4, seed=3)
+    b = plotter._compute_layout(matrix, "forceatlas2", threshold=0.4, seed=3)
+    assert a.shape == (matrix.shape[0], 3) and np.isfinite(a).all()
+    np.testing.assert_array_equal(a, b)
+
+
+def test_edge_colors_centre_on_zero_by_default(dataset, monkeypatch):
+    kwargs = dict(edge_threshold=0.3, edge_threshold_dir="above", edge_color="weight", edge_cmap="RdBu_r")
+    plotter = bnv.BrainNetPlotter(dataset, subject_id="mean")
+
+    centred = [a._orig_color for a in _plot_actors(plotter, monkeypatch, **kwargs) if hasattr(a, "_endpoints")]
+    assert centred and all(r > b for r, _, b in centred)
+
+    stretched = [
+        a._orig_color for a in _plot_actors(plotter, monkeypatch, edge_colorvminvmax="minmax", **kwargs)
+        if hasattr(a, "_endpoints")
+    ]
+    assert any(b > r for r, _, b in stretched)
+
+
 def test_highlight_edges_follow_hemisphere_filter(dataset, monkeypatch):
     source = dataset.mean_matrix().columns.tolist()
     r_labels = dataset.nodes_df.loc[dataset.nodes_df["hemisphere"] == "R", "label"].tolist()
