@@ -56,7 +56,7 @@ def test_network_strength_matches_averaged_matrix(apply_fisher_z):
     # a 4-node TMFG keeps every edge, so strength is the plain row sum
     expected = pd.Series(np.abs(edges).sum(axis=1), index=net_mat.index)
 
-    got = result.network_df.loc["s1", [f"strength_{n}" for n in net_mat.index]].astype(float)
+    got = result.network_df.loc["s1", "strength"].loc[list(net_mat.index)]
     np.testing.assert_allclose(got.values, expected.values, rtol=1e-10)
 
 
@@ -86,7 +86,40 @@ def test_compute_graph_metrics_uses_custom_hemi_col():
     result = compute_graph_metrics(
         matrices, atlas, level="network", metrics=["strength"], hemi_col="side", verbose=False,
     )
-    assert {c.split("_", 1)[1][0] for c in result.net_hemi_df.columns} == {"L", "R"}
+    assert {net[0] for _, net in result.net_hemi_df.columns} == {"L", "R"}
+
+
+def test_metric_tables_have_metric_level_and_float_dtype():
+    matrices, atlas = _toy_inputs()
+    atlas["hemisphere"] = ["L", "R"] * (len(atlas) // 2)
+    result = compute_graph_metrics(
+        matrices, atlas, level="both", metrics=["strength", "ge_local"], n_jobs=1, verbose=False,
+    )
+    for df in (result.network_df, result.node_df, result.net_hemi_df):
+        assert list(df.columns.get_level_values(0).unique()) == ["strength", "ge_local"]
+        assert (df.dtypes == float).all()
+    assert list(result.node_df["strength"].columns) == atlas["label"].tolist()
+
+
+def test_saved_csv_keeps_flat_metric_columns(tmp_path):
+    matrices, atlas = _toy_inputs()
+    compute_graph_metrics(
+        matrices, atlas, level="network", hemi_split=False, metrics=["strength"],
+        output_dir=str(tmp_path), verbose=False,
+    )
+    header = pd.read_csv(tmp_path / "network_graph_theory.csv").columns.tolist()
+    assert header == ["ID"] + [f"strength_{n}" for n in sorted(atlas["network_label"].unique())]
+
+
+def test_attach_metrics_reads_metric_level():
+    import brainnet3d as bnv
+
+    matrices, atlas = _toy_inputs()
+    result = compute_graph_metrics(matrices, atlas, level="node", metrics=["strength"], n_jobs=1, verbose=False)
+    nodes = atlas.assign(x=0.0, y=0.0, z=0.0)
+    plotter = bnv.BrainNetPlotter(bnv.load(matrices["s1"], nodes, subject_id="s1"), subject_id="s1")
+    plotter.attach_metrics(result)
+    assert plotter._extra_cols == {"strength": result.node_df.loc["s1", "strength"].to_dict()}
 
 
 def _with_values(df: pd.DataFrame, fill) -> pd.DataFrame:

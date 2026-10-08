@@ -79,22 +79,13 @@ class BrainNetPlotter:
                 f"Available: {list(result.node_df.index)}"
             )
 
-        from brainnet3d.graph_theory.metrics import METRIC_NAMES
+        row       = result.node_df.loc[sid]
+        available = row.index.get_level_values(0).unique()
+        chosen    = metrics if metrics is not None else available
 
-        row    = result.node_df.loc[sid]
-        chosen = metrics if metrics is not None else METRIC_NAMES
-
-        # ROI labels may contain "_", so match known metric prefixes instead of splitting
-        self._extra_cols = {}
-        for metric in chosen:
-            prefix = metric + "_"
-            label_to_val = {
-                col[len(prefix):]: float(row[col])
-                for col in row.index
-                if col.startswith(prefix)
-            }
-            if label_to_val:
-                self._extra_cols[metric] = label_to_val
+        self._extra_cols = {
+            metric: row[metric].to_dict() for metric in chosen if metric in available
+        }
 
     def plot(
         self,

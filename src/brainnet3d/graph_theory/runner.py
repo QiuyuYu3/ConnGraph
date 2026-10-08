@@ -76,8 +76,8 @@ def compute_graph_metrics(
     Returns
     -------
     GraphMetricsResult
-        .network_df       — subjects × (metric_network) flat columns
-        .node_df          — subjects × (metric_roi) flat columns
+        .network_df       — subjects × (metric, network) columns; CSV output joins them as metric_network
+        .node_df          — subjects × (metric, roi) columns; CSV output joins them as metric_roi
         .net_hemi_df      — like network_df but hemisphere-split (hemi_split=True)
         .net_corr_df      — wide-format pairwise network correlations
         .net_hemi_corr_df — like net_corr_df but hemisphere-split
@@ -100,7 +100,7 @@ def compute_graph_metrics(
         nets = list(next(iter(all_net_corr.values())).columns)
         net_df = pd.DataFrame(
             index=subject_ids,
-            columns=pd.MultiIndex.from_product([metrics, nets]),
+            columns=pd.MultiIndex.from_product([metrics, nets], names=["metric", "network"]),
         )
         for sub_id in subject_ids:
             if sub_id not in all_net_corr:
@@ -117,8 +117,7 @@ def compute_graph_metrics(
                 for n in nets:
                     net_df.at[sub_id, (m, n)] = res.get(m, {}).get(n, np.nan)
 
-        net_df.columns = ["_".join(c) for c in net_df.columns]
-        result.network_df = net_df
+        result.network_df = net_df.astype(float)
         result.net_corr_df = _net_corr_to_wide(all_net_corr)
 
     # Node-level
@@ -126,7 +125,7 @@ def compute_graph_metrics(
         atlas_rois = atlas[label_col].dropna().tolist()
         node_df = pd.DataFrame(
             index=subject_ids,
-            columns=pd.MultiIndex.from_product([metrics, atlas_rois]),
+            columns=pd.MultiIndex.from_product([metrics, atlas_rois], names=["metric", "roi"]),
         )
 
         workers = max(1, (os.cpu_count() or 2) - 1) if n_jobs == -1 else max(1, n_jobs)
@@ -165,8 +164,7 @@ def compute_graph_metrics(
                         if roi in res[m]:
                             node_df.at[sid, (m, roi)] = res[m][roi]
 
-        node_df.columns = ["_".join(c) for c in node_df.columns]
-        result.node_df = node_df
+        result.node_df = node_df.astype(float)
 
     # Hemi-split network-level
     if hemi_split and level in ("network", "both"):
@@ -176,7 +174,7 @@ def compute_graph_metrics(
         nets_hemi = list(next(iter(all_net_hemi_corr.values())).columns)
         net_hemi_df = pd.DataFrame(
             index=subject_ids,
-            columns=pd.MultiIndex.from_product([metrics, nets_hemi]),
+            columns=pd.MultiIndex.from_product([metrics, nets_hemi], names=["metric", "network"]),
         )
         for sub_id in subject_ids:
             if sub_id not in all_net_hemi_corr:
@@ -193,8 +191,7 @@ def compute_graph_metrics(
                 for n in nets_hemi:
                     net_hemi_df.at[sub_id, (m, n)] = res.get(m, {}).get(n, np.nan)
 
-        net_hemi_df.columns = ["_".join(c) for c in net_hemi_df.columns]
-        result.net_hemi_df = net_hemi_df
+        result.net_hemi_df = net_hemi_df.astype(float)
         result.net_hemi_corr_df = _net_corr_to_wide(all_net_hemi_corr)
 
     if result.failed:
@@ -255,7 +252,10 @@ def _net_corr_to_wide(all_corr: dict[str, pd.DataFrame]) -> pd.DataFrame:
 def _save(result: GraphMetricsResult, output_dir: str, verbose: bool) -> None:
     def _write(df: pd.DataFrame | None, name: str) -> None:
         if df is not None:
-            out = df.reset_index().rename(columns={"index": "ID"})
+            out = df.copy()
+            if isinstance(out.columns, pd.MultiIndex):
+                out.columns = ["_".join(map(str, c)) for c in out.columns]
+            out = out.reset_index().rename(columns={"index": "ID"})
             out.to_csv(os.path.join(output_dir, name), index=False)
             if verbose:
                 print(f"  Saved {name}")
