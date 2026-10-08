@@ -87,12 +87,7 @@ def process_subject(
     summary: str = "auc",
     return_curves: bool = False,
 ) -> dict:
-    """Compute graph-theory metrics for one subject; options are described in compute_graph_metrics.
-
-    Returns a dict with "subj", one {label: value} dict per "metric.variant" name and, when
-    return_curves is True and a parameter range was given, "curves" as a long DataFrame.
-    Errors propagate to the caller.
-    """
+    """Return {"subj", "metric.variant": {label: value}, ["curves"]} for one subject; options as in compute_graph_metrics."""
     names = check_options(metrics, graph_method, graph_params, sign, summary)
     params = dict(graph_params or {})
     sweep, values = check_graph_method(graph_method, params)

@@ -48,7 +48,10 @@ def test_brainnet_absmax(dataset, out_dir):
 
     p = bnv.BrainNetPlotter(dataset, subject_id="sub-01")
     p.attach_metrics(result)
-    assert set(p._extra_cols) == {"clust_coeff", "btwn_cent", "strength", "ge_local"}
+    assert set(p._extra_cols) == {
+        "clust_coeff", "btwn_cent", "strength", "ge_local",
+        "clust_coeff.costantini", "btwn_cent.inv", "strength.abs", "ge_local.wang",
+    }
     assert set(p._extra_cols["strength"]) == set(dataset.nodes_df["label"])
 
     path = out_dir / "brainnet_absmax.png"

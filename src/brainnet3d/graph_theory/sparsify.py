@@ -142,17 +142,18 @@ def _full(W: np.ndarray) -> np.ndarray:
 
 
 def _absolute(W: np.ndarray, threshold: float) -> np.ndarray:
-    return np.where(np.abs(W) > threshold, W, 0.0)
+    import bct
+    return np.sign(W) * bct.threshold_absolute(np.abs(W), threshold)
 
 
 def _density(W: np.ndarray, density: float) -> np.ndarray:
-    return _keep_strongest(W, _n_edges(len(W), density))
+    import bct
+    return np.sign(W) * bct.threshold_proportional(np.abs(W), density)
 
 
 def _eco(W: np.ndarray) -> np.ndarray:
     # Mean degree 3
-    n = len(W)
-    return _keep_strongest(W, _n_edges(n, min(1.0, 3 / (n - 1))))
+    return _density(W, min(1.0, 3 / (len(W) - 1)))
 
 
 def _knn(W: np.ndarray, k: int) -> np.ndarray:
@@ -182,10 +183,10 @@ def _mst_density(W: np.ndarray, density: float) -> np.ndarray:
 
 
 def _omst(W: np.ndarray) -> np.ndarray:
-    # Add orthogonal spanning trees one at a time and keep the set that maximises global efficiency minus cost
+    # Add orthogonal spanning trees one at a time; keep the set maximising efficiency (relative to the full graph) minus cost
     absW = np.abs(W)
     total = absW.sum()
-    n = len(W)
+    full_efficiency = inverse_distances(absW).sum()
     remaining = absW.copy()
     kept = np.zeros(W.shape, dtype=bool)
     best, best_score = kept, -np.inf
@@ -195,7 +196,7 @@ def _omst(W: np.ndarray) -> np.ndarray:
             break
         kept = kept | tree
         remaining[tree] = 0
-        efficiency = inverse_distances(np.where(kept, absW, 0.0)).sum() / (n * (n - 1))
+        efficiency = inverse_distances(np.where(kept, absW, 0.0)).sum() / full_efficiency
         score = efficiency - absW[kept].sum() / total
         if score > best_score:
             best, best_score = kept, score

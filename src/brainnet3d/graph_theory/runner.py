@@ -45,16 +45,16 @@ def compute_graph_metrics(
     network_col: str = "network_label",
     apply_fisher_z: bool = True,
     graph_method: str | Callable = "tmfg",
+    n_jobs: int = -1,
+    output_dir: str | None = None,
+    verbose: bool = True,
+    hemi_col: str = "hemisphere",
     graph_params: dict | None = None,
     sign: str | None = None,
     network_graph_method: str | Callable | None = None,
     network_graph_params: dict | None = None,
     summary: str = "auc",
     return_curves: bool = False,
-    n_jobs: int = -1,
-    output_dir: str | None = None,
-    verbose: bool = True,
-    hemi_col: str = "hemisphere",
 ) -> GraphMetricsResult:
     """Compute graph-theory metrics from pre-computed connectivity matrices.
 
@@ -82,7 +82,7 @@ def compute_graph_metrics(
     graph_method : how edges are kept; graph_params gives each method's parameter.
         "tmfg" (default)  triangulated maximally filtered graph
         "full"            every edge
-        "absolute"        |w| > {"threshold": r}
+        "absolute"        |w| >= {"threshold": r}
         "density"         strongest |w| at {"density": d}, d in (0, 1]
         "eco"             density giving a mean degree of 3
         "knn"             each node's {"k": k} strongest edges
