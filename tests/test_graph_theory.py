@@ -309,6 +309,30 @@ def test_invalid_options_raise_before_computing(kwargs, match):
         compute_graph_metrics(matrices, atlas, level="both", n_jobs=1, verbose=False, **kwargs)
 
 
+@pytest.mark.parametrize("level, hemi_split, density, match", [
+    ("node", False, 0.1, r"node \(12 nodes\).*; got 0\.1$"),
+    ("network", False, [0.2, 0.6], r"network \(4 nodes\).*; got 0\.2\n.*network_graph_method"),
+    ("network", True, 0.2, r"network_hemi \(8 nodes\).*; got 0\.2\n.*network_graph_method"),
+])
+def test_mst_density_below_spanning_tree_raises_before_computing(level, hemi_split, density, match):
+    matrices, atlas = _toy_inputs()
+    atlas["hemisphere"] = np.repeat(["L", "R"], len(atlas) // 2)  # every network in both hemispheres
+    with pytest.raises(ValueError, match=match):
+        compute_graph_metrics(
+            matrices, atlas, level=level, hemi_split=hemi_split, graph_method="mst_density",
+            graph_params={"density": density}, n_jobs=1, verbose=False,
+        )
+
+
+def test_network_graph_params_lift_mst_density_for_small_graphs():
+    matrices, atlas = _toy_inputs()
+    result = compute_graph_metrics(
+        matrices, atlas, level="both", hemi_split=False, metrics=["strength.bin"], graph_method="mst_density",
+        graph_params={"density": 0.2}, network_graph_params={"density": 0.6}, sign="abs", n_jobs=1, verbose=False,
+    )
+    assert result.failed == {}
+
+
 def test_all_metrics_skip_those_constant_on_a_spanning_tree():
     names = check_options("all", "mst", None, None, "auc")
     assert not [m for m in names if m.startswith(("clust_coeff.", "ge_local.", "strength.neg"))]

@@ -20,6 +20,7 @@ from brainnet3d.graph_theory.aggregation import (
 )
 from brainnet3d.exceptions import DataValidationError
 from brainnet3d.graph_theory.metrics import check_options, process_subject
+from brainnet3d.graph_theory.sparsify import requested_edges
 
 
 @dataclass
@@ -142,6 +143,16 @@ def compute_graph_metrics(
     )
     if want_node:
         _check_node_matrices(matrices)
+    net2rois = build_net2rois(atlas, label_col, network_col) if want_network else {}
+    net_hemi2rois = build_net_hemi2rois(atlas, label_col, network_col, hemi_col) if want_hemi else {}
+    sizes = {}
+    if want_node:
+        sizes["node"] = min((len(df) for df in matrices.values()), default=0)
+    if want_network:
+        sizes["network"] = len(net2rois)
+    if want_hemi:
+        sizes["network_hemi"] = len(net_hemi2rois)
+    _check_spanning_tree_fits(sizes, node_opts, net_opts)
 
     subject_ids = list(matrices.keys())
     result = GraphMetricsResult()
@@ -149,7 +160,6 @@ def compute_graph_metrics(
     shortfalls: list[str] = []
 
     if want_network:
-        net2rois = build_net2rois(atlas, label_col, network_col)
         result.network_df, result.net_corr_df = _network_level(
             "network", matrices, net2rois, apply_fisher_z, net_metrics, net_opts, result, curves, shortfalls,
         )
@@ -200,7 +210,6 @@ def compute_graph_metrics(
         result.node_df = node_df.astype(float)
 
     if want_hemi:
-        net_hemi2rois = build_net_hemi2rois(atlas, label_col, network_col, hemi_col)
         result.net_hemi_df, result.net_hemi_corr_df = _network_level(
             "network_hemi", matrices, net_hemi2rois, apply_fisher_z, net_metrics, net_opts, result, curves, shortfalls,
         )
@@ -299,6 +308,28 @@ def _check_node_matrices(matrices: dict[str, pd.DataFrame]) -> None:
             problems.append(f"{sub_id}: {n_inf} Inf value(s) off the diagonal")
     if problems:
         raise DataValidationError("Node-level input check failed:\n  " + "\n  ".join(problems))
+
+
+def _check_spanning_tree_fits(sizes: dict[str, int], node_opts: dict, net_opts: dict) -> None:
+    # mst_density starts from a spanning tree, so every density must keep at least n - 1 edges
+    problems = {}
+    for level, n in sizes.items():
+        opts = node_opts if level == "node" else net_opts
+        if opts["graph_method"] != "mst_density":
+            continue
+        low = [d for d in np.atleast_1d(opts["graph_params"]["density"])
+               if requested_edges(n, "mst_density", {"density": d}) < n - 1]
+        if low:
+            problems[level] = (
+                f"{level} ({n} nodes): a spanning tree needs {n - 1} edges, i.e. density >= 2/{n} = {2 / n:.3g}; "
+                f"got {', '.join(f'{d:g}' for d in low)}"
+            )
+    if not problems:
+        return
+    hint = "" if list(problems) == ["node"] else (
+        "\nSet the network level separately with network_graph_method or network_graph_params."
+    )
+    raise ValueError("graph_method=\"mst_density\" is too sparse:\n  " + "\n  ".join(problems.values()) + hint)
 
 
 def _net_corr_to_wide(all_corr: dict[str, pd.DataFrame]) -> pd.DataFrame:
