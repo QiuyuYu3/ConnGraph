@@ -42,6 +42,8 @@ def test_network_order_follows_given_sequence():
     assert nets[idx].tolist() == ["c", "b", "b", "a", "a"]
     with pytest.raises(ValueError, match="network_order"):
         matrix_order(np.eye(5), nets, "network", network_order=["x"])
+    with pytest.raises(ValueError, match="more than once"):
+        matrix_order(np.eye(5), nets, "network", network_order=["c", "b", "c"])
 
 
 def test_cluster_order_groups_blocks():

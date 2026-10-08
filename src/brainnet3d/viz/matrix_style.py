@@ -59,6 +59,9 @@ def _network_sequence(nets: np.ndarray, network_order) -> list[str]:
     unknown = [x for x in network_order if x not in present]
     if unknown:
         raise ValueError(f"network_order has names not in network_labels: {unknown}")
+    repeated = sorted({x for x in network_order if list(network_order).count(x) > 1})
+    if repeated:
+        raise ValueError(f"network_order lists {repeated} more than once.")
     return list(network_order) + [x for x in present if x not in network_order]
 
 
