@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from brainnet3d.graph_theory.runner import GraphMetricsResult
 from brainnet3d.viz.surface import load_surface
 from brainnet3d.viz.nodes   import build_nodes, _resolve_colors
-from brainnet3d.viz.edges   import build_edges
+from brainnet3d.viz.edges   import build_edges, select_edges, style_edges
 from brainnet3d.viz.views   import make_axis_arrows
 
 
@@ -32,6 +32,9 @@ class _Scene(NamedTuple):
     edges:       list
     extras:      list
     node_colors: list
+    matrix:      np.ndarray | None = None
+    positions:   np.ndarray | None = None
+    bright_edges: np.ndarray | None = None
 
     @property
     def actors(self) -> list:
@@ -45,6 +48,7 @@ _NOT_IN_PLOT_VIEWS = {
     "interactive":        "use plot(interactive=True) for a window",
     "highlight_on_click": "use plot(interactive=True, highlight_on_click=True)",
     "hover_info":         "use plot(interactive=True) for node labels on hover",
+    "window_controls":    "use plot(interactive=True) for the edge threshold slider",
     "title":              "set 'title' in each panel or call fig.suptitle",
 }
 
@@ -170,6 +174,7 @@ class BrainNetPlotter:
         highlight_endpoints: bool                  = False,
         edge_bundling:   bool | float              = False,
         hover_info:      bool                      = True,
+        window_controls: bool                      = True,
     ) -> np.ndarray | None:
         """
         Render the brain network off screen and return the image; optionally open a window or write files.
@@ -246,6 +251,9 @@ class BrainNetPlotter:
                         False or 0 (default) → straight lines.
         hover_info : in the interactive window, show a node's label, network, hemisphere and the
                      numeric columns used for node size or colour while the mouse rests on it.
+        window_controls : in the interactive window, add an edge threshold slider. It runs from 0 (or a
+                     lower edge_threshold) to the strongest edge; with edge_bundling or use_tube it
+                     starts at edge_threshold. Colours and widths keep the scale of edge_threshold.
         """
         # every argument, so plot_views can build the same scene from one dict
         args = dict(locals())
@@ -261,12 +269,43 @@ class BrainNetPlotter:
 
         window_actors = None
         if interactive:
-            from brainnet3d.viz.window import WindowScene
+            from brainnet3d.viz.window import WindowScene, add_threshold_slider
 
-            window = WindowScene(scene.nodes, edge_lines)
+            key = {"absabove": np.abs, "above": np.positive, "below": np.negative}[edge_threshold_dir]
+            lowest = float(edge_threshold)
+            rows = np.empty(0, dtype=int)
+            if window_controls and not use_tube and not edge_bundling:
+                # every edge the slider can reach, styled on the scale of the edges drawn at edge_threshold
+                lowest = min(lowest, 0.0)
+                rows, cols, weights = select_edges(scene.matrix, lowest, edge_threshold_dir)
+            if rows.size:
+                shown = key(weights) > edge_threshold
+                colors, widths, alphas = style_edges(
+                    rows, cols, weights, weights[shown] if shown.any() else weights,
+                    edge_width=edge_width, edge_width_range=edge_width_range, edge_color=edge_color,
+                    edge_cmap=edge_cmap, edge_colorvminvmax=edge_colorvminvmax, edge_alpha=edge_alpha,
+                    node_colors=scene.node_colors, highlight_edges=scene.bright_edges,
+                    highlight_level=highlight_level, edge_sign_colors=edge_sign_colors,
+                )
+                keys = key(weights)
+                paths = np.stack((scene.positions[rows], scene.positions[cols]), axis=1)
+                window = WindowScene.from_arrays(
+                    scene.nodes, paths, np.column_stack((rows, cols)), np.column_stack((colors, alphas)), widths, keys,
+                )
+            else:
+                keys = key(np.array([e._weight for e in edge_lines], dtype=float))
+                window = WindowScene(scene.nodes, edge_lines, keys)
+            window.set_threshold(edge_threshold)
             window_actors = window.actors(scene.surfaces, scene.extras)
 
-            if highlight_on_click and edge_lines:
+            if window_controls and window.edge_meshes:
+                def _on_slide(widget, event):
+                    window.set_threshold(widget.value)
+                    plt.render()
+
+                add_threshold_slider(plt, _on_slide, lowest, float(keys.max()), edge_threshold, edge_threshold_dir)
+
+            if highlight_on_click and window.edge_meshes:
                 def _on_click(evt):
                     window.click(window.node_at(evt.actor, evt.picked3d))
                     plt.render()
@@ -438,7 +477,7 @@ class BrainNetPlotter:
         )
 
         extras = make_axis_arrows(axes=a["arrowaxis"]) if a["arrowaxis"] is not None else []
-        return _Scene(nodes_df, surfaces, node_spheres, edge_lines, extras, node_colors)
+        return _Scene(nodes_df, surfaces, node_spheres, edge_lines, extras, node_colors, matrix, positions, bright_edges)
 
     def _highlight(
         self,

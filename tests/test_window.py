@@ -24,8 +24,8 @@ def _actors_of(plt) -> list:
     return out
 
 
-def _open_window(plotter, monkeypatch, clicks=(), moves=(), **kwargs) -> list:
-    """Run plot(interactive=True) off screen; return the window state after each click, then after each mouse move."""
+def _open_window(plotter, monkeypatch, clicks=(), moves=(), slides=(), **kwargs) -> list:
+    """Run plot(interactive=True) off screen; return the window state after each click, mouse move and slider value."""
     import vedo
 
     snapshots = []
@@ -35,17 +35,29 @@ def _open_window(plotter, monkeypatch, clicks=(), moves=(), **kwargs) -> list:
             kw["offscreen"] = True
             super().__init__(*a, **kw)
             self._test_callbacks = {}
+            self._test_slider = None
 
         def add_callback(self, event_name, func, *a, **kw):
             self._test_callbacks[event_name] = func
 
+        def add_slider(self, func, *a, **kw):
+            widget = super().add_slider(func, *a, **kw)
+            self._test_slider = (func, widget)
+            return widget
+
         def interactive(self):
             actors = _actors_of(self)
-            snapshots.append({**_states(actors), "hover": _hover_lines(self), "events": set(self._test_callbacks)})
+            slider = None if self._test_slider is None else self._test_slider[1].range
+            snapshots.append({**_states(actors), "hover": _hover_lines(self), "events": set(self._test_callbacks), "slider": slider})
             for event_name, targets in (("LeftButtonPress", clicks), ("MouseMove", moves)):
                 for target in targets:
                     self._test_callbacks[event_name](_click_event(actors, target))
                     snapshots.append({**_states(_actors_of(self)), "hover": _hover_lines(self)})
+            for value in slides:
+                func, widget = self._test_slider
+                widget.value = value
+                func(widget, "InteractionEvent")
+                snapshots.append(_states(_actors_of(self)))
             return self
 
     monkeypatch.setattr(vedo, "Plotter", _Headless)
@@ -94,6 +106,8 @@ def _states(actors) -> dict:
         elif hasattr(a, "_cell_endpoints"):
             rgba = np.asarray(a.cellcolors, dtype=float) / 255
             for (i, j), c in zip(a._cell_endpoints, rgba):
+                if c[3] == 0:
+                    continue
                 key = (int(i), int(j))
                 assert key not in edges or np.allclose(edges[key], c), "cells of one edge differ in colour"
                 edges[key] = tuple(c)
@@ -264,3 +278,54 @@ def test_hover_card_image_has_rounded_transparent_corners():
 def test_plot_views_rejects_hover_info(dataset):
     with pytest.raises(TypeError, match="hover_info"):
         bnv.BrainNetPlotter(dataset, subject_id="mean").plot_views(hover_info=True)
+
+
+def _static_edges(plotter, monkeypatch, **kwargs) -> dict:
+    static = _static_actors(plotter, monkeypatch, **kwargs)
+    return {tuple(a._endpoints): (a._orig_color, a._orig_alpha) for a in static if hasattr(a, "_endpoints")}
+
+
+def test_slider_shows_the_edges_a_static_plot_would(dataset, monkeypatch, surfaces):
+    plotter = bnv.BrainNetPlotter(dataset, subject_id="mean")
+    base = dict(surface_L=surfaces[0], surface_R=surfaces[1], edge_threshold=0.3)
+    snaps = _open_window(plotter, monkeypatch, slides=(0.1, 0.5, 0.3), **base)
+    weights = np.abs(plotter._get_matrix(plotter.dataset.nodes_df)[np.triu_indices(len(plotter.dataset.nodes_df), 1)])
+    assert snaps[0]["slider"] == pytest.approx((0.0, weights.max()))
+    initial = _static_edges(plotter, monkeypatch, **base)
+    _assert_edges(snaps[0]["edges"], _expected(initial, None))
+    for snap, t in zip(snaps[1:], (0.1, 0.5, 0.3)):
+        assert set(snap["edges"]) == set(_static_edges(plotter, monkeypatch, **{**base, "edge_threshold": t}))
+    _assert_edges(snaps[-1]["edges"], _expected(initial, None))
+
+
+def test_slider_keeps_click_highlight(dataset, monkeypatch, surfaces):
+    plotter = bnv.BrainNetPlotter(dataset, subject_id="mean")
+    base = dict(surface_L=surfaces[0], surface_R=surfaces[1], edge_threshold=0.3, highlight_on_click=True)
+    snaps = _open_window(plotter, monkeypatch, clicks=(5,), slides=(0.5,), **base)
+    high = _static_edges(plotter, monkeypatch, **{**base, "edge_threshold": 0.5})
+    _assert_edges(snaps[-1]["edges"], _expected(high, 5))
+
+
+@pytest.mark.parametrize("style", ["bundled", "tube"])
+def test_slider_starts_at_plot_threshold_for_bundles_and_tubes(dataset, monkeypatch, surfaces, style):
+    plotter = bnv.BrainNetPlotter(dataset, subject_id="mean")
+    base = dict(surface_L=surfaces[0], surface_R=surfaces[1], edge_threshold=0.3, **_EDGE_STYLES[style])
+    snaps = _open_window(plotter, monkeypatch, slides=(0.1, 0.5), **base)
+    assert snaps[0]["slider"][0] == pytest.approx(0.3)
+    assert set(snaps[1]["edges"]) == set(_static_edges(plotter, monkeypatch, **base))
+    assert set(snaps[2]["edges"]) == set(_static_edges(plotter, monkeypatch, **{**base, "edge_threshold": 0.5}))
+
+
+@pytest.mark.parametrize("direction", ["above", "below"])
+def test_slider_follows_threshold_direction(dataset, monkeypatch, surfaces, direction):
+    plotter = bnv.BrainNetPlotter(dataset, subject_id="mean")
+    base = dict(surface_L=surfaces[0], surface_R=surfaces[1], edge_threshold=0.02, edge_threshold_dir=direction)
+    snaps = _open_window(plotter, monkeypatch, slides=(0.0, 0.1), **base)
+    for snap, t in zip(snaps[1:], (0.0, 0.1)):
+        assert set(snap["edges"]) == set(_static_edges(plotter, monkeypatch, **{**base, "edge_threshold": t}))
+
+
+def test_window_controls_can_be_turned_off(dataset, monkeypatch, scene_kwargs):
+    plotter = bnv.BrainNetPlotter(dataset, subject_id="mean")
+    snaps = _open_window(plotter, monkeypatch, window_controls=False, **scene_kwargs)
+    assert snaps[0]["slider"] is None

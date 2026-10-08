@@ -11,14 +11,27 @@ _DIM_RGBA = (0.55, 0.55, 0.55, 0.06)
 
 
 class WindowScene:
-    """Merged node and edge meshes built from the per-node and per-edge actors, with click highlighting."""
+    """Merged node and edge meshes for the interactive window, with click highlighting and an edge threshold."""
 
-    def __init__(self, nodes: list, edges: list):
+    def __init__(self, nodes: list, edges: list, edge_key: np.ndarray | None = None):
         self.node_mesh = _merge_nodes(nodes) if nodes else None
         self.edge_meshes = _merge_edges(edges) if edges else []
         self._endpoints = np.array([e._endpoints for e in edges], dtype=int).reshape(-1, 2)
         self._orig_rgba = np.array([(*e._orig_color, e._orig_alpha) for e in edges], dtype=float).reshape(-1, 4)
+        self._key = np.full(len(edges), np.inf) if edge_key is None else np.asarray(edge_key, dtype=float)
+        self._threshold = -np.inf
         self._selected: int | None = None
+
+    @classmethod
+    def from_arrays(cls, nodes: list, paths, endpoints, rgba, widths, edge_key) -> WindowScene:
+        """Edges given as arrays instead of per-edge actors, so tens of thousands of them stay cheap to build."""
+        scene = cls(nodes, [])
+        scene._endpoints = np.asarray(endpoints, dtype=int).reshape(-1, 2)
+        scene._orig_rgba = np.asarray(rgba, dtype=float).reshape(-1, 4)
+        scene._key = np.asarray(edge_key, dtype=float)
+        if len(scene._key):
+            scene.edge_meshes = _merge_lines(paths, np.asarray(widths, dtype=float), scene._orig_rgba, scene._endpoints)
+        return scene
 
     def actors(self, surfaces: list, extras: list) -> list:
         nodes = [self.node_mesh] if self.node_mesh is not None else []
@@ -33,15 +46,21 @@ class WindowScene:
         return int(np.argmin(gap))
 
     def click(self, node_idx: int | None) -> None:
-        if node_idx is None or node_idx == self._selected:
-            self._selected = None
-            rgba = self._orig_rgba
-        else:
-            self._selected = node_idx
-            touching = (self._endpoints == node_idx).any(axis=1)
-            rgba = np.tile(_DIM_RGBA, (len(self._orig_rgba), 1))
-            rgba[touching, :3] = self._orig_rgba[touching, :3]
-            rgba[touching, 3] = np.minimum(self._orig_rgba[touching, 3] * 1.4, 1.0)
+        self._selected = None if node_idx is None or node_idx == self._selected else node_idx
+        self._refresh()
+
+    def set_threshold(self, threshold: float) -> None:
+        """Hide edges whose key is at or below threshold, as the static plot does."""
+        self._threshold = threshold
+        self._refresh()
+
+    def _refresh(self) -> None:
+        rgba = self._orig_rgba.copy()
+        if self._selected is not None:
+            touching = (self._endpoints == self._selected).any(axis=1)
+            rgba[~touching] = _DIM_RGBA
+            rgba[touching, 3] = np.minimum(rgba[touching, 3] * 1.4, 1.0)
+        rgba[self._key <= self._threshold, 3] = 0.0
         for mesh in self.edge_meshes:
             mesh.cellcolors = _to_uint8(rgba[mesh._cell_edge])
 
@@ -70,32 +89,36 @@ def _merge_edges(edges: list) -> list:
     from vedo import Tube, merge
 
     rgba = np.array([(*e._orig_color, e._orig_alpha) for e in edges])
-    if isinstance(edges[0], Tube):
-        mesh = merge(edges)
-        cell_edge = np.repeat(np.arange(len(edges)), [e.ncells for e in edges])
-        meshes = [(mesh, cell_edge)]
-    else:
+    endpoints = np.array([e._endpoints for e in edges], dtype=int)
+    if not isinstance(edges[0], Tube):
         widths = np.array([e.properties.GetLineWidth() for e in edges])
-        lo, hi = widths.min(), widths.max()
-        levels = np.zeros(len(edges), dtype=int)
-        if hi > lo:
-            levels = np.minimum(((widths - lo) / (hi - lo) * _N_WIDTH_LEVELS).astype(int), _N_WIDTH_LEVELS - 1)
-        meshes = []
-        for level in np.unique(levels):
-            members = np.flatnonzero(levels == level)
-            mesh = _polylines([edges[k].vertices for k in members])
-            mesh.properties.DeepCopy(edges[members[0]].properties)
-            mesh.lw(lo + (level + 0.5) * (hi - lo) / _N_WIDTH_LEVELS if hi > lo else lo)
-            meshes.append((mesh, members))
+        return _merge_lines([e.vertices for e in edges], widths, rgba, endpoints)
+    mesh = merge(edges)
+    return [_edge_mesh(mesh, np.repeat(np.arange(len(edges)), [e.ncells for e in edges]), rgba, endpoints)]
 
+
+def _merge_lines(paths, widths: np.ndarray, rgba: np.ndarray, endpoints: np.ndarray) -> list:
+    """Polyline meshes grouped into a few line widths, since one mesh has a single width."""
+    lo, hi = widths.min(), widths.max()
+    levels = np.zeros(len(widths), dtype=int)
+    if hi > lo:
+        levels = np.minimum(((widths - lo) / (hi - lo) * _N_WIDTH_LEVELS).astype(int), _N_WIDTH_LEVELS - 1)
     out = []
-    for mesh, cell_edge in meshes:
-        mesh.properties.SetOpacity(1.0)
-        mesh.cellcolors = _to_uint8(rgba[cell_edge])
-        mesh._cell_edge = cell_edge
-        mesh._cell_endpoints = np.array([edges[k]._endpoints for k in cell_edge], dtype=int)
-        out.append(mesh)
+    for level in np.unique(levels):
+        members = np.flatnonzero(levels == level)
+        mesh = _polylines([paths[k] for k in members])
+        mesh.properties.LightingOff()
+        mesh.lw(lo + (level + 0.5) * (hi - lo) / _N_WIDTH_LEVELS if hi > lo else lo)
+        out.append(_edge_mesh(mesh, members, rgba, endpoints))
     return out
+
+
+def _edge_mesh(mesh, cell_edge: np.ndarray, rgba: np.ndarray, endpoints: np.ndarray):
+    mesh.properties.SetOpacity(1.0)
+    mesh.cellcolors = _to_uint8(rgba[cell_edge])
+    mesh._cell_edge = cell_edge
+    mesh._cell_endpoints = endpoints[cell_edge]
+    return mesh
 
 
 def _polylines(paths: list):
@@ -253,3 +276,34 @@ def _card_image(title: str, dot_rgb: tuple, fields: list) -> np.ndarray:
         ax.text(w_px - 16, y, value, fontsize=6.5, color="#222", va="center", ha="right")
     fig.canvas.draw()
     return np.asarray(fig.canvas.buffer_rgba()).copy()
+
+
+_SLIDER_TITLES = {"absabove": "Edge threshold |w|", "above": "Edge threshold w", "below": "Edge threshold -w"}
+
+
+def add_threshold_slider(plt, on_change, lowest: float, highest: float, value: float, threshold_dir: str):
+    """Thin grey slider centred at the bottom of the window; on_change(widget, event) runs while it moves."""
+    widget = plt.add_slider(
+        on_change, lowest, highest, value=min(max(value, lowest), highest), pos=[(0.30, 0.07), (0.70, 0.07)],
+        title=_SLIDER_TITLES[threshold_dir], show_value=True,
+    )
+    rep = widget.representation
+    rep.SetLabelFormat("%.2f")
+    rep.SetSliderLength(0.012)
+    rep.SetSliderWidth(0.022)
+    rep.SetTubeWidth(0.004)
+    rep.SetEndCapLength(0.0)
+    rep.SetEndCapWidth(0.0)
+    ink = (0.2, 0.2, 0.2) if np.mean(plt.renderer.GetBackground()) > 0.5 else (0.85, 0.85, 0.85)
+    rep.GetTubeProperty().SetColor(0.6, 0.6, 0.6)
+    rep.GetSliderProperty().SetColor(*ink)
+    rep.GetSelectedProperty().SetColor(0.1, 0.4, 0.8)
+    for text in (rep.GetTitleProperty(), rep.GetLabelProperty()):
+        text.SetColor(*ink)
+        text.SetFontFamilyToArial()
+        text.ShadowOff()
+        text.BoldOff()
+        text.ItalicOff()
+    rep.SetTitleHeight(0.018)
+    rep.SetLabelHeight(0.018)
+    return widget
