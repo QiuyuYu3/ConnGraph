@@ -9,6 +9,7 @@ from collections.abc import Callable
 import numpy as np
 import pandas as pd
 
+from brainnet3d.graph_theory.randomize import randomize_signed
 from brainnet3d.graph_theory.sparsify import (
     apply_sign,
     build_adjacency,
@@ -56,12 +57,18 @@ def check_options(
     graph_params: dict | None,
     sign: str | None,
     summary: str,
+    n_random: int = 0,
+    random_swaps: float = 10,
 ) -> list[str]:
     """Validate the options and return the metric names; "all" silently drops metrics the method makes constant."""
     names = parse_metrics(metrics)
     check_graph_method(graph_method, graph_params)
     if summary not in _SUMMARIES:
         raise ValueError(f"summary={summary!r} is not recognised. Choose \"auc\" or \"mean\".")
+    if not (float(n_random).is_integer() and n_random >= 0):
+        raise ValueError(f"n_random must be a non-negative integer, got {n_random}.")
+    if n_random and not random_swaps > 0:
+        raise ValueError(f"random_swaps must be positive, got {random_swaps}.")
 
     constant = {}
     if graph_method == "mst":
@@ -90,9 +97,12 @@ def process_subject(
     summary: str = "auc",
     return_curves: bool = False,
     normalize_weights: bool = False,
+    n_random: int = 0,
+    random_swaps: float = 10,
+    random_seed=None,
 ) -> dict:
     """Return {"subj", "metric.variant": {label: value}, ["curves"], ["shortfall"]} for one subject; options as in compute_graph_metrics."""
-    names = check_options(metrics, graph_method, graph_params, sign, summary)
+    names = check_options(metrics, graph_method, graph_params, sign, summary, n_random, random_swaps)
     params = dict(graph_params or {})
     sweep, values = check_graph_method(graph_method, params)
 
@@ -106,16 +116,17 @@ def process_subject(
     signed = resolved == "signed"
     settings = [params] if sweep is None else [{**params, sweep: v} for v in values]
 
+    rng = np.random.default_rng(random_seed)
     curves = None
     if sweep is None:
         A = build_adjacency(mat, graph_method, params, signed)
-        results = {m: compute_metric(m, A) for m in names}
+        results = _node_values(names, A, n_random, random_swaps, rng)
     else:
-        stacked: dict[str, list] = {m: [] for m in names}
+        stacked: dict[str, list] = {}
         for setting in settings:
             A = build_adjacency(mat, graph_method, setting, signed)
-            for m in names:
-                stacked[m].append(compute_metric(m, A))
+            for m, v in _node_values(names, A, n_random, random_swaps, rng).items():
+                stacked.setdefault(m, []).append(v)
         curves = {m: np.vstack(rows) for m, rows in stacked.items()}
         results = {m: _summarize(curve, values, summary) for m, curve in curves.items()}
 
@@ -128,6 +139,33 @@ def process_subject(
     if shortfall:
         out["shortfall"] = shortfall
     return out
+
+
+def normalized_metrics(names: list[str], n_random: int) -> list[str]:
+    """Metrics that also get a ".norm" ratio to random networks; randomizing keeps degree, so strength.bin never does."""
+    return [m for m in names if m != "strength.bin"] if n_random else []
+
+
+def output_names(names: list[str], n_random: int) -> list[str]:
+    return names + [f"{m}.norm" for m in normalized_metrics(names, n_random)]
+
+
+def _node_values(
+    names: list[str], A: np.ndarray, n_random: int, swaps: float, rng: np.random.Generator,
+) -> dict[str, np.ndarray]:
+    values = {m: compute_metric(m, A) for m in names}
+    norm = normalized_metrics(names, n_random)
+    if not norm:
+        return values
+    sums = {m: np.zeros(len(A)) for m in norm}
+    for _ in range(n_random):
+        R = randomize_signed(A, swaps, rng)
+        for m in norm:
+            sums[m] += compute_metric(m, R)
+    for m in norm:
+        # NaN where the random networks give 0, e.g. clustering of a node with one neighbour
+        values[f"{m}.norm"] = np.divide(values[m], sums[m] / n_random, out=np.full(len(A), np.nan), where=sums[m] != 0)
+    return values
 
 
 def _shortfall(mat: np.ndarray, method: str | Callable, settings: list[dict]) -> str | None:

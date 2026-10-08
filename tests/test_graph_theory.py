@@ -283,6 +283,58 @@ def test_return_curves_keeps_values_at_each_density(tmp_path):
     assert (tmp_path / "node" / "curves.csv").exists()
 
 
+def test_random_normalization_divides_by_the_mean_over_random_networks():
+    from brainnet3d.graph_theory.randomize import randomize_signed
+    from brainnet3d.graph_theory.sparsify import build_adjacency
+
+    n = 20
+    corr = _random_corr(n, 4)
+    np.fill_diagonal(corr, 0)
+    labels = [f"roi{i}" for i in range(n)]
+    names = ["clust_coeff.costantini", "strength.abs", "strength.bin"]
+    res = process_subject(
+        "s1", corr, labels, names, "density", {"density": 0.3}, sign="abs", n_random=3, random_seed=5,
+    )
+    assert "strength.bin.norm" not in res
+
+    A = build_adjacency(corr, "density", {"density": 0.3})
+    rng = np.random.default_rng(5)
+    nulls = [randomize_signed(A, 10, rng) for _ in range(3)]
+    for m in names[:2]:
+        expected = compute_metric(m, A) / np.mean([compute_metric(m, R) for R in nulls], axis=0)
+        np.testing.assert_allclose([res[f"{m}.norm"][lbl] for lbl in labels], expected)
+
+
+def test_random_normalization_is_integrated_like_the_raw_metric():
+    n = 20
+    labels = [f"roi{i}" for i in range(n)]
+    res = process_subject(
+        "s1", _random_corr(n, 4), labels, ["strength.abs"], "density", {"density": [0.3, 0.5]},
+        sign="abs", return_curves=True, n_random=2, random_seed=1,
+    )
+    norm = res["curves"][res["curves"]["metric"] == "strength.abs.norm"]
+    at = {t: df.set_index("node")["value"] for t, df in norm.groupby("threshold")}
+    expected = (at[0.3] + at[0.5]) / 2 * 0.2
+    np.testing.assert_allclose([res["strength.abs.norm"][lbl] for lbl in expected.index], expected.values)
+
+
+def test_random_normalization_columns_files_and_seeds(tmp_path):
+    matrices, atlas = _toy_inputs()
+    matrices["s2"] = matrices["s1"]
+    kwargs = dict(
+        level="node", metrics=["strength.abs", "strength.bin"], graph_method="density",
+        graph_params={"density": 0.4}, sign="abs", n_random=2, random_seed=0, n_jobs=1, verbose=False,
+    )
+    first = compute_graph_metrics(matrices, atlas, output_dir=str(tmp_path), **kwargs)
+    again = compute_graph_metrics(matrices, atlas, **kwargs)
+
+    df = first.node_df
+    assert list(df.columns.get_level_values(0).unique()) == ["strength.abs", "strength.bin", "strength.abs.norm"]
+    pd.testing.assert_frame_equal(df, again.node_df)
+    assert not np.allclose(df.loc["s1", "strength.abs.norm"], df.loc["s2", "strength.abs.norm"])
+    assert (tmp_path / "node" / "strength.abs.norm.csv").exists()
+
+
 @pytest.mark.parametrize("hemi_split, present", [
     (True, {"net_hemi_df"}),
     (False, {"network_df"}),
@@ -319,6 +371,8 @@ def test_network_graph_method_overrides_node_method():
     (dict(graph_method="density", graph_params={"density": [0.2]}), "two distinct"),
     (dict(graph_method="density", graph_params={"density": 1.5}), "density"),
     (dict(summary="median"), "summary"),
+    (dict(n_random=-1), "n_random"),
+    (dict(n_random=2, random_swaps=0), "random_swaps"),
     (dict(hemi_split="left"), "hemi_split"),
 ])
 def test_invalid_options_raise_before_computing(kwargs, match):

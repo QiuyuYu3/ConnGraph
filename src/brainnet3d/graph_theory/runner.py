@@ -19,7 +19,7 @@ from brainnet3d.graph_theory.aggregation import (
     compute_net_corr,
 )
 from brainnet3d.exceptions import DataValidationError
-from brainnet3d.graph_theory.metrics import check_options, process_subject
+from brainnet3d.graph_theory.metrics import check_options, output_names, process_subject
 from brainnet3d.graph_theory.sparsify import requested_edges
 
 
@@ -57,6 +57,9 @@ def compute_graph_metrics(
     summary: str = "auc",
     return_curves: bool = False,
     normalize_weights: bool = False,
+    n_random: int = 0,
+    random_swaps: float = 10,
+    random_seed: int | None = None,
 ) -> GraphMetricsResult:
     """Compute graph-theory metrics from pre-computed connectivity matrices.
 
@@ -106,6 +109,13 @@ def compute_graph_metrics(
     network_graph_method, network_graph_params : network level override; defaults to graph_method and graph_params.
     summary : how a parameter range is reduced: "auc" (trapezoidal area, default) or "mean" (area / range width).
     return_curves : also keep the per-value metrics of a parameter range in ``result.curves``.
+    n_random : random networks per graph (default 0, off); adds "metric.variant.norm", the value divided by
+        its mean over the random networks, at every parameter value before ``summary``. Random networks keep
+        each node's positive and negative degree and redistribute the weights within each sign, so
+        strength.bin (the degree) gets no ".norm". The signed clust_coeff.costantini averages near 0 on random
+        networks, so its ratio is unstable and can change sign.
+    random_swaps : average number of swaps per edge when randomizing (default 10).
+    random_seed : seed for reproducible random networks.
     n_jobs : parallel workers for node-level computation; -1 = cpu_count - 1.
     output_dir : if given, saves CSV files there, one folder per level and one file per metric.
     verbose : print node-level progress and the names of saved files.
@@ -125,7 +135,8 @@ def compute_graph_metrics(
         raise ValueError(f"hemi_split={hemi_split!r} is not recognised. Choose True, False or \"both\".")
 
     node_opts = dict(graph_method=graph_method, graph_params=graph_params, sign=sign,
-                     summary=summary, return_curves=return_curves, normalize_weights=normalize_weights)
+                     summary=summary, return_curves=return_curves, normalize_weights=normalize_weights,
+                     n_random=n_random, random_swaps=random_swaps)
     net_opts = dict(node_opts)
     if network_graph_method is not None:
         net_opts.update(graph_method=network_graph_method, graph_params=network_graph_params)
@@ -136,9 +147,11 @@ def compute_graph_metrics(
     want_network = level in ("network", "both") and hemi_split in (False, "both")
     want_hemi = level in ("network", "both") and hemi_split in (True, "both")
 
-    node_metrics = check_options(metrics, graph_method, graph_params, sign, summary) if want_node else []
+    node_metrics = (
+        check_options(metrics, graph_method, graph_params, sign, summary, n_random, random_swaps) if want_node else []
+    )
     net_metrics = (
-        check_options(metrics, net_opts["graph_method"], net_opts["graph_params"], sign, summary)
+        check_options(metrics, net_opts["graph_method"], net_opts["graph_params"], sign, summary, n_random, random_swaps)
         if want_network or want_hemi else []
     )
     if want_node:
@@ -159,17 +172,24 @@ def compute_graph_metrics(
     result = GraphMetricsResult()
     curves: list[pd.DataFrame] = []
     shortfalls: list[str] = []
+    # One seed per level and subject, so results do not depend on worker scheduling
+    seeds = {
+        lvl: dict(zip(subject_ids, ss.spawn(len(subject_ids))))
+        for lvl, ss in zip(("network", "node", "network_hemi"), np.random.SeedSequence(random_seed).spawn(3))
+    }
 
     if want_network:
         result.network_df, result.net_corr_df = _network_level(
             "network", matrices, net2rois, apply_fisher_z, net_metrics, net_opts, result, curves, shortfalls,
+            seeds["network"],
         )
 
     if want_node:
         atlas_rois = atlas[label_col].dropna().tolist()
+        node_columns = output_names(node_metrics, n_random)
         node_df = pd.DataFrame(
             index=subject_ids,
-            columns=pd.MultiIndex.from_product([node_metrics, atlas_rois], names=["metric", "roi"]),
+            columns=pd.MultiIndex.from_product([node_columns, atlas_rois], names=["metric", "roi"]),
         )
 
         workers = max(1, (os.cpu_count() or 2) - 1) if n_jobs == -1 else max(1, n_jobs)
@@ -185,6 +205,7 @@ def compute_graph_metrics(
                     matrices[sid].columns.tolist(),
                     node_metrics,
                     **node_opts,
+                    random_seed=seeds["node"][sid],
                 ): sid
                 for sid in subject_ids
                 if sid in matrices
@@ -201,7 +222,7 @@ def compute_graph_metrics(
                 except Exception as e:
                     _record_failure(result, "node", sid, e)
                     continue
-                for m in node_metrics:
+                for m in node_columns:
                     for roi in atlas_rois:
                         if roi in res[m]:
                             node_df.at[sid, (m, roi)] = res[m][roi]
@@ -213,6 +234,7 @@ def compute_graph_metrics(
     if want_hemi:
         result.net_hemi_df, result.net_hemi_corr_df = _network_level(
             "network_hemi", matrices, net_hemi2rois, apply_fisher_z, net_metrics, net_opts, result, curves, shortfalls,
+            seeds["network_hemi"],
         )
 
     if curves:
@@ -252,23 +274,25 @@ def _network_level(
     result: GraphMetricsResult,
     curves: list[pd.DataFrame],
     shortfalls: list[str],
+    seeds: dict,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     all_net_corr = compute_net_corr(matrices, net2rois, apply_fisher_z)
     nets = list(next(iter(all_net_corr.values())).columns)
+    columns = output_names(metrics, opts["n_random"])
     net_df = pd.DataFrame(
         index=list(matrices.keys()),
-        columns=pd.MultiIndex.from_product([metrics, nets], names=["metric", "network"]),
+        columns=pd.MultiIndex.from_product([columns, nets], names=["metric", "network"]),
     )
     for sub_id, corr in all_net_corr.items():
         corrmat = corr.values.astype(float)
         if apply_fisher_z:
             corrmat = np.tanh(corrmat)
         try:
-            res = process_subject(sub_id, corrmat, nets, metrics, **opts)
+            res = process_subject(sub_id, corrmat, nets, metrics, **opts, random_seed=seeds[sub_id])
         except Exception as e:
             _record_failure(result, level, sub_id, e)
             continue
-        for m in metrics:
+        for m in columns:
             for n in nets:
                 net_df.at[sub_id, (m, n)] = res[m].get(n, np.nan)
         _collect_curves(curves, level, sub_id, res)
