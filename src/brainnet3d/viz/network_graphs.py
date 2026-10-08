@@ -291,8 +291,9 @@ def circos_plot(
     """
     Circos-style plot: nodes arranged in a circle grouped by subnetwork.
 
-    Nodes in the same network are placed adjacently; a small angular gap
+    Nodes in the same network are placed adjacently in input order; a small angular gap
     separates consecutive network groups. Stronger edges are drawn on top.
+    Labels use a darker shade of the network colour.
 
     Parameters
     ----------
@@ -315,7 +316,7 @@ def circos_plot(
     n           = len(roi_labels)
     unique_nets = sorted(set(network_labels))
 
-    order        = sorted(range(n), key=lambda i: (network_labels[i], roi_labels[i]))
+    order        = sorted(range(n), key=lambda i: (network_labels[i], i))
     sorted_labels = [roi_labels[i]      for i in order]
     sorted_nets   = [network_labels[i]  for i in order]
     old2new       = {old: new for new, old in enumerate(order)}
@@ -387,7 +388,7 @@ def circos_plot(
         rotation = deg if ha == "left" else deg + 180
         roi_texts.append(ax.text(label_R * np.cos(a), label_R * np.sin(a), lbl,
                                  ha=ha, va="center", rotation=rotation, rotation_mode="anchor",
-                                 fontsize=label_fontsize, color=net2color[sorted_nets[i]]))
+                                 fontsize=label_fontsize, color=_text_color(net2color[sorted_nets[i]])))
 
     if network_ring:
         _ring_names(ax, unique_nets, sorted_nets, angles, roi_texts, label_R, net2color)
@@ -434,7 +435,7 @@ def _ring_names(ax, nets: list, sorted_nets: list, angles: list, roi_texts: list
             rotation += 180
         ax.text(radius * np.cos(theta), radius * np.sin(theta), nets[k], ha="center", va="center",
                 rotation=rotation, rotation_mode="anchor", fontsize=fontsize, fontweight="bold",
-                color=net2color[nets[k]])
+                color=_text_color(net2color[nets[k]]))
 
 
 def _spread_angles(centres: list[float], widths: list[float], pad: float, iterations: int = 500) -> np.ndarray:
@@ -451,6 +452,11 @@ def _spread_angles(centres: list[float], widths: list[float], pad: float, iterat
         if not moved:
             break
     return pos
+
+
+def _text_color(color) -> tuple:
+    # a darker shade keeps light network colours readable as text on white
+    return tuple(0.6 * x for x in to_rgb(color))
 
 
 def _network_colors(network_labels: list, net2color: dict | None) -> dict:

@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 from matplotlib.collections import LineCollection
 from matplotlib.patches import Rectangle
+from matplotlib.transforms import Bbox
 
 import brainnet3d as bnv
 from brainnet3d.viz.matrix_style import matrix_order
@@ -172,6 +173,29 @@ def test_nbs_difference_range_can_be_set():
     g1, g2, adj, nets = _nbs([5, 5])
     fig = bnv.plot_nbs_matrices(g1, g2, adj, diff_vmax=0.3)
     np.testing.assert_allclose(_colorbar_limits(fig)[1], (-0.3, 0.3))
+    plt.close(fig)
+
+
+def _panel_boxes(fig):
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    main, extra = fig.axes[:3], fig.axes[3:]
+    groups = [[main[k], *extra[3 * k: 3 * k + 3]] for k in range(3)]
+    return [Bbox.union([b for a in g if (b := a.get_tightbbox(renderer)) is not None]) for g in groups]
+
+
+def test_nbs_panels_clear_long_roi_labels():
+    g1, g2, adj, nets = _nbs([15, 15])
+    fig = bnv.plot_nbs_matrices(g1, g2, adj, labels=[f"L_CinguloOperc_{i}" for i in range(30)], network_labels=nets)
+    boxes = _panel_boxes(fig)
+    assert all(a.x1 < b.x0 for a, b in zip(boxes, boxes[1:]))
+    plt.close(fig)
+
+
+def test_nbs_width_unchanged_without_overlap():
+    g1, g2, adj, nets = _nbs([40, 30])
+    fig = bnv.plot_nbs_matrices(g1, g2, adj, network_labels=nets)
+    assert fig.get_size_inches()[0] == pytest.approx(19)
     plt.close(fig)
 
 

@@ -22,7 +22,7 @@
 - Node colours no longer repeat when there are more than 12 categories, numeric node colours default to viridis, and 3-D spring plots colour nodes by network when network labels are given.
 - Node tables read from file keep the label "None" as text instead of treating it as missing.
 - Matrix heatmaps and NBS plots show network colour strips, label networks instead of every ROI in large matrices, and leave a constant diagonal blank; the third NBS panel shows the group difference with significant edges marked instead of hiding the rest.
-- Circos plots draw curved chords coloured and sized by weight, with a ring of network names in place of the legend.
+- Circos plots draw curved chords coloured and sized by weight, with a ring of network names in place of the legend, and keep the node table's order within each network.
 
 ### Fixed
 

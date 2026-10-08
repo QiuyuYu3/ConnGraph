@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
+from matplotlib.transforms import Bbox
 
 from brainnet3d.viz.matrix_style import MATRIX_OPTIONS, draw_matrix, is_contiguous, matrix_order, tick_mode
 
@@ -38,7 +39,7 @@ def plot_nbs_matrices(
     cmap             : colormap for connectivity values.
     group_names      : display names for group 1 and group 2.
     title            : overall figure title.
-    figsize          : figure size; auto-calculated from N if None.
+    figsize          : figure size; auto-calculated from N if None. Widened if labels would overlap a neighbouring panel.
     save_path        : save figure to this path at 150 dpi.
     sig_style        : "auto" (default) → "outline" for up to 60 nodes, else "fade".
                        "outline" → black outline around significant cells.
@@ -83,11 +84,15 @@ def plot_nbs_matrices(
         (mean_g2, group_names[1], None, (vmin, vmax), True),
         (diff, f"{group_names[0]} − {group_names[1]}", adj, (-diff_vmax, diff_vmax), True),
     ]
+    groups = []
     for ax, (mat, name, marks, (lo, hi), colorbar) in zip(axes, panels):
+        before = set(fig.axes)
         handles = draw_matrix(
             ax, mat, idx, labels=labels, network_labels=network_labels, vmin=lo, vmax=hi, cmap=cmap,
             marks=marks, sig_style=sig_style, colorbar=colorbar, title=name, **matrix_options,
         )
+        groups.append([ax] + [a for a in fig.axes if a not in before])
+    _separate_panels(fig, groups)
     if handles:
         fig.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, 0.06), ncol=min(7, len(handles)),
                    fontsize=7, frameon=False)
@@ -101,3 +106,21 @@ def plot_nbs_matrices(
         fig.savefig(save_path, dpi=150, bbox_inches="tight")
 
     return fig
+
+
+def _separate_panels(fig: Figure, groups: list[list], pad_pt: float = 8.0) -> None:
+    # widen the gaps (and the figure) until each panel's labels clear its neighbour; panel sizes stay the same
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    boxes = [Bbox.union([b for a in g if (b := a.get_tightbbox(renderer)) is not None]) for g in groups]
+    extra = max(a.x1 - b.x0 for a, b in zip(boxes, boxes[1:])) / fig.dpi + pad_pt / 72
+    if extra <= 0:
+        return
+    width, height = fig.get_size_inches()
+    left, right, wspace = fig.subplotpars.left, fig.subplotpars.right, fig.subplotpars.wspace
+    k = len(groups)
+    slot = width * (right - left) / (k + (k - 1) * wspace)
+    new_width = width + (k - 1) * extra
+    fig.set_size_inches(new_width, height)
+    fig.subplots_adjust(left=left * width / new_width, right=1 - (1 - right) * width / new_width,
+                        wspace=(wspace * slot + extra) / slot)

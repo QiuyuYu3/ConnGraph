@@ -84,6 +84,27 @@ def test_circos_default_colours_match_3d_plot(signed_graph):
     plt.close(fig)
 
 
+def test_circos_keeps_input_order_within_network():
+    labels, nets = ["b_10", "a_2", "b_1", "a_11"], ["B", "A", "B", "A"]
+    fig, ax = bnv.circos_plot(nx.empty_graph(4), labels, nets)
+    texts = [t for t in ax.texts if t.get_text() in labels]
+    angles = [(np.arctan2(*t.get_position()[::-1]) - np.pi / 2) % (2 * np.pi) for t in texts]
+    assert [texts[k].get_text() for k in np.argsort(angles)] == ["a_2", "a_11", "b_10", "b_1"]
+    plt.close(fig)
+
+
+def test_circos_labels_use_darker_network_colours():
+    labels, nets = ["r0", "r1", "r2"], ["A", "A", "B"]
+    net2color = {"A": (0.6, 0.9, 0.5), "B": (0.7, 0.8, 0.95)}
+    fig, ax = bnv.circos_plot(nx.empty_graph(3), labels, nets, net2color=net2color)
+    assert len(ax.texts) == len(labels) + len(net2color)
+    for t in ax.texts:
+        net = t.get_text() if t.get_text() in net2color else nets[labels.index(t.get_text())]
+        ratio = np.array(to_rgb(t.get_color())) / np.array(net2color[net])
+        assert ratio.max() < 1 and np.ptp(ratio) < 1e-6, t.get_text()
+    plt.close(fig)
+
+
 def test_circos_nodes_do_not_overlap():
     n = 300
     G = nx.empty_graph(n)
