@@ -37,6 +37,23 @@ def test_adjacency_keeps_input_weights_symmetrically(method):
     np.testing.assert_array_equal(A[kept], W[kept])
 
 
+def test_callable_output_is_made_symmetric_without_self_loops():
+    W = _corr(10)
+    jitter = np.triu(np.full(W.shape, 1e-17), 1)
+    A = build_adjacency(W, lambda M: M + jitter + np.eye(len(M)))
+    assert not np.diag(A).any()
+    assert np.array_equal(A, A.T)
+    np.testing.assert_allclose(A, W, rtol=0, atol=1e-15)
+
+
+@pytest.mark.parametrize("as_graph", [False, True])
+def test_callable_output_must_be_undirected(as_graph):
+    W = _corr(10)
+    method = (lambda M: nx.from_numpy_array(np.triu(M), create_using=nx.DiGraph)) if as_graph else np.triu
+    with pytest.raises(ValueError, match="symmetric"):
+        build_adjacency(W, method)
+
+
 def test_tmfg_is_planar_with_3n_minus_6_edges():
     pytest.importorskip("topcorr")
     A = build_adjacency(_corr(20), "tmfg")

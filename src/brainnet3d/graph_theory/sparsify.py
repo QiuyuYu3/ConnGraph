@@ -101,10 +101,13 @@ def build_adjacency(
     params = params or {}
     if callable(method):
         graph = method(W, **params)
-        if isinstance(graph, np.ndarray):
-            return np.asarray(graph, dtype=float)
-        import networkx as nx
-        return nx.to_numpy_array(graph, nodelist=range(len(W)))
+        if not isinstance(graph, np.ndarray):
+            import networkx as nx
+            graph = nx.to_numpy_array(graph, nodelist=range(len(W)))
+        A = np.asarray(graph, dtype=float)
+        if not np.allclose(A, A.T):
+            raise ValueError("graph_method must return a symmetric matrix or an undirected graph.")
+        return _keep(A, np.ones(A.shape, dtype=bool))  # drops self-loops, exactly symmetric
     return _BUILDERS[method](W, W if signed else np.abs(W), **params)
 
 
