@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name            = "brainnet3d"
-version         = "0.1.0"
+version         = "0.2.0"
 description     = "Interactive 3-D brain network plots and graph-theory metrics for connectivity matrices"
 readme          = "README.md"
 requires-python = ">=3.10"

@@ -14,7 +14,7 @@ from brainnet3d.viz.nbs_plots            import plot_nbs_matrices
 from brainnet3d.graph_theory             import compute_graph_metrics, GraphMetricsResult
 from brainnet3d.graph_theory.nbs         import run_nbs, NBSResult
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = [
     "load", "load_group", "load_gordon_atlas",
     "ConnectivityDataset",

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-08
+
 ### Added
 
 - Multi-view figures of the 3-D plot with colour bars and legends, at a chosen figure width (`plot_views`).

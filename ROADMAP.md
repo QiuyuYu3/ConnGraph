@@ -6,6 +6,14 @@ Turn a connectivity matrix and a node table into graph-theory metrics and an int
 
 ## Completed Features
 
+### 0.2.0
+
+- Graph metrics built in ten ways, with several variants of each metric, four ways to treat negative weights, integration over a range of densities or thresholds, normalization by random networks, and a parameters file saved with every run.
+- Multi-view figures of the 3-D plot with colour bars and legends.
+- Node and edge highlighting, edge colouring by sign, edge bundling and a network layout in the 3-D plot.
+- Matrix heatmaps, circos and spring plots ordered and coloured by network.
+- Smooth rotation in the interactive window with thousands of edges.
+
 ### 0.1.0
 
 - Load single-subject or group connectivity matrices with a node table, dropping nodes that are mostly missing.
