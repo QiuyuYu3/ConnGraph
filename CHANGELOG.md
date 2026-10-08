@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- 3-D edges drawn as tubes take the chosen edge colour; they were always drawn gold.
+
 ## [0.2.0] - 2026-10-08
 
 ### Added

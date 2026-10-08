@@ -150,10 +150,11 @@ def build_edges(
         else:
             alpha = edge_alpha
 
+        # Tube reads an RGB tuple as one colour per point, so colour it afterwards
         if paths is not None:
-            obj = Tube(paths[idx], r=w * 0.1, c=c, alpha=alpha) if use_tube else Line(paths[idx], c=c, alpha=alpha).lw(w)
+            obj = Tube(paths[idx], r=w * 0.1).color(c).alpha(alpha) if use_tube else Line(paths[idx], c=c, alpha=alpha).lw(w)
         elif use_tube:
-            obj = Tube([p1, p2], r=w * 0.1, c=c, alpha=alpha)
+            obj = Tube([p1, p2], r=w * 0.1).color(c).alpha(alpha)
         else:
             obj = Line(p1, p2, c=c, alpha=alpha).lw(w)
 

@@ -502,3 +502,20 @@ def test_highlight_edge_rule_is_checked(dataset):
 def test_highlight_nodes_without_match_warns(dataset, monkeypatch):
     with pytest.warns(UserWarning, match="matches no node"):
         _plot_actors(bnv.BrainNetPlotter(dataset, subject_id="mean"), monkeypatch, highlight_nodes={"network": "Nope"})
+
+
+@pytest.mark.parametrize("bundled", [False, True])
+def test_tube_edges_use_edge_colour(bundled):
+    import pandas as pd
+
+    nodes = pd.DataFrame({"label": ["a", "b"], "x": [-40.0, 40.0], "y": [0.0, 0.0], "z": [0.0, 0.0]})
+    mat = pd.DataFrame([[1.0, 0.9], [0.9, 1.0]], index=["a", "b"], columns=["a", "b"])
+    img = bnv.BrainNetPlotter(bnv.load(mat, nodes)).plot(
+        show_surface=False, use_tube=True, edge_width=20.0, edge_color=(0.0, 0.0, 1.0), edge_alpha=1.0,
+        node_color=(0.5, 0.5, 0.5), node_size=1.0, edge_bundling=bundled,
+    )
+    rgb = img[..., :3].astype(int)
+    blue = (rgb[..., 2] > 150) & (rgb[..., 0] < 80) & (rgb[..., 1] < 80)
+    gold = (rgb[..., 0] > 150) & (rgb[..., 1] > 100) & (rgb[..., 2] < 80)
+    assert blue.mean() > 0.002
+    assert gold.sum() == 0
