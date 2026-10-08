@@ -251,9 +251,11 @@ class BrainNetPlotter:
                         False or 0 (default) → straight lines.
         hover_info : in the interactive window, show a node's label, network, hemisphere and the
                      numeric columns used for node size or colour while the mouse rests on it.
-        window_controls : in the interactive window, add an edge threshold slider. It runs from 0 (or a
-                     lower edge_threshold) to the strongest edge; with edge_bundling or use_tube it
-                     starts at edge_threshold. Colours and widths keep the scale of edge_threshold.
+        window_controls : in the interactive window, add an edge threshold slider and a network list.
+                     The slider runs from 0 (or a lower edge_threshold) to the strongest edge; with
+                     edge_bundling or use_tube it starts at edge_threshold. Colours and widths keep the
+                     scale of edge_threshold. Clicking a network in the list hides or shows its nodes
+                     and their edges.
         """
         # every argument, so plot_views can build the same scene from one dict
         args = dict(locals())
@@ -305,9 +307,26 @@ class BrainNetPlotter:
 
                 add_threshold_slider(plt, _on_slide, lowest, float(keys.max()), edge_threshold, edge_threshold_dir)
 
-            if highlight_on_click and window.edge_meshes:
+            legend = None
+            if window_controls and window.node_mesh is not None and "network" in scene.nodes_df.columns:
+                from brainnet3d.viz.colormap import labels_to_colors, natural_key
+                from brainnet3d.viz.window import NetworkLegend
+
+                nets = scene.nodes_df["network"].astype(str).to_numpy()
+                names = sorted(set(nets), key=natural_key)
+                net_rgb = dict(zip(nets, scene.node_colors)) if node_color == "network" else dict(zip(names, labels_to_colors(names)))
+                legend = NetworkLegend(names, [net_rgb[n] for n in names])
+                window_actors.append(legend.actor)
+                plt.renderer.AddObserver("StartEvent", lambda *_: legend.place(plt.renderer))
+
+            if (highlight_on_click and window.edge_meshes) or legend is not None:
                 def _on_click(evt):
-                    window.click(window.node_at(evt.actor, evt.picked3d))
+                    if legend is not None and legend.toggle_at(evt.picked2d) is not None:
+                        window.set_hidden(np.isin(nets, list(legend.hidden)))
+                    elif highlight_on_click:
+                        window.click(window.node_at(evt.actor, evt.picked3d))
+                    else:
+                        return
                     plt.render()
 
                 plt.add_callback("LeftButtonPress", _on_click)

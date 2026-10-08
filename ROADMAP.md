@@ -29,5 +29,4 @@ Turn a connectivity matrix and a node table into graph-theory metrics and an int
 
 ## Milestones
 
-- **Interactive filtering**: edge-threshold slider and per-network show/hide.
 - **EEG and fNIRS input**: accept channel-, sensor- or source-level connectivity from EEG and fNIRS (design under discussion).

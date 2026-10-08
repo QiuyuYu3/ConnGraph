@@ -48,10 +48,13 @@ def _open_window(plotter, monkeypatch, clicks=(), moves=(), slides=(), **kwargs)
         def interactive(self):
             actors = _actors_of(self)
             slider = None if self._test_slider is None else self._test_slider[1].range
-            snapshots.append({**_states(actors), "hover": _hover_lines(self), "events": set(self._test_callbacks), "slider": slider})
+            snapshots.append({
+                **_states(actors), "hover": _hover_lines(self), "events": set(self._test_callbacks), "slider": slider,
+                "legend": _legend_of(self),
+            })
             for event_name, targets in (("LeftButtonPress", clicks), ("MouseMove", moves)):
                 for target in targets:
-                    self._test_callbacks[event_name](_click_event(actors, target))
+                    self._test_callbacks[event_name](_click_event(actors, target, self))
                     snapshots.append({**_states(_actors_of(self)), "hover": _hover_lines(self)})
             for value in slides:
                 func, widget = self._test_slider
@@ -80,18 +83,31 @@ def _node_mesh_or_spheres(actors):
     return merged[0] if merged else {a._node_idx: a for a in actors if hasattr(a, "_node_idx")}
 
 
-def _click_event(actors, target):
+def _legend_of(plt):
+    props = plt.renderer.GetViewProps()
+    props.InitTraversal()
+    for _ in range(props.GetNumberOfItems()):
+        p = props.GetNextProp()
+        if hasattr(p, "_legend"):
+            return p._legend
+    return None
+
+
+def _click_event(actors, target, plt=None):
+    if isinstance(target, tuple) and target[0] == "legend":
+        plt.render()
+        return SimpleNamespace(actor=None, object=None, picked3d=None, picked2d=_legend_of(plt).row_center(target[1]))
     if target is None:
-        return SimpleNamespace(actor=None, object=None, picked3d=None)
+        return SimpleNamespace(actor=None, object=None, picked3d=None, picked2d=(-1, -1))
     if target == "surface":
         surf = next(a for a in actors if hasattr(a, "_hemisphere"))
-        return SimpleNamespace(actor=surf, object=surf, picked3d=np.asarray(surf.vertices[0]))
+        return SimpleNamespace(actor=surf, object=surf, picked3d=np.asarray(surf.vertices[0]), picked2d=(-1, -1))
     nodes = _node_mesh_or_spheres(actors)
     if isinstance(nodes, dict):
         sphere = nodes[target]
-        return SimpleNamespace(actor=sphere, object=sphere, picked3d=np.asarray(sphere.center_of_mass()))
+        return SimpleNamespace(actor=sphere, object=sphere, picked3d=np.asarray(sphere.center_of_mass()), picked2d=(-1, -1))
     point = nodes._node_centers[target] + np.array([nodes._node_radii[target], 0.0, 0.0])
-    return SimpleNamespace(actor=nodes, object=nodes, picked3d=point)
+    return SimpleNamespace(actor=nodes, object=nodes, picked3d=point, picked2d=(-1, -1))
 
 
 def _states(actors) -> dict:
@@ -115,8 +131,11 @@ def _states(actors) -> dict:
             nodes[a._node_idx] = (*a.color(), a.alpha())
         elif hasattr(a, "_node_centers"):
             rgba = np.asarray(a.cellcolors, dtype=float) / 255
+            spread = np.zeros(len(a._node_centers))
+            np.maximum.at(spread, a._point_node, np.linalg.norm(a.vertices - a._node_centers[a._point_node], axis=1))
             for idx, c in zip(a.celldata["node_idx"], rgba):
-                nodes[int(idx)] = tuple(c)
+                if spread[int(idx)] > 1e-3:
+                    nodes[int(idx)] = tuple(c)
     return {"edges": edges, "nodes": nodes, "n_actors": len(actors)}
 
 
@@ -329,3 +348,64 @@ def test_window_controls_can_be_turned_off(dataset, monkeypatch, scene_kwargs):
     plotter = bnv.BrainNetPlotter(dataset, subject_id="mean")
     snaps = _open_window(plotter, monkeypatch, window_controls=False, **scene_kwargs)
     assert snaps[0]["slider"] is None
+
+
+def _legend_case(dataset, monkeypatch, surfaces, clicks=(), moves=(), slides=(), **kwargs):
+    plotter = bnv.BrainNetPlotter(dataset, subject_id="mean")
+    base = dict(surface_L=surfaces[0], surface_R=surfaces[1], edge_threshold=0.1, node_color="network", **kwargs)
+    snaps = _open_window(plotter, monkeypatch, clicks=clicks, moves=moves, slides=slides, **base)
+    nets = plotter.dataset.nodes_df["network"].astype(str).to_numpy()
+    return snaps, nets, plotter, base
+
+
+def test_legend_lists_networks_in_their_node_colours(dataset, monkeypatch, surfaces):
+    snaps, nets, _, _ = _legend_case(dataset, monkeypatch, surfaces)
+    legend = snaps[0]["legend"]
+    assert legend.names == ["Default", "Salience", "Visual"]
+    for name, rgb in zip(legend.names, legend.colors):
+        node = int(np.flatnonzero(nets == name)[0])
+        np.testing.assert_allclose(rgb, snaps[0]["nodes"][node][:3], atol=_TOL)
+
+
+def test_legend_click_hides_and_restores_a_network(dataset, monkeypatch, surfaces):
+    snaps, nets, plotter, base = _legend_case(
+        dataset, monkeypatch, surfaces, clicks=(("legend", "Visual"), ("legend", "Visual")),
+    )
+    full, hidden, back = snaps
+    visual = set(np.flatnonzero(nets == "Visual").tolist())
+    assert visual <= set(full["nodes"])
+    assert set(hidden["nodes"]) == set(full["nodes"]) - visual
+    assert set(hidden["edges"]) == {e for e in full["edges"] if not set(e) & visual}
+    assert {e for e in full["edges"] if set(e) & visual}
+    assert back["edges"] == full["edges"] and back["nodes"] == full["nodes"]
+
+
+def test_hidden_network_stays_hidden_when_sliding(dataset, monkeypatch, surfaces):
+    snaps, nets, plotter, base = _legend_case(
+        dataset, monkeypatch, surfaces, clicks=(("legend", "Default"),), slides=(0.0,),
+    )
+    default = set(np.flatnonzero(nets == "Default").tolist())
+    static = _static_edges(plotter, monkeypatch, **{**base, "edge_threshold": 0.0})
+    assert set(snaps[-1]["edges"]) == {e for e in static if not set(e) & default}
+
+
+def test_hidden_nodes_show_no_hover_card(dataset, monkeypatch, surfaces):
+    plotter = bnv.BrainNetPlotter(dataset, subject_id="mean")
+    nets = plotter.dataset.nodes_df["network"].astype(str).to_numpy()
+    node = int(np.flatnonzero(nets == "Salience")[0])
+    snaps = _open_window(
+        plotter, monkeypatch, clicks=(("legend", "Salience"),), moves=(node,),
+        surface_L=surfaces[0], surface_R=surfaces[1], edge_threshold=0.1,
+    )
+    assert snaps[-1]["hover"] is None
+
+
+def test_no_legend_without_network_column(dataset, monkeypatch, scene_kwargs):
+    nodes = dataset.nodes_df.drop(columns="network")
+    plotter = bnv.BrainNetPlotter(bnv.load(next(iter(dataset.matrices.values())), nodes))
+    assert _open_window(plotter, monkeypatch, node_color="grey", **scene_kwargs)[0]["legend"] is None
+
+
+def test_no_legend_without_window_controls(dataset, monkeypatch, scene_kwargs):
+    plotter = bnv.BrainNetPlotter(dataset, subject_id="mean")
+    assert _open_window(plotter, monkeypatch, window_controls=False, **scene_kwargs)[0]["legend"] is None

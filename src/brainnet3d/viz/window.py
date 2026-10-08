@@ -21,6 +21,7 @@ class WindowScene:
         self._key = np.full(len(edges), np.inf) if edge_key is None else np.asarray(edge_key, dtype=float)
         self._threshold = -np.inf
         self._selected: int | None = None
+        self._hidden = np.zeros(len(nodes), dtype=bool)
 
     @classmethod
     def from_arrays(cls, nodes: list, paths, endpoints, rgba, widths, edge_key) -> WindowScene:
@@ -43,10 +44,27 @@ class WindowScene:
         mesh = self.node_mesh
         # the picked point lies on the surface of the clicked sphere
         gap = np.abs(np.linalg.norm(mesh._node_centers - np.asarray(point, dtype=float), axis=1) - mesh._node_radii)
-        return int(np.argmin(gap))
+        gap[self._hidden] = np.inf
+        best = int(np.argmin(gap))
+        return best if gap[best] <= 0.1 * mesh._node_radii[best] else None
 
     def click(self, node_idx: int | None) -> None:
         self._selected = None if node_idx is None or node_idx == self._selected else node_idx
+        self._refresh()
+
+    def set_hidden(self, hidden: np.ndarray) -> None:
+        """Hide the nodes marked True and every edge touching them."""
+        self._hidden = np.asarray(hidden, dtype=bool)
+        if self._selected is not None and self._hidden[self._selected]:
+            self._selected = None
+        if self.node_mesh is not None:
+            # collapse hidden spheres to their centres; any transparency would send every node down VTK's
+            # translucent pass and change how the visible ones look
+            mesh = self.node_mesh
+            points = mesh._points0.copy()
+            gone = self._hidden[mesh._point_node]
+            points[gone] = mesh._node_centers[mesh._point_node[gone]]
+            mesh.vertices = points
         self._refresh()
 
     def set_threshold(self, threshold: float) -> None:
@@ -61,6 +79,8 @@ class WindowScene:
             rgba[~touching] = _DIM_RGBA
             rgba[touching, 3] = np.minimum(rgba[touching, 3] * 1.4, 1.0)
         rgba[self._key <= self._threshold, 3] = 0.0
+        if len(self._endpoints):
+            rgba[self._hidden[self._endpoints].any(axis=1), 3] = 0.0
         for mesh in self.edge_meshes:
             mesh.cellcolors = _to_uint8(rgba[mesh._cell_edge])
 
@@ -81,6 +101,8 @@ def _merge_nodes(spheres: list):
     mesh.properties.DeepCopy(spheres[0].properties)
     mesh.properties.SetOpacity(1.0)
     mesh._node_centers = np.array([s.center_of_mass() for s in spheres])
+    mesh._point_node = np.repeat([s._node_idx for s in spheres], [s.npoints for s in spheres])
+    mesh._points0 = np.array(mesh.vertices)
     mesh._node_radii = np.array([s.average_size() for s in spheres])
     return mesh
 
@@ -307,3 +329,90 @@ def add_threshold_slider(plt, on_change, lowest: float, highest: float, value: f
     rep.SetTitleHeight(0.018)
     rep.SetLabelHeight(0.018)
     return widget
+
+
+class NetworkLegend:
+    """Card listing the networks at the top left of the window; clicking a row hides or shows that network."""
+
+    _TOP, _ROW, _MARGIN = 42, 20, 16
+
+    def __init__(self, names: list[str], colors: list):
+        from vtkmodules.vtkRenderingCore import vtkActor2D, vtkImageMapper
+
+        self.names = list(names)
+        self.colors = [tuple(float(v) for v in c[:3]) for c in colors]
+        self.hidden: set[str] = set()
+        self._mapper = vtkImageMapper()
+        self._mapper.SetColorWindow(255)
+        self._mapper.SetColorLevel(127.5)
+        self.actor = vtkActor2D()
+        self.actor.SetMapper(self._mapper)
+        self.actor._legend = self
+        self._size = (0, 0)
+        self._draw()
+
+    def place(self, renderer) -> None:
+        """Keep the card at the top left whatever the window size."""
+        _, height = renderer.GetSize()
+        self.actor.SetPosition(self._MARGIN, max(height - self._size[1] - self._MARGIN, 0))
+
+    def row_center(self, name: str) -> tuple[float, float]:
+        x, y = self.actor.GetPosition()
+        k = self.names.index(name)
+        return x + self._size[0] / 2, y + self._size[1] - self._TOP - self._ROW * k
+
+    def toggle_at(self, xy) -> str | None:
+        """Toggle the network whose row contains display point xy; None when xy is not on a row."""
+        if xy is None:
+            return None
+        x0, y0 = self.actor.GetPosition()
+        x, y = xy
+        if not x0 <= x <= x0 + self._size[0]:
+            return None
+        k = int(round((y0 + self._size[1] - self._TOP - y) / self._ROW))
+        if not 0 <= k < len(self.names) or abs(y0 + self._size[1] - self._TOP - self._ROW * k - y) > self._ROW / 2:
+            return None
+        self.hidden ^= {self.names[k]}
+        self._draw()
+        return self.names[k]
+
+    def _draw(self) -> None:
+        from vedo import vtkclasses as vtki
+        from vtkmodules.util.numpy_support import numpy_to_vtk
+
+        rgba = _legend_image(self.names, self.colors, self.hidden, self._TOP, self._ROW)
+        h, w = rgba.shape[:2]
+        data = vtki.vtkImageData()
+        data.SetDimensions(w, h, 1)
+        scalars = numpy_to_vtk(np.flipud(rgba).reshape(-1, 4), deep=True)
+        scalars.SetNumberOfComponents(4)
+        data.GetPointData().SetScalars(scalars)
+        self._mapper.SetInputData(data)
+        self._size = (w, h)
+
+
+def _legend_image(names: list[str], colors: list, hidden: set, top: int, row: int) -> np.ndarray:
+    """Rounded white card with a "Networks" title and one dot and name per row; hidden rows are greyed out."""
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.figure import Figure
+    from matplotlib.patches import Circle, FancyBboxPatch
+
+    w_px = max(150, 7 * max(len(n) for n in names) + 50)
+    h_px = top + row * (len(names) - 1) + 20
+    fig = Figure(figsize=(w_px / 100, h_px / 100), dpi=100)
+    fig.patch.set_alpha(0)
+    FigureCanvasAgg(fig)
+    ax = fig.add_axes((0, 0, 1, 1))
+    ax.set_xlim(0, w_px)
+    ax.set_ylim(0, h_px)
+    ax.axis("off")
+    ax.add_patch(FancyBboxPatch((4, 4), w_px - 8, h_px - 8, boxstyle="round,pad=0,rounding_size=7",
+                                fc="white", ec=(0.82, 0.82, 0.82), lw=0.5, alpha=0.95))
+    ax.text(14, h_px - 20, "Networks", fontsize=7.15, fontweight="bold", color="#222", va="center")
+    for k, (name, rgb) in enumerate(zip(names, colors)):
+        y = h_px - top - row * k
+        off = name in hidden
+        ax.add_patch(Circle((20, y), 5, fc="white" if off else rgb, ec=rgb, lw=1))
+        ax.text(32, y, name, fontsize=6.5, color="#bbb" if off else "#222", va="center")
+    fig.canvas.draw()
+    return np.asarray(fig.canvas.buffer_rgba()).copy()
