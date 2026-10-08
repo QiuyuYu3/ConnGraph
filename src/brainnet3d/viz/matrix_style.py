@@ -161,8 +161,8 @@ def draw_matrix(
         snets = [str(network_labels[i]) for i in idx]
         colors = dict(zip(*_network_colors(network_labels, network_palette)))
         strip = np.array([colors[x] for x in snets])
-        left = divider.append_axes("left", size="3%", pad=0.03)
-        top = divider.append_axes("top", size="3%", pad=0.03)
+        left = divider.append_axes("left", size="2%", pad=0.03)
+        top = divider.append_axes("top", size="2%", pad=0.03)
         left.imshow(strip[:, None, :], aspect="auto", interpolation="nearest")
         top.imshow(strip[None, :, :], aspect="auto", interpolation="nearest")
         for strip_ax in (left, top):
@@ -243,15 +243,17 @@ def _network_names(ax, left, top, groups: list) -> None:
     n = groups[-1][2]
     pts_per_row = ax.get_window_extent().height / n * 72 / fig.dpi
     mids = [(a + b - 1) / 2 for _, a, b in groups]
-    pos = _spread(mids, _NAME_FONT * 1.25 / pts_per_row, 0, n - 1)
+    gap = _NAME_FONT * 1.25 / pts_per_row
+    pos = _spread(mids, gap, 0, n - 1)
 
-    line = dict(arrowstyle="-", lw=0.4, color="0.5", shrinkA=0, shrinkB=2)
     y_coords = blended_transform_factory(left.transAxes, left.transData)
     x_coords = blended_transform_factory(top.transData, top.transAxes)
     for (name, _, _), mid, p in zip(groups, mids, pos):
-        left.annotate(name, xy=(0, mid), xycoords=y_coords, xytext=(-12, p), textcoords=("offset points", "data"),
+        # only a name pushed away from its group needs a line back to it
+        line = dict(arrowstyle="-", lw=0.4, color="0.5", shrinkA=0, shrinkB=2) if abs(p - mid) > 0.25 * gap else None
+        left.annotate(name, xy=(0, mid), xycoords=y_coords, xytext=(-10, p), textcoords=("offset points", "data"),
                       ha="right", va="center", fontsize=_NAME_FONT, arrowprops=line)
-        top.annotate(name, xy=(mid, 1), xycoords=x_coords, xytext=(p, 12), textcoords=("data", "offset points"),
+        top.annotate(name, xy=(mid, 1), xycoords=x_coords, xytext=(p, 10), textcoords=("data", "offset points"),
                      ha="center", va="bottom", rotation=90, fontsize=_NAME_FONT, arrowprops=line)
 
 
