@@ -94,3 +94,21 @@ def out_dir(tmp_path_factory) -> pathlib.Path:
     path = pathlib.Path(target)
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+@pytest.fixture(scope="session")
+def surfaces(tmp_path_factory) -> tuple[str, str]:
+    """Small left and right sphere meshes written as .surf.gii, centred at x = -40 and x = +40."""
+    import nibabel as nib
+    from vedo import Sphere
+
+    out = tmp_path_factory.mktemp("surfaces")
+    paths = []
+    for hemi, x in (("L", -40.0), ("R", 40.0)):
+        sphere = Sphere(pos=(x, 0, 0), r=35, res=12)
+        coords = nib.gifti.GiftiDataArray(np.asarray(sphere.vertices, dtype=np.float32), intent="NIFTI_INTENT_POINTSET")
+        faces = nib.gifti.GiftiDataArray(np.asarray(sphere.cells, dtype=np.int32), intent="NIFTI_INTENT_TRIANGLE")
+        path = out / f"hemi-{hemi}.surf.gii"
+        nib.save(nib.gifti.GiftiImage(darrays=[coords, faces]), path)
+        paths.append(str(path))
+    return paths[0], paths[1]

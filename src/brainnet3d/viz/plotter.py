@@ -207,6 +207,9 @@ class BrainNetPlotter:
         actors: list = []
 
         # Surface
+        if show_hemisphere != "both":
+            surface_L = surface_L if show_hemisphere.upper() == "L" else None
+            surface_R = surface_R if show_hemisphere.upper() == "R" else None
         if show_surface and (surface_L or surface_R):
             meshes = load_surface(
                 surface_L=surface_L,

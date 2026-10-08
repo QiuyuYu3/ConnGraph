@@ -318,3 +318,13 @@ def test_highlight_edges_follow_hemisphere_filter(dataset, monkeypatch):
 def test_highlight_edges_shape_mismatch_raises(dataset):
     with pytest.raises(ValueError, match="highlight_edges"):
         bnv.BrainNetPlotter(dataset, subject_id="mean").plot(highlight_edges=np.zeros((3, 3)))
+
+
+def test_show_hemisphere_hides_other_surface(dataset, surfaces, monkeypatch):
+    left, right = surfaces
+    actors = _plot_actors(
+        bnv.BrainNetPlotter(dataset, subject_id="mean"), monkeypatch,
+        surface_L=left, surface_R=right, show_hemisphere="L",
+    )
+    meshes = [a for a in actors if not hasattr(a, "_node_idx") and not hasattr(a, "_endpoints")]
+    assert len(meshes) == 1 and meshes[0].center_of_mass()[0] < 0
