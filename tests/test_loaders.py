@@ -80,3 +80,14 @@ def test_no_edges_above_threshold_warns():
     with pytest.warns(UserWarning, match="No edges"):
         img = bnv.BrainNetPlotter(ds).plot(edge_threshold=2.0, node_color="steelblue")
     assert img is not None
+
+
+def test_node_table_keeps_none_as_text(tmp_path):
+    labels = ["a", "b", "c"]
+    pd.DataFrame(np.eye(3), index=labels, columns=labels).to_csv(tmp_path / "matrix.csv")
+    (tmp_path / "nodes.csv").write_text(
+        "label,x,y,z,network,score\na,0,0,0,None,1.5\nb,1,0,0,Default,NA\nc,2,0,0,,2.5\n", encoding="utf-8"
+    )
+    nodes = bnv.load(str(tmp_path / "matrix.csv"), str(tmp_path / "nodes.csv")).nodes_df
+    assert nodes["network"].tolist()[:2] == ["None", "Default"] and pd.isna(nodes["network"].iloc[2])
+    assert pd.api.types.is_float_dtype(nodes["score"]) and pd.isna(nodes["score"].iloc[1])

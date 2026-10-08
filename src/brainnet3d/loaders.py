@@ -18,6 +18,12 @@ import pandas as pd
 from brainnet3d.core.dataset import ConnectivityDataset
 from brainnet3d.exceptions import DataValidationError
 
+# pandas' default missing-value strings minus "None", which atlases such as Gordon use as a network label
+_NODE_NA_VALUES = [
+    "", "#N/A", "#N/A N/A", "#NA", "-1.#IND", "-1.#QNAN", "-NaN", "-nan", "1.#IND", "1.#QNAN",
+    "<NA>", "N/A", "NA", "NULL", "NaN", "n/a", "nan", "null",
+]
+
 
 def load(
     matrix: str | pd.DataFrame,
@@ -128,7 +134,7 @@ def _read_nodes(src: str | pd.DataFrame) -> pd.DataFrame:
         return src.copy()
 
     sep = "\t" if src.endswith((".tsv", ".txt")) else ","
-    df  = pd.read_csv(src, sep=sep)
+    df  = pd.read_csv(src, sep=sep, keep_default_na=False, na_values=_NODE_NA_VALUES)
     df["label"] = df["label"].astype(str)
     return df
 
