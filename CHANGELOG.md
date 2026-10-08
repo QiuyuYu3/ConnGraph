@@ -5,6 +5,7 @@
 ### Added
 
 - Two more ways to build the graph for graph metrics: the disparity filter, also over a range of significance levels, and the planar maximally filtered graph (PMFG).
+- NBS results record their options, groups, package versions and random seed; a run without a seed can be repeated with the recorded one.
 
 ### Fixed
 

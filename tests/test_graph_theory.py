@@ -644,6 +644,27 @@ def test_run_nbs_is_reproducible_with_seed():
     np.testing.assert_array_equal(a.null, b.null)
 
 
+def test_run_nbs_params_record_options_and_groups():
+    pytest.importorskip("bct")
+    g1, g2 = _null_groups(n_subjects=4)
+    res = run_nbs(g1, g2, thresh=1.5, k=20, tail="right", seed=1, verbose=False)
+    assert res.params["options"] == {"thresh": 1.5, "k": 20, "tail": "right", "paired": False, "seed": 1}
+    assert res.params["groups"] == {"g1": list(g1), "g2": list(g2)}
+    assert res.params["n_nodes"] == 12
+    assert "bctpy" in res.params["packages"]
+
+
+def test_run_nbs_params_seed_reproduces_an_unseeded_run():
+    pytest.importorskip("bct")
+    g1, g2 = _null_groups()
+    first = run_nbs(g1, g2, thresh=1.5, k=30, verbose=False)
+    seed = first.params["options"]["seed"]
+    assert isinstance(seed, int)
+    again = run_nbs(g1, g2, thresh=1.5, k=30, seed=seed, verbose=False)
+    np.testing.assert_array_equal(first.null, again.null)
+    np.testing.assert_array_equal(first.pval, again.pval)
+
+
 def _effect_groups(n_subjects: int = 10, seed: int = 0):
     g1, g2 = _null_groups(n_nodes=16, n_subjects=n_subjects, seed=seed)
     for m in g2.values():

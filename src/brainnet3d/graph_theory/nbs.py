@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import platform
+from dataclasses import dataclass, field
+from datetime import datetime
 
 import numpy as np
 import pandas as pd
@@ -13,6 +15,7 @@ class NBSResult:
     adj:  np.ndarray
     null: np.ndarray
     labels: list[str] | None = None
+    params: dict = field(default_factory=dict)
 
 
 def run_nbs(
@@ -36,12 +39,12 @@ def run_nbs(
     k        : number of permutations.
     tail     : "both" | "left" | "right".
     paired   : True for paired t-test (groups must be the same size).
-    seed     : random seed for reproducibility.
+    seed     : random seed for reproducibility; when None, the seed drawn is recorded in ``result.params``.
     verbose  : print permutation progress.
 
     Returns
     -------
-    NBSResult with pval, adj, null arrays and the ROI label list.
+    NBSResult with pval, adj, null arrays, the ROI label list, and params (options, groups, package versions).
     """
     try:
         from bct import BCTParamError, get_components
@@ -82,6 +85,8 @@ def run_nbs(
         print(f"max component size is {int(max_size)}")
         print(f"estimating null distribution with {k} permutations")
 
+    if seed is None:
+        seed = int(np.random.SeedSequence().generate_state(1)[0])  # a seed that can be recorded and passed back
     rng = get_rng(seed)
     pooled = np.hstack((x_edges, y_edges))
     null = np.zeros(k)
@@ -99,7 +104,17 @@ def run_nbs(
             print(f"permutation {u} of {k}.  p-value so far is {hits / (u + 1):.3f}")
 
     pval = np.array([np.count_nonzero(null >= s) / k for s in sizes])
-    return NBSResult(pval=pval, adj=adj, null=null, labels=labels)
+    from brainnet3d.graph_theory.runner import _jsonable, _package_versions
+
+    params = _jsonable({
+        "created": datetime.now().isoformat(timespec="seconds"),
+        "python": platform.python_version(),
+        "packages": _package_versions(),
+        "options": {"thresh": thresh, "k": k, "tail": tail, "paired": paired, "seed": seed},
+        "groups": {"g1": ids1, "g2": ids2},
+        "n_nodes": n,
+    })
+    return NBSResult(pval=pval, adj=adj, null=null, labels=labels, params=params)
 
 
 def _two_sample_t(a: np.ndarray, b: np.ndarray, tail: str) -> np.ndarray:
