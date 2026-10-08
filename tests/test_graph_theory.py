@@ -218,6 +218,24 @@ def test_metric_variants_on_small_signed_graph():
     )
 
 
+def test_costantini_matches_bct_with_negative_weights_and_low_degree_nodes():
+    bct = pytest.importorskip("bct")
+    A = np.triu(_random_corr(15, 3, seed=1), 1)
+    A[np.abs(A) < 0.1] = 0
+    A[:3] = 0
+    A[:, :3] = 0
+    # node 0 isolated, node 1 pendant, node 2 with two neighbours of very different weight
+    for (i, j), w in {(1, 3): 0.6, (2, 3): 0.9, (2, 4): 1e-8, (3, 4): -0.5}.items():
+        A[i, j] = w
+    A = A + A.T
+    assert (A < 0).any()
+
+    got = compute_metric("clust_coeff.costantini", A)
+    np.testing.assert_allclose(got, bct.clustering_coef_wu_sign(A.copy(), coef_type="costantini"), rtol=0, atol=1e-12)
+    assert got[0] == got[1] == 0
+    assert got[2] == pytest.approx(-0.5, abs=1e-12)
+
+
 def test_rubinov_local_efficiency_by_hand():
     a, b, c, d, e = 0.8, 0.6, 0.5, 0.4, 0.7
     W = np.zeros((4, 4))

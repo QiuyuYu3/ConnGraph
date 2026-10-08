@@ -150,7 +150,7 @@ def compute_metric(name: str, A: np.ndarray) -> np.ndarray:
     W = np.abs(A)
     B = (A != 0).astype(float)
     funcs = {
-        "clust_coeff.costantini": lambda: bct.clustering_coef_wu_sign(A, coef_type="costantini"),
+        "clust_coeff.costantini": lambda: _clustering_costantini(A),
         "clust_coeff.zhang":      lambda: bct.clustering_coef_wu_sign(W, coef_type="zhang")[0],
         "clust_coeff.onnela":     lambda: bct.clustering_coef_wu(W),
         "clust_coeff.bin":        lambda: bct.clustering_coef_bu(B),
@@ -171,6 +171,16 @@ def compute_metric(name: str, A: np.ndarray) -> np.ndarray:
     if name.startswith("clust_coeff."):
         values = np.nan_to_num(values, nan=0.0)  # nodes with fewer than two neighbours
     return values
+
+
+def _clustering_costantini(A: np.ndarray) -> np.ndarray:
+    # Closed form of bct's triple loop: signed triangles over the |w| products of neighbour pairs
+    W = np.abs(A)
+    before = np.zeros_like(W)
+    before[:, 1:] = np.cumsum(W[:, :-1], axis=1)
+    pairs = 2 * (W * before).sum(axis=1)  # avoids the cancellation of sum(|w|)**2 - sum(w**2)
+    triangles = ((A @ A) * A).sum(axis=1)
+    return np.divide(triangles, pairs, out=np.zeros(len(A)), where=triangles != 0)
 
 
 def _n_pairs(A: np.ndarray) -> int:
