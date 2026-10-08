@@ -21,7 +21,7 @@
 - **Metric tables have two-level columns, and metric names include the variant, so `result.node_df["strength.abs"]` gives one metric for all ROIs.** Results are saved as one CSV file per level and metric.
 - **Network-level metrics are computed on the hemisphere-split graph by default;** the whole-network graph is optional.
 - Data problems are shown as warnings instead of printed text.
-- Node colours no longer repeat when there are more than 12 categories, numeric node colours default to viridis, and 3-D spring plots colour nodes by network when network labels are given.
+- Node colours no longer repeat when there are more than 12 categories and neighbouring categories get different hues, numeric node colours default to viridis, and 3-D spring plots colour nodes by network when network labels are given.
 - Node tables read from file keep the label "None" as text instead of treating it as missing.
 - Matrix heatmaps and NBS plots show network colour strips, label networks instead of every ROI in large matrices, and leave a constant diagonal blank; the third NBS panel shows the group difference with significant edges marked instead of hiding the rest.
 - Circos plots draw curved chords coloured and sized by weight, with an edge colour bar and a ring of network names in place of the legend, and keep the node table's order within each network.
@@ -29,6 +29,7 @@
 ### Fixed
 
 - Misplaced nodes with graph layouts, wrong edges highlighted and the other surface still drawn when one hemisphere is shown, and display errors in spring and circos plots.
+- Showing one hemisphere now raises an error when the node table has no hemisphere column, instead of drawing every node; networks named with numbers are ordered by value (2 before 10).
 
 ## [0.1.0] - 2026-10-07
 

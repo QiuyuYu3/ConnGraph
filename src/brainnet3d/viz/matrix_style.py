@@ -4,6 +4,8 @@ Shared drawing for connectivity matrix plots: row order, network colour strips a
 
 from __future__ import annotations
 
+import re
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.cm import ScalarMappable
@@ -59,8 +61,13 @@ def matrix_order(
     return np.asarray(idx)
 
 
+def natural_key(value) -> tuple:
+    """Sort key that compares the numbers inside a name by value, so "net2" comes before "net10"."""
+    return tuple(int(t) if t.isdigit() else t for t in re.split(r"(\d+)", str(value)))
+
+
 def _network_sequence(nets: np.ndarray, network_order) -> list[str]:
-    present = sorted(set(nets))
+    present = sorted(set(nets), key=natural_key)
     if network_order is None:
         return present
     unknown = [x for x in network_order if x not in present]

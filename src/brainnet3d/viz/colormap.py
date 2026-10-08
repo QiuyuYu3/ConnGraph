@@ -4,6 +4,8 @@ Color mapping utilities: numeric arrays and categorical labels → RGB tuples.
 
 from __future__ import annotations
 
+import os
+import sys
 import warnings
 
 import numpy as np
@@ -11,6 +13,16 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 
 RGB = tuple[float, float, float]
+
+_PACKAGE_DIR = os.path.normcase(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) + os.sep
+
+
+def _caller_stacklevel() -> int:
+    # stacklevel of the first frame outside the package, so a warning points at the user's code whatever the call path
+    frame, level = sys._getframe(1), 1
+    while frame is not None and os.path.normcase(os.path.abspath(frame.f_code.co_filename)).startswith(_PACKAGE_DIR):
+        frame, level = frame.f_back, level + 1
+    return level
 
 
 def values_to_colors(
@@ -43,16 +55,19 @@ def labels_to_colors(
         return [_to_rgb(palette.get(lbl, "grey")) for lbl in labels]
 
     unique = list(dict.fromkeys(labels))
+    picked = cmap
     if cmap is None:
-        cmap = "Set3" if len(unique) <= 12 else "tab20"
-    cm     = plt.get_cmap(cmap)
+        picked = "Set3" if len(unique) <= 12 else "tab20"
+    cm     = plt.get_cmap(picked)
     if len(unique) > cm.N:
         warnings.warn(
-            f"{len(unique)} categories but colormap '{cmap}' has {cm.N} colours, so some categories share a colour. "
+            f"{len(unique)} categories but colormap '{picked}' has {cm.N} colours, so some categories share a colour. "
             "Pass a palette or a colormap with more colours.",
-            stacklevel=2,
+            stacklevel=_caller_stacklevel(),
         )
-    color_map = {lbl: cm(i % cm.N)[:3] for i, lbl in enumerate(unique)}
+    # tab20 pairs each hue with a lighter shade; take the dark shades first so neighbours differ in hue
+    slots = list(range(0, 20, 2)) + list(range(1, 20, 2)) if cmap is None and picked == "tab20" else list(range(cm.N))
+    color_map = {lbl: cm(slots[i % cm.N])[:3] for i, lbl in enumerate(unique)}
     return [color_map[lbl] for lbl in labels]
 
 

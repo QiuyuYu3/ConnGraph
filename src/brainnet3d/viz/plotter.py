@@ -572,8 +572,12 @@ class BrainNetPlotter:
         nodes_df: pd.DataFrame,
         show_hemisphere: str,
     ) -> pd.DataFrame:
-        if show_hemisphere == "both" or "hemisphere" not in nodes_df.columns:
+        if show_hemisphere == "both":
             return nodes_df.copy()
+        if "hemisphere" not in nodes_df.columns:
+            raise DataValidationError(
+                f"show_hemisphere='{show_hemisphere}' needs a 'hemisphere' column in the nodes table."
+            )
 
         mask     = nodes_df["hemisphere"].str.upper() == show_hemisphere.upper()
         filtered = nodes_df[mask].reset_index(drop=True)

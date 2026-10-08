@@ -147,8 +147,8 @@ def matrix_heatmap(
                      connections (signed), and nodes in each network run from the side of the
                      previous network to the side of the next.
                      None → input order.
-    network_order  : network names in display order; unlisted networks follow alphabetically.
-                     Default: alphabetical.
+    network_order  : network names in display order; unlisted networks follow in name order.
+                     Default: name order, with numbers inside names compared by value.
     tick_labels    : "auto" (default) → ROI labels for up to 40 nodes, otherwise network names
                      at the middle of each group. "roi", "network" or None (no labels).
     network_boundaries : "lines" (default) → lines between networks. "boxes" → a coloured box
@@ -265,7 +265,9 @@ def spring_plot(
                             labels={i: roi_labels[i] for i in range(len(roi_labels))},
                             font_size=label_fontsize, font_color="black")
 
-    unique_nets    = sorted(set(network_labels))
+    from brainnet3d.viz.matrix_style import natural_key
+
+    unique_nets    = sorted(set(network_labels), key=natural_key)
     legend_handles = [mpatches.Patch(color=net2color[n], label=n) for n in unique_nets]
     ax.legend(handles=legend_handles, title="Subnetwork",
               loc="upper left", fontsize=10, framealpha=0.8)
@@ -338,14 +340,14 @@ def circos_plot(
                          (vmin, vmax) tuple → explicit limits.
     edge_colorbar : with edge_color="weight", draw a small edge colour bar in the lower right corner.
     """
-    from brainnet3d.viz.matrix_style import _groups, is_contiguous, matrix_order, merge_heights
+    from brainnet3d.viz.matrix_style import _groups, is_contiguous, matrix_order, merge_heights, natural_key
 
     net2color   = _network_colors(network_labels, net2color)
     n           = len(roi_labels)
-    unique_nets = sorted(set(network_labels))
+    unique_nets = sorted(set(network_labels), key=natural_key)
 
     if order == "network" and network_order is None:
-        order = sorted(range(n), key=lambda i: (network_labels[i], i))
+        order = sorted(range(n), key=lambda i: (natural_key(network_labels[i]), i))
         values = None
     else:
         values = np.zeros((n, n)) if order_matrix is None else np.asarray(order_matrix, dtype=float)
@@ -503,6 +505,13 @@ def _spread_angles(centres: list[float], widths: list[float], pad: float, iterat
             if short > 1e-9:
                 pos[k] -= short / 2
                 pos[k + 1] += short / 2
+                moved = True
+        if len(pos) > 1:
+            # the last and first names meet at the top of the circle
+            short = (widths[-1] + widths[0]) / 2 + pad - (pos[0] + 2 * np.pi - pos[-1])
+            if short > 1e-9:
+                pos[-1] -= short / 2
+                pos[0] += short / 2
                 moved = True
         if not moved:
             break

@@ -94,6 +94,24 @@ def test_legend_accepts_one_name(dataset):
     plt.close(fig)
 
 
+def test_legend_values_are_round_numbers():
+    from brainnet3d.viz.panels import _number, _round_values
+
+    np.testing.assert_allclose(_round_values(16.0, 1940.0), [500, 1000, 1500])
+    np.testing.assert_allclose(_round_values(0.55, 0.705), [0.6, 0.65, 0.7])
+    assert [_number(v) for v in (1500.0, 0.65, 1940.3, 0.5533)] == ["1,500", "0.65", "1,940", "0.553"]
+
+
+def test_size_legend_shows_round_values(dataset):
+    from brainnet3d.viz.panels import _number, _round_values
+
+    fig = _views(dataset, legend=["node_size"], node_size="x")
+    x = dataset.nodes_df["x"].to_numpy(float)
+    texts = [t.get_text() for t in _legends(fig)["node_size"].texts]
+    assert texts == ["x"] + [_number(v) for v in _round_values(x.min(), x.max())]
+    plt.close(fig)
+
+
 def test_legend_false_draws_none(dataset):
     fig = _views(dataset, legend=False, node_color="network", node_size="x")
     assert _legends(fig) == {}

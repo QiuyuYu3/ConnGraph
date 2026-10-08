@@ -186,6 +186,25 @@ def test_circos_network_names_do_not_overlap():
     plt.close(fig)
 
 
+def test_circos_first_and_last_network_names_do_not_overlap():
+    # the first and last groups meet at the top of the circle
+    sizes = {"Alpha_network": 1, "Middle": 60, "Zulu_network": 1}
+    nets = [name for name, k in sizes.items() for _ in range(k)]
+    fig, ax = bnv.circos_plot(nx.empty_graph(len(nets)), [f"r{i}" for i in range(len(nets))], nets)
+    fig.canvas.draw()
+    boxes = [t.get_window_extent() for t in ax.texts if t.get_text() in sizes]
+    assert len(boxes) == len(sizes)
+    assert not any(a.overlaps(b) for a, b in itertools.combinations(boxes, 2))
+    plt.close(fig)
+
+
+def test_circos_sorts_network_names_with_numbers_by_value():
+    labels, nets = ["a", "b", "c", "d"], ["net10", "net2", "net10", "net2"]
+    fig, ax = bnv.circos_plot(nx.empty_graph(4), labels, nets)
+    assert _ring_order(ax, labels) == ["b", "d", "a", "c"]
+    plt.close(fig)
+
+
 def test_spring_hulls_are_optional(signed_graph):
     G, labels, nets = signed_graph
     fig, ax = bnv.spring_plot(G, labels, nets)

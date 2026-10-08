@@ -15,6 +15,7 @@ from matplotlib.cm import ScalarMappable
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from matplotlib.patches import Circle, Patch
+from matplotlib.ticker import MaxNLocator
 
 from brainnet3d.exceptions import DataValidationError
 from brainnet3d.viz.nodes import _resolve_vminvmax
@@ -243,8 +244,26 @@ def _representative(values: np.ndarray, out_range: tuple[float, float]) -> tuple
     lo, hi = float(np.nanmin(values)), float(np.nanmax(values))
     if hi == lo:
         return np.array([lo]), np.array([(out_range[0] + out_range[1]) / 2])
-    shown = np.linspace(lo, hi, 3)
+    shown = _round_values(lo, hi)
     return shown, out_range[0] + (shown - lo) / (hi - lo) * (out_range[1] - out_range[0])
+
+
+def _round_values(lo: float, hi: float) -> np.ndarray:
+    # three round numbers inside the data range, as tick labels would pick; fall back to min, middle, max
+    for bins in range(3, 9):
+        ticks = MaxNLocator(nbins=bins, steps=[1, 2, 2.5, 5, 10]).tick_values(lo, hi)
+        ticks = ticks[(ticks >= lo) & (ticks <= hi)]
+        if len(ticks) >= 3:
+            # with an even count, drop the smallest so the three values are evenly spaced
+            ticks = ticks[1:] if len(ticks) % 2 == 0 else ticks
+            return ticks[[0, len(ticks) // 2, -1]]
+    return np.linspace(lo, hi, 3)
+
+
+def _number(value: float) -> str:
+    if float(value).is_integer() and abs(value) < 1e6:
+        return f"{int(value):,}"
+    return f"{value:.3g}" if abs(value) < 1000 else f"{value:,.0f}"
 
 
 def _legend_size(item: dict, dpi: float, px_per_mm: float) -> tuple[float, float]:
@@ -332,7 +351,7 @@ def _draw_legend(add_axes, item: dict, x: float, top: float, w: float, h: float,
         cx = gap
         for value, r in zip(item["values"], radii):
             ax.add_patch(Circle((cx + r, cy), r, color="0.6", linewidth=0))
-            ax.text(cx + r, cy - radii.max() - 0.05, f"{value:.3g}", ha="center", va="top", fontsize=_FONT)
+            ax.text(cx + r, cy - radii.max() - 0.05, _number(value), ha="center", va="top", fontsize=_FONT)
             cx += 2 * r + gap
         return
 
@@ -340,4 +359,4 @@ def _draw_legend(add_axes, item: dict, x: float, top: float, w: float, h: float,
     for k, (value, width_px) in enumerate(zip(item["values"], item["widths_px"])):
         y = h - 0.35 - (k + 0.5) * line
         ax.add_line(Line2D([0.25 * w, 0.5 * w], [y, y], linewidth=width_px * 72 / dpi, color="0.4"))
-        ax.text(0.55 * w, y, f"{value:.3g}", va="center", fontsize=_FONT)
+        ax.text(0.55 * w, y, _number(value), va="center", fontsize=_FONT)

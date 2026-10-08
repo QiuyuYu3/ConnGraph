@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 import brainnet3d as bnv
+from brainnet3d.exceptions import DataValidationError
 
 
 def _net2color(network_labels):
@@ -371,6 +372,13 @@ def test_show_hemisphere_hides_other_surface(dataset, surfaces, monkeypatch):
     )
     meshes = [a for a in actors if not hasattr(a, "_node_idx") and not hasattr(a, "_endpoints")]
     assert len(meshes) == 1 and meshes[0].center_of_mass()[0] < 0
+
+
+def test_show_hemisphere_needs_hemisphere_column(dataset):
+    nodes_df = dataset.nodes_df.drop(columns="hemisphere")
+    plotter = bnv.BrainNetPlotter(bnv.ConnectivityDataset(dataset.matrices, nodes_df), subject_id="mean")
+    with pytest.raises(DataValidationError, match="hemisphere"):
+        plotter.plot(show_hemisphere="L")
 
 
 def test_edge_colors_by_sign(dataset, monkeypatch):

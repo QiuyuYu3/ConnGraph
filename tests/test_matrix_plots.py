@@ -49,6 +49,13 @@ def test_network_order_follows_given_sequence():
         matrix_order(np.eye(5), nets, "network", network_order=["c", "b", "c"])
 
 
+def test_network_names_with_numbers_sort_by_value():
+    ids = np.array([10, 2, 1, 2, 10])
+    assert ids[matrix_order(np.eye(5), ids, "network")].tolist() == [1, 2, 2, 10, 10]
+    names = np.array(["net10", "net2", "net1"])
+    assert names[matrix_order(np.eye(3), names, "network")].tolist() == ["net1", "net2", "net10"]
+
+
 def test_cluster_order_groups_blocks():
     m, nets = _shuffle(*_blocks([6, 5, 7]))
     assert _contiguous(nets[matrix_order(m, nets, "cluster")])
