@@ -198,3 +198,16 @@ def test_plot_views_accepts_highlight(dataset):
     fig = _views(dataset, views=[{"view": "L", "hemisphere": "L"}], highlight_nodes={"network": "Default"})
     assert len(_panels(fig)) == 1
     plt.close(fig)
+
+
+def test_panel_render_is_not_blank(dataset, surfaces):
+    # translucent surfaces exercise depth peeling, which a software OpenGL driver may render blank or black
+    left, right = surfaces
+    fig = _views(dataset, surface_L=left, surface_R=right, node_color="red", edge_threshold=0.3, legend=False)
+    image = np.asarray(_panels(fig)[0].images[0].get_array())
+    assert image.shape[-1] == 3 or (image[..., 3] == 255).all()
+    r, g, b = np.moveaxis(image[..., :3].astype(float), -1, 0)
+    drawn = (np.abs(np.stack([r, g, b]) - 255).max(axis=0) > 8).mean()
+    red = ((r > 120) & (g < 0.5 * r) & (b < 0.5 * r)).mean()
+    assert drawn > 0.1 and red > 0.01
+    plt.close(fig)
