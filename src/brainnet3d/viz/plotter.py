@@ -255,45 +255,22 @@ class BrainNetPlotter:
         # Render
         plt = Plotter(title=title, bg=background, axes=0, offscreen=not interactive)
 
-        if highlight_on_click and edge_lines:
-            node_to_edges: dict = {}
-            for ea in edge_lines:
-                i, j = ea._endpoints
-                node_to_edges.setdefault(i, []).append(ea)
-                node_to_edges.setdefault(j, []).append(ea)
+        window_actors = None
+        if interactive:
+            from brainnet3d.viz.window import WindowScene
 
-            _selected = [None]
+            window = WindowScene(scene.nodes, edge_lines)
+            window_actors = window.actors(scene.surfaces, scene.extras)
 
-            def _on_click(evt):
-                actor    = evt.actor
-                node_idx = getattr(actor, "_node_idx", None)
-
-                if node_idx is None:
-                    for ea in edge_lines:
-                        ea.color(ea._orig_color).alpha(ea._orig_alpha)
-                    _selected[0] = None
+            if highlight_on_click and edge_lines:
+                def _on_click(evt):
+                    window.click(window.node_at(evt.actor, evt.picked3d))
                     plt.render()
-                    return
 
-                if node_idx == _selected[0]:
-                    for ea in edge_lines:
-                        ea.color(ea._orig_color).alpha(ea._orig_alpha)
-                    _selected[0] = None
-                else:
-                    _selected[0] = node_idx
-                    connected_ids = {id(ea) for ea in node_to_edges.get(node_idx, [])}
-                    for ea in edge_lines:
-                        if id(ea) in connected_ids:
-                            ea.color(ea._orig_color).alpha(min(ea._orig_alpha * 1.4, 1.0))
-                        else:
-                            ea.color((0.55, 0.55, 0.55)).alpha(0.06)
-
-                plt.render()
-
-            plt.add_callback("LeftButtonPress", _on_click)
+                plt.add_callback("LeftButtonPress", _on_click)
 
         from brainnet3d.viz.views import _finish_render
-        return _finish_render(plt, actors, interactive, screenshot=screenshot, html=html)
+        return _finish_render(plt, actors, interactive, screenshot=screenshot, html=html, window_actors=window_actors)
 
     def plot_views(
         self,

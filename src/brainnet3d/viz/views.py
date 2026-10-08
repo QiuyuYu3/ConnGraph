@@ -188,11 +188,15 @@ def _finish_render(
     screenshot: str | None = None,
     html: str | None = None,
     camera: dict | None = None,
+    window_actors: list | None = None,
 ) -> np.ndarray | None:
     """Show actors, write the requested files, and return the image unless a window was opened."""
     show_kwargs: dict = {"interactive": False}
     if camera:
         show_kwargs["camera"] = camera
+    # files come from the per-node and per-edge actors; the window shows the merged ones
+    if window_actors is not None and interactive and screenshot is None and html is None:
+        actors, window_actors = window_actors, None
     plt.show(actors, **show_kwargs)
 
     # vedo ignores show(screenshot=...) without an interactor, so save explicitly
@@ -203,6 +207,9 @@ def _finish_render(
 
     image = None
     if interactive:
+        if window_actors is not None:
+            plt.remove(*actors)
+            plt.add(window_actors)
         plt.interactive()
     else:
         image = np.asarray(plt.screenshot(asarray=True))
