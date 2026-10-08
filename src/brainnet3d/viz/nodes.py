@@ -20,7 +20,7 @@ def build_nodes(
     node_size:      str | float = 3.0,
     node_size_range: tuple[float, float] = (2.0, 8.0),
     node_color:     str | tuple = "network",
-    node_cmap:      str = "Set3",
+    node_cmap:      str | None = None,
     node_colorvminvmax: str | tuple | None = "minmax",
     node_alpha:     float = 1.0,
     node_res:       int   = 16,
@@ -38,7 +38,8 @@ def build_nodes(
     node_size_range : (min_r, max_r) in mm.
     node_color : RGB tuple or colour name → uniform. "network" / column name → categorical.
                  Numeric column → continuous colormap.
-    node_cmap : matplotlib colormap name (used for numeric columns).
+    node_cmap : matplotlib colormap name. None → "viridis" for numeric columns;
+                "Set3" for up to 12 categories, else "tab20".
     node_colorvminvmax : colour scale for numeric node_color.
                          "minmax" (default) — maps min→max of the data.
                          "absmax"           — symmetric around 0: ±max(|values|).
@@ -95,7 +96,7 @@ def _resolve_sizes(
 
 def _resolve_colors(
     node_color,
-    node_cmap: str,
+    node_cmap: str | None,
     node_colorvminvmax,
     nodes_df:  pd.DataFrame,
     n:         int,
@@ -110,7 +111,7 @@ def _resolve_colors(
             col = nodes_df[node_color]
             if pd.api.types.is_numeric_dtype(col):
                 vmin, vmax = _resolve_vminvmax(col.values, node_colorvminvmax)
-                return values_to_colors(col.values, cmap=node_cmap, vmin=vmin, vmax=vmax)
+                return values_to_colors(col.values, cmap=node_cmap or "viridis", vmin=vmin, vmax=vmax)
             return labels_to_colors(col.astype(str).tolist(), cmap=node_cmap, palette=palette)
 
         try:

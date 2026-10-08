@@ -4,6 +4,8 @@ Color mapping utilities: numeric arrays and categorical labels → RGB tuples.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
@@ -33,15 +35,23 @@ def values_to_colors(
 
 def labels_to_colors(
     labels: list[str],
-    cmap:   str = "Set3",
+    cmap:   str | None = None,
     palette: dict | None = None,
 ) -> list[RGB]:
-    """Map a list of string labels to (R, G, B) tuples."""
+    """Map a list of string labels to (R, G, B) tuples; cmap None picks "Set3" up to 12 labels, else "tab20"."""
     if palette is not None:
         return [_to_rgb(palette.get(lbl, "grey")) for lbl in labels]
 
     unique = list(dict.fromkeys(labels))
+    if cmap is None:
+        cmap = "Set3" if len(unique) <= 12 else "tab20"
     cm     = plt.get_cmap(cmap)
+    if len(unique) > cm.N:
+        warnings.warn(
+            f"{len(unique)} categories but colormap '{cmap}' has {cm.N} colours, so some categories share a colour. "
+            "Pass a palette or a colormap with more colours.",
+            stacklevel=2,
+        )
     color_map = {lbl: cm(i % cm.N)[:3] for i, lbl in enumerate(unique)}
     return [color_map[lbl] for lbl in labels]
 

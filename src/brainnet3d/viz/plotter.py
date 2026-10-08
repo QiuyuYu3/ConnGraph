@@ -100,7 +100,7 @@ class BrainNetPlotter:
         node_size:           str | float     = 3.0,
         node_size_range:     tuple[float, float]   = (2.0, 8.0),
         node_color:          str | tuple     = "network",
-        node_cmap:           str                   = "Set3",
+        node_cmap:           str | None            = None,
         node_colorvminvmax:  str | tuple | None = "minmax",
         node_alpha:          float                 = 1.0,
         node_res:        int                       = 16,
@@ -146,7 +146,8 @@ class BrainNetPlotter:
         node_color : RGB tuple / colour name → uniform.
                      "network" / "hemisphere" / column name → categorical.
                      numeric column name → continuous colormap.
-        node_cmap  : colormap for numeric node_color.
+        node_cmap  : colormap for node_color. None → "viridis" for numeric columns;
+                     "Set3" for up to 12 categories, else "tab20".
         node_colorvminvmax : colour limits for numeric node_color.
                      "minmax" → data min to max. "absmax" → symmetric ±max(|values|).
                      (vmin, vmax) tuple → explicit limits.
