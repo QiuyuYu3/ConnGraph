@@ -19,7 +19,7 @@
 - Data problems are shown as warnings instead of printed text.
 - Node colours no longer repeat when there are more than 12 categories, and numeric node colours default to viridis.
 - Node tables read from file keep the label "None" as text instead of treating it as missing.
-- Matrix heatmaps and NBS plots show network colour strips, label networks instead of every ROI in large matrices, and leave a constant diagonal blank; NBS plots mark significant edges instead of hiding the rest.
+- Matrix heatmaps and NBS plots show network colour strips, label networks instead of every ROI in large matrices, and leave a constant diagonal blank; the third NBS panel shows the group difference with significant edges marked instead of hiding the rest.
 
 ### Fixed
 

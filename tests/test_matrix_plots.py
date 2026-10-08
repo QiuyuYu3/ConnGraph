@@ -142,11 +142,34 @@ def test_nbs_outlines_small_matrices():
 def test_nbs_fades_large_matrices():
     g1, g2, adj, nets = _nbs([40, 30])
     fig = bnv.plot_nbs_matrices(g1, g2, adj, network_labels=nets)
-    panels = [a for a in fig.axes if a.images]
-    plain, marked = _image(panels[0]), _image(panels[2])
-    assert not any(isinstance(c, LineCollection) for c in panels[2].collections)
-    np.testing.assert_allclose(marked[0, -1], plain[0, -1])
-    assert marked[0, 1, :3].min() > plain[0, 1, :3].min()
+    marked = _image([a for a in fig.axes if a.images][2])
+    assert not any(isinstance(c, LineCollection) for c in fig.axes[2].collections)
+    full = plt.get_cmap("RdBu_r")(0.0)
+    np.testing.assert_allclose(marked[0, -1], full)
+    assert marked[0, 1, :3].min() > min(full[:3])
+    plt.close(fig)
+
+
+def _colorbar_limits(fig):
+    return [a.get_ylim() for a in fig.axes if hasattr(a, "_colorbar")]
+
+
+def test_nbs_third_panel_shows_group_difference():
+    g1, g2, adj, nets = _nbs([5, 5])
+    fig = bnv.plot_nbs_matrices(g1, g2, adj, network_labels=nets, group_names=("HC", "PT"))
+    limits = _colorbar_limits(fig)
+    assert len(limits) == 2
+    np.testing.assert_allclose(limits[0], (-0.5, 0.5))
+    np.testing.assert_allclose(limits[1], (-0.1, 0.1))
+    titles = {a.get_title() for a in fig.axes}
+    assert "HC − PT" in titles
+    plt.close(fig)
+
+
+def test_nbs_difference_range_can_be_set():
+    g1, g2, adj, nets = _nbs([5, 5])
+    fig = bnv.plot_nbs_matrices(g1, g2, adj, diff_vmax=0.3)
+    np.testing.assert_allclose(_colorbar_limits(fig)[1], (-0.3, 0.3))
     plt.close(fig)
 
 
