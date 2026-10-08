@@ -330,6 +330,36 @@ def test_no_edges_warning_points_at_caller(dataset):
     plt.close("all")
 
 
+def test_edge_bundling_bends_edges_between_their_nodes(dataset, monkeypatch):
+    plotter = bnv.BrainNetPlotter(dataset, subject_id="mean")
+    straight = [a for a in _plot_actors(plotter, monkeypatch, edge_threshold=0.3) if hasattr(a, "_endpoints")]
+    bent = [a for a in _plot_actors(plotter, monkeypatch, edge_threshold=0.3, edge_bundling=True) if hasattr(a, "_endpoints")]
+    assert [e._endpoints for e in bent] == [e._endpoints for e in straight]
+    xyz = dataset.nodes_df[["x", "y", "z"]].to_numpy(float)
+    for e in bent:
+        pts = np.asarray(e.vertices)
+        i, j = e._endpoints
+        assert len(pts) > 2
+        np.testing.assert_allclose(pts[[0, -1]], xyz[[i, j]], atol=1e-4)
+    assert any(len(np.asarray(e.vertices)) == 2 for e in straight)
+
+
+def test_edge_bundling_in_views_and_html(dataset, out_dir):
+    plotter = bnv.BrainNetPlotter(dataset, subject_id="mean")
+    fig = plotter.plot_views(views=[{"view": "L"}], panel_size=200, edge_threshold=0.3, edge_bundling=0.5)
+    plt.close(fig)
+    pytest.importorskip("k3d")
+    path = out_dir / "brainnet_bundled.html"
+    plotter.plot(edge_threshold=0.3, edge_bundling=True, html=str(path))
+    assert "K3D" in path.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("value", [-1, "yes"])
+def test_edge_bundling_rejects_bad_values(dataset, value):
+    with pytest.raises(ValueError, match="edge_bundling"):
+        bnv.BrainNetPlotter(dataset, subject_id="mean").plot(edge_bundling=value)
+
+
 def test_show_hemisphere_hides_other_surface(dataset, surfaces, monkeypatch):
     left, right = surfaces
     actors = _plot_actors(

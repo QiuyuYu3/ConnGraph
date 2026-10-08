@@ -33,6 +33,7 @@ def build_edges(
     highlight_edges: np.ndarray | None = None,
     highlight_level: float = 0.85,
     edge_sign_colors: tuple = ((1.0, 0.25, 0.25), (0.25, 0.25, 1.0)),
+    bundling:      float = 0.0,
 ) -> list:
     """
     Build vedo Line (or Tube) objects for all edges above threshold.
@@ -61,6 +62,8 @@ def build_edges(
     highlight_level : dimming strength for non-highlighted edges (0 = no dim,
                       1 = fully invisible). Default 0.85.
     edge_sign_colors : (positive, negative) colours used when edge_color="sign".
+    bundling : edge bundling strength. 0 (default) → straight lines; larger values pull
+               edges that run close together into shared curved bundles.
 
     Returns
     -------
@@ -127,6 +130,13 @@ def build_edges(
 
     dim_alpha = edge_alpha * (1.0 - highlight_level)
 
+    paths = None
+    if bundling:
+        from brainnet3d.viz.bundling import bundle_paths
+
+        positions = np.asarray(positions, dtype=float)
+        paths = bundle_paths(positions[rows], positions[cols], strength=bundling)
+
     lines = []
     for idx, (i, j) in enumerate(zip(rows, cols)):
         p1 = positions[i]
@@ -140,7 +150,9 @@ def build_edges(
         else:
             alpha = edge_alpha
 
-        if use_tube:
+        if paths is not None:
+            obj = Tube(paths[idx], r=w * 0.1, c=c, alpha=alpha) if use_tube else Line(paths[idx], c=c, alpha=alpha).lw(w)
+        elif use_tube:
             obj = Tube([p1, p2], r=w * 0.1, c=c, alpha=alpha)
         else:
             obj = Line(p1, p2, c=c, alpha=alpha).lw(w)

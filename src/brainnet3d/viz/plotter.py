@@ -5,6 +5,7 @@ BrainNetPlotter: the main user-facing visualisation class.
 from __future__ import annotations
 
 import inspect
+import numbers
 import warnings
 from typing import TYPE_CHECKING, NamedTuple
 
@@ -162,6 +163,7 @@ class BrainNetPlotter:
         highlight_nodes: list | dict | str | None  = None,
         highlight_edge_rule: str                   = "both",
         highlight_endpoints: bool                  = False,
+        edge_bundling:   bool | float              = False,
     ) -> np.ndarray | None:
         """
         Render the brain network off screen and return the image; optionally open a window or write files.
@@ -232,6 +234,10 @@ class BrainNetPlotter:
         highlight_endpoints : with highlight_edges, also highlight the nodes those edges touch
                           and dim the other nodes.
         highlight_level : dimming of non-highlighted nodes and edges (0 = none, 1 = invisible).
+        edge_bundling : bend edges that run close together into shared bundles; for display only.
+                        True → strength 1. A number sets the strength: 0.5 is lighter, and above
+                        about 1.5 most edges are pulled into the middle of the brain.
+                        False or 0 (default) → straight lines.
         """
         # every argument, so plot_views can build the same scene from one dict
         args = dict(locals())
@@ -358,6 +364,9 @@ class BrainNetPlotter:
         if highlight_edges is not None:
             highlight_edges = self._align_to_nodes(highlight_edges, nodes_df)
         node_mask, bright_edges = self._highlight(a, nodes_df, highlight_edges)
+        bundling = a["edge_bundling"]
+        if not isinstance(bundling, numbers.Real) or bundling < 0:
+            raise ValueError(f"edge_bundling must be True, False or a number of 0 or more, got {bundling!r}.")
 
         show_surface = a["show_surface"]
         if a["layout"] is not None:
@@ -418,6 +427,7 @@ class BrainNetPlotter:
             highlight_edges  = bright_edges,
             highlight_level  = a["highlight_level"],
             edge_sign_colors = a["edge_sign_colors"],
+            bundling         = float(bundling),
         )
 
         extras = make_axis_arrows(axes=a["arrowaxis"]) if a["arrowaxis"] is not None else []
