@@ -59,6 +59,44 @@ def test_network_cluster_order_keeps_networks_contiguous():
     assert nets[idx].tolist() == sorted(nets.tolist())
 
 
+def _gradient(seed=0):
+    # networks sit on a line in an order unlike their names; connectivity decays along the line
+    centre = {"c": 0.0, "a": 1.0, "d": 2.0, "b": 3.0}
+    nets = np.repeat(list(centre), 6)
+    pos = np.array([centre[s] for s in nets]) + np.tile(np.linspace(-0.4, 0.4, 6), 4)
+    perm = np.random.default_rng(seed).permutation(len(nets))
+    nets, pos = nets[perm], pos[perm]
+    return np.exp(-np.abs(pos[:, None] - pos[None, :])) - 0.3, nets, pos
+
+
+def test_network_chain_follows_connection_strength():
+    m, nets, pos = _gradient()
+    idx = matrix_order(m, nets, "network_chain")
+    runs = [s for k, s in enumerate(nets[idx]) if k == 0 or s != nets[idx][k - 1]]
+    assert runs in (["c", "a", "d", "b"], ["b", "d", "a", "c"])
+    steps = np.diff(pos[idx])
+    assert np.all(steps > 0) or np.all(steps < 0)
+
+
+def test_network_chain_uses_the_sign_of_connections():
+    m, nets, pos = _gradient()
+    flipped = np.where(np.abs(pos[:, None] - pos[None, :]) > 1.5, 0.9, 0.0)
+    idx = matrix_order(m - flipped, nets, "network_chain")
+    runs = [s for k, s in enumerate(nets[idx]) if k == 0 or s != nets[idx][k - 1]]
+    assert runs in (["c", "a", "d", "b"], ["b", "d", "a", "c"])
+
+
+def test_network_chain_in_heatmap_and_nbs():
+    m, nets, _ = _gradient()
+    with pytest.raises(ValueError, match="network_order"):
+        matrix_order(m, nets, "network_chain", network_order=["a"])
+    fig, ax = bnv.matrix_heatmap(m, network_labels=nets, order="network_chain")
+    assert ax.get_legend() is None
+    plt.close(fig)
+    fig = bnv.plot_nbs_matrices(m, m, np.zeros_like(m), network_labels=nets, order="network_chain")
+    plt.close(fig)
+
+
 @pytest.mark.parametrize("kwargs, match", [
     (dict(order="alphabet"), "order"),
     (dict(order="network_cluster"), "network_labels"),

@@ -48,7 +48,7 @@ def plot_nbs_matrices(
                        Default: largest absolute off-diagonal difference.
     **matrix_options : layout options of matrix_heatmap: network_labels, order, network_order,
                        tick_labels, network_boundaries, show_diagonal, network_palette.
-                       "cluster" orders use the average of the two group matrices, so all
+                       "cluster" and "network_chain" orders use the average of the two group matrices, so all
                        panels share one order.
 
     Returns

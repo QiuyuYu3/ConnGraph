@@ -141,6 +141,9 @@ def matrix_heatmap(
                      "cluster" → hierarchical clustering of each node's row (average linkage,
                      Euclidean distance, optimal leaf order), ignoring networks.
                      "network_cluster" → grouped by network, clustered within each network.
+                     "network_chain" → grouped by network; networks follow their strongest mean
+                     connections (signed), and nodes in each network run from the side of the
+                     previous network to the side of the next.
                      None → input order.
     network_order  : network names in display order; unlisted networks follow alphabetically.
                      Default: alphabetical.

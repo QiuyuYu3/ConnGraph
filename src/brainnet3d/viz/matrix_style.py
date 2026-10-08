@@ -20,7 +20,7 @@ MATRIX_OPTIONS = (
     "network_labels", "order", "network_order", "tick_labels",
     "network_boundaries", "show_diagonal", "network_palette",
 )
-_ORDERS          = ("network", "cluster", "network_cluster", None)
+_ORDERS          = ("network", "cluster", "network_cluster", "network_chain", None)
 _ROI_TICK_LIMIT  = 40
 _OUTLINE_LIMIT   = 60
 _NAME_FONT       = 7
@@ -33,7 +33,9 @@ def matrix_order(
     network_order: list[str] | None = None,
 ) -> np.ndarray:
     if order not in _ORDERS:
-        raise ValueError(f"order='{order}' not recognised. Choose: 'network', 'cluster', 'network_cluster' or None.")
+        raise ValueError(
+            f"order='{order}' not recognised. Choose: 'network', 'cluster', 'network_cluster', 'network_chain' or None."
+        )
     n = matrix.shape[0]
     if order is None or (order == "network" and network_labels is None):
         return np.arange(n)
@@ -43,6 +45,10 @@ def matrix_order(
         raise ValueError(f"order='{order}' needs network_labels.")
 
     nets = np.asarray([str(x) for x in network_labels])
+    if order == "network_chain":
+        if network_order is not None:
+            raise ValueError("network_order cannot be combined with order='network_chain', which sets the network order.")
+        return _chain_order(matrix, nets)
     idx: list[int] = []
     for name in _network_sequence(nets, network_order):
         members = np.flatnonzero(nets == name)
@@ -63,6 +69,37 @@ def _network_sequence(nets: np.ndarray, network_order) -> list[str]:
     if repeated:
         raise ValueError(f"network_order lists {repeated} more than once.")
     return list(network_order) + [x for x in present if x not in network_order]
+
+
+def _chain_order(matrix: np.ndarray, nets: np.ndarray) -> np.ndarray:
+    names = sorted(set(nets))
+    members = [np.flatnonzero(nets == s) for s in names]
+    if len(names) == 1:
+        return members[0]
+    w = np.nan_to_num(np.asarray(matrix, dtype=float))
+    link = np.array([[w[np.ix_(a, b)].mean() for b in members] for a in members])
+    np.fill_diagonal(link, -np.inf)
+
+    first, second = np.unravel_index(np.argmax(link), link.shape)
+    chain = [int(first), int(second)]
+    left = sorted(set(range(len(names))) - set(chain))
+    while left:
+        # attach the network most strongly linked to either end of the chain
+        c = max(left, key=lambda c: max(link[c, chain[0]], link[c, chain[-1]]))
+        if link[c, chain[0]] > link[c, chain[-1]]:
+            chain.insert(0, c)
+        else:
+            chain.append(c)
+        left.remove(c)
+
+    idx: list[int] = []
+    for p, c in enumerate(chain):
+        rows = members[c]
+        pull_prev = w[np.ix_(rows, members[chain[p - 1]])].mean(axis=1) if p > 0 else 0.0
+        pull_next = w[np.ix_(rows, members[chain[p + 1]])].mean(axis=1) if p < len(chain) - 1 else 0.0
+        # nodes drawn to the previous network come first, those drawn to the next come last
+        idx.extend(rows[np.argsort(pull_next - pull_prev, kind="stable")])
+    return np.asarray(idx)
 
 
 def _cluster_order(rows: np.ndarray) -> np.ndarray:
