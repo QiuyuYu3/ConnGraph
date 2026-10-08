@@ -6,6 +6,7 @@
 
 - Multi-view figures of the 3-D plot with colour bars and legends (`plot_views`).
 - Highlight chosen nodes or the nodes of highlighted edges, and colour edges by sign, in the 3-D plot.
+- Matrix heatmaps can order nodes by clustering or a chosen network order and draw boxes around networks.
 - Edge colour range option and a ForceAtlas2 layout in the 3-D plot.
 - A `verbose` option to silence progress messages.
 - Hemisphere-split metrics work with any atlas that has a hemisphere column.
@@ -18,6 +19,7 @@
 - Data problems are shown as warnings instead of printed text.
 - Node colours no longer repeat when there are more than 12 categories, and numeric node colours default to viridis.
 - Node tables read from file keep the label "None" as text instead of treating it as missing.
+- Matrix heatmaps and NBS plots show network colour strips, label networks instead of every ROI in large matrices, and leave a constant diagonal blank; NBS plots mark significant edges instead of hiding the rest.
 
 ### Fixed
 

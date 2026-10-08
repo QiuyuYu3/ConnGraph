@@ -92,71 +92,71 @@ def matrix_heatmap(
     figsize: tuple[float, float] | None = None,
     title: str | None = None,
     save_path: str | None = None,
+    order: str | None = "network",
+    network_order: list[str] | None = None,
+    tick_labels: str | None = "auto",
+    network_boundaries: str | None = "lines",
+    show_diagonal: bool | str = "auto",
+    network_palette: dict | None = None,
 ) -> tuple[plt.Figure, plt.Axes]:
     """
     Connectivity matrix heatmap, optionally grouped by network.
 
-    When network_labels is provided, rows and columns are sorted so nodes in
-    the same network are adjacent, and thin lines mark network boundaries.
+    With network_labels, rows and columns are grouped by network, colour strips along the
+    top and left edges show each node's network, and thin lines mark network boundaries.
 
     Parameters
     ----------
     matrix         : square N×N array of connectivity values.
-    labels         : ROI label per node (length N). If None, axes have no ticks.
-    network_labels : network name per node (length N). Used for sorting and
-                     boundary lines. If None, original order is kept.
+    labels         : ROI label per node (length N).
+    network_labels : network name per node (length N). Strip colours match the 3-D plot's
+                     node_color="network" when the nodes are in the same order.
     vmin, vmax     : colour scale limits.
     cmap           : colormap name.
     figsize        : figure size. Auto-calculated if None.
     title          : axes title.
     save_path      : save figure to this path at 150 dpi.
+    order          : "network" (default) → grouped by network; input order without network_labels.
+                     "cluster" → hierarchical clustering of each node's row (average linkage,
+                     Euclidean distance, optimal leaf order), ignoring networks.
+                     "network_cluster" → grouped by network, clustered within each network.
+                     None → input order.
+    network_order  : network names in display order; unlisted networks follow alphabetically.
+                     Default: alphabetical.
+    tick_labels    : "auto" (default) → ROI labels for up to 40 nodes, otherwise network names
+                     at the middle of each group. "roi", "network" or None (no labels).
+    network_boundaries : "lines" (default) → lines between networks. "boxes" → a coloured box
+                     around each network's diagonal block. None → neither.
+    show_diagonal  : "auto" (default) → blank when every diagonal value is the same (e.g. 1),
+                     shown otherwise (e.g. within-network means). True or False to force.
+    network_palette : {network: colour} override for the strip colours.
 
     Returns
     -------
     (fig, ax)
     """
+    from brainnet3d.viz.matrix_style import draw_matrix, is_contiguous, matrix_order, tick_mode
+
+    matrix = np.asarray(matrix, dtype=float)
     n = matrix.shape[0]
+    idx = matrix_order(matrix, network_labels, order, network_order)
     if figsize is None:
-        s = max(8, min(24, n * 0.08))
+        roi_ticks = tick_mode(tick_labels, labels, network_labels, n, is_contiguous(network_labels, idx)) == "roi"
+        s = max(8, min(24, n * 0.08)) if roi_ticks else 8
         figsize = (s + 1.5, s)
 
-    if network_labels is not None:
-        order = sorted(range(n), key=lambda i: (network_labels[i], i))
-    else:
-        order = list(range(n))
-
-    mat_sorted = matrix[np.ix_(order, order)]
-    sorted_labels = [labels[i] for i in order] if labels is not None else None
-    sorted_nets   = [network_labels[i] for i in order] if network_labels is not None else None
-
     fig, ax = plt.subplots(figsize=figsize)
-    im = ax.imshow(mat_sorted, cmap=cmap, vmin=vmin, vmax=vmax, aspect="auto")
-    plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    handles = draw_matrix(
+        ax, matrix, idx, labels=labels, network_labels=network_labels, vmin=vmin, vmax=vmax, cmap=cmap,
+        tick_labels=tick_labels, network_boundaries=network_boundaries, show_diagonal=show_diagonal,
+        network_palette=network_palette, title=title,
+    )
+    if handles:
+        ax.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, -0.02), ncol=min(5, len(handles)),
+                  fontsize=7, frameon=False)
 
-    if sorted_labels is not None:
-        tick_fs = max(3, min(8, 120 // n))
-        ax.set_xticks(range(n))
-        ax.set_yticks(range(n))
-        ax.set_xticklabels(sorted_labels, rotation=90, fontsize=tick_fs)
-        ax.set_yticklabels(sorted_labels, fontsize=tick_fs)
-    else:
-        ax.set_xticks([])
-        ax.set_yticks([])
-
-    if sorted_nets is not None:
-        prev = sorted_nets[0]
-        for i, net in enumerate(sorted_nets[1:], start=1):
-            if net != prev:
-                ax.axhline(i - 0.5, color="black", linewidth=0.6, alpha=0.7)
-                ax.axvline(i - 0.5, color="black", linewidth=0.6, alpha=0.7)
-            prev = net
-
-    if title:
-        ax.set_title(title)
-
-    plt.tight_layout()
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        fig.savefig(save_path, dpi=150, bbox_inches="tight")
 
     return fig, ax
 
