@@ -290,12 +290,15 @@ def circos_plot(
     edge_cmap: str = "RdBu_r",
     edge_sign_colors: tuple = ((1.0, 0.25, 0.25), (0.25, 0.25, 1.0)),
     network_ring: bool = True,
+    order: str | None = "network",
+    network_order: list[str] | None = None,
+    order_matrix: np.ndarray | None = None,
 ) -> tuple[plt.Figure, plt.Axes]:
     """
     Circos-style plot: nodes arranged in a circle grouped by subnetwork.
 
-    Nodes in the same network are placed adjacently in input order; a small angular gap
-    separates consecutive network groups. Stronger edges are drawn on top.
+    By default nodes in the same network are placed adjacently in input order; a small angular
+    gap separates consecutive network groups. Stronger edges are drawn on top.
     Labels use a darker shade of the network colour.
 
     Parameters
@@ -314,26 +317,55 @@ def circos_plot(
                  "straight" → straight chords.
     edge_width : "weight" (default) → |weight| scaled to edge_width_range. Number → uniform.
     network_ring : draw a coloured arc and the network name outside each group instead of a legend.
+                   When the order splits networks, arcs follow each run and names go to a legend.
+    order : node order around the circle, as in matrix_heatmap: "network" (default),
+            "network_cluster", "network_chain", "cluster" (by connectivity profile, ignoring
+            networks; gaps then sit at the largest splits of the clustering tree and widen with
+            the split height) or None (input order).
+    network_order : network names in display order, as in matrix_heatmap.
+    order_matrix : N×N matrix used to order the nodes. None → the edge weights of G, which
+                   may be sparse after thresholding; pass the full matrix for a better order.
     """
+    from brainnet3d.viz.matrix_style import _groups, is_contiguous, matrix_order, merge_heights
+
     net2color   = _network_colors(network_labels, net2color)
     n           = len(roi_labels)
     unique_nets = sorted(set(network_labels))
 
-    order        = sorted(range(n), key=lambda i: (network_labels[i], i))
+    if order == "network" and network_order is None:
+        order = sorted(range(n), key=lambda i: (network_labels[i], i))
+        values = None
+    else:
+        values = np.zeros((n, n)) if order_matrix is None else np.asarray(order_matrix, dtype=float)
+        if order_matrix is None:
+            for u, v, w in G.edges(data="weight", default=1.0):
+                values[u, v] = values[v, u] = w
+        clustered = order == "cluster"
+        order = [int(i) for i in matrix_order(values, network_labels, order, network_order)]
     sorted_labels = [roi_labels[i]      for i in order]
     sorted_nets   = [network_labels[i]  for i in order]
     old2new       = {old: new for new, old in enumerate(order)}
+    contiguous    = values is None or is_contiguous(network_labels, np.asarray(order))
 
     total_gap      = gap_between_groups * len(unique_nets)
     angle_per_node = (2 * np.pi - total_gap) / n
 
-    angles, current_angle, prev_net = [], np.pi / 2, None
-    for net in sorted_nets:
-        if prev_net is not None and net != prev_net:
-            current_angle += gap_between_groups
+    if contiguous:
+        gap_after = [gap_between_groups if sorted_nets[i] != sorted_nets[i + 1] else 0.0 for i in range(n - 1)]
+    else:
+        # the largest splits of the tree get the gaps, wider for higher splits; one share is left for the wrap
+        heights = merge_heights(values, np.asarray(order)) if clustered else np.zeros(n - 1)
+        cuts = [i for i in np.argsort(heights)[::-1][: len(unique_nets) - 1] if heights[i] > 0]
+        gap_after = [0.0] * (n - 1)
+        for i in cuts:
+            gap_after[i] = heights[i] / heights[cuts].sum() * total_gap * (len(unique_nets) - 1) / len(unique_nets)
+
+    angles, current_angle = [], np.pi / 2
+    for i in range(n):
+        if i > 0:
+            current_angle += gap_after[i - 1]
         angles.append(current_angle)
         current_angle += angle_per_node
-        prev_net = net
 
     R  = 1.0
     xs = [R * np.cos(a) for a in angles]
@@ -375,12 +407,11 @@ def circos_plot(
     if network_ring:
         ring_in  = R + node_radius + 0.012
         ring_out = ring_in + 0.025
-        for net in unique_nets:
-            k = [i for i, s in enumerate(sorted_nets) if s == net]
+        for _, a, b in _groups([str(s) for s in sorted_nets]):
             ax.add_patch(Wedge(
                 (0, 0), ring_out,
-                np.degrees(angles[k[0]] - angle_per_node / 2), np.degrees(angles[k[-1]] + angle_per_node / 2),
-                width=ring_out - ring_in, color=net2color[net], zorder=2,
+                np.degrees(angles[a] - angle_per_node / 2), np.degrees(angles[b - 1] + angle_per_node / 2),
+                width=ring_out - ring_in, color=net2color[sorted_nets[a]], zorder=2,
             ))
         label_R = ring_out + 0.02
 
@@ -393,7 +424,7 @@ def circos_plot(
                                  ha=ha, va="center", rotation=rotation, rotation_mode="anchor",
                                  fontsize=label_fontsize, color=_text_color(net2color[sorted_nets[i]])))
 
-    if network_ring:
+    if network_ring and contiguous:
         _ring_names(ax, unique_nets, sorted_nets, angles, roi_texts, label_R, net2color)
     else:
         legend_handles = [mpatches.Patch(color=net2color[n], label=n) for n in unique_nets]

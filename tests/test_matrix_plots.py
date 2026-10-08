@@ -1,3 +1,5 @@
+import warnings
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
@@ -51,6 +53,16 @@ def test_cluster_order_groups_blocks():
     m, nets = _shuffle(*_blocks([6, 5, 7]))
     assert _contiguous(nets[matrix_order(m, nets, "cluster")])
     assert _contiguous(nets[matrix_order(m, None, "cluster")])
+
+
+def test_cluster_order_takes_adjacency_matrices_quietly():
+    m, nets = _shuffle(*_blocks([6, 5, 7]))
+    adjacency = np.where(m > 0.3, m, 0.0)
+    np.fill_diagonal(adjacency, 0.0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        idx = matrix_order(adjacency, None, "cluster")
+    assert _contiguous(nets[idx])
 
 
 def test_network_cluster_order_keeps_networks_contiguous():

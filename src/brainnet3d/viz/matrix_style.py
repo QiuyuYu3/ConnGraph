@@ -13,6 +13,7 @@ from matplotlib.patches import Patch, Rectangle
 from matplotlib.transforms import blended_transform_factory
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.cluster import hierarchy
+from scipy.spatial.distance import pdist, squareform
 
 from brainnet3d.viz.colormap import labels_to_colors
 
@@ -107,8 +108,21 @@ def _cluster_order(rows: np.ndarray) -> np.ndarray:
     rows = np.nan_to_num(np.asarray(rows, dtype=float))
     if rows.shape[0] < 3:
         return np.arange(rows.shape[0])
-    link = hierarchy.linkage(rows, method="average", metric="euclidean", optimal_ordering=True)
-    return hierarchy.leaves_list(link)
+    return hierarchy.leaves_list(_linkage(rows))
+
+
+def merge_heights(rows: np.ndarray, idx: np.ndarray) -> np.ndarray:
+    """Height at which each pair of neighbours in idx joins in the clustering tree used by order='cluster'."""
+    rows = np.nan_to_num(np.asarray(rows, dtype=float))
+    if rows.shape[0] < 3:
+        return np.zeros(max(len(idx) - 1, 0))
+    tree = squareform(hierarchy.cophenet(_linkage(rows)))
+    return tree[idx[:-1], idx[1:]]
+
+
+def _linkage(rows: np.ndarray) -> np.ndarray:
+    # distances first, so scipy does not mistake a hollow adjacency matrix for a distance matrix
+    return hierarchy.linkage(pdist(rows, metric="euclidean"), method="average", optimal_ordering=True)
 
 
 def tick_mode(tick_labels, labels, network_labels, n: int, contiguous: bool) -> str | None:

@@ -11,6 +11,7 @@ from matplotlib.path import Path
 
 import brainnet3d as bnv
 from brainnet3d.viz.colormap import labels_to_colors
+from brainnet3d.viz.matrix_style import matrix_order, merge_heights
 
 SIGN = ((1.0, 0.25, 0.25), (0.25, 0.25, 1.0))
 
@@ -90,6 +91,64 @@ def test_circos_keeps_input_order_within_network():
     texts = [t for t in ax.texts if t.get_text() in labels]
     angles = [(np.arctan2(*t.get_position()[::-1]) - np.pi / 2) % (2 * np.pi) for t in texts]
     assert [texts[k].get_text() for k in np.argsort(angles)] == ["a_2", "a_11", "b_10", "b_1"]
+    plt.close(fig)
+
+
+def _ring_order(ax, labels):
+    texts = [t for t in ax.texts if t.get_text() in labels]
+    angles = [(np.arctan2(*t.get_position()[::-1]) - np.pi / 2) % (2 * np.pi) for t in texts]
+    return [texts[k].get_text() for k in np.argsort(angles)]
+
+
+def _gradient_graph(spread=0.4, seed=0):
+    # networks on a line in an order unlike their names; a wide spread makes neighbouring networks overlap
+    centre = {"c": 0.0, "a": 1.0, "d": 2.0, "b": 3.0}
+    nets = np.repeat(list(centre), 6)
+    pos = np.array([centre[s] for s in nets]) + np.tile(np.linspace(-spread, spread, 6), 4)
+    perm = np.random.default_rng(seed).permutation(len(nets))
+    nets, pos = nets[perm], pos[perm]
+    m = np.exp(-np.abs(pos[:, None] - pos[None, :])) - 0.3
+    np.fill_diagonal(m, 0.0)
+    G = nx.from_numpy_array(np.where(m > 0.2, m, 0.0))
+    return G, [f"r{i}" for i in range(len(nets))], nets.tolist(), m
+
+
+@pytest.mark.parametrize("order", ["network_chain", "network_cluster", "cluster"])
+def test_circos_orders_match_heatmap(order):
+    G, labels, nets, m = _gradient_graph()
+    fig, ax = bnv.circos_plot(G, labels, nets, order=order, order_matrix=m)
+    assert _ring_order(ax, labels) == [labels[i] for i in matrix_order(m, nets, order)]
+    plt.close(fig)
+
+
+def test_circos_orders_by_graph_weights_without_matrix():
+    G, labels, nets, _ = _gradient_graph()
+    fig, ax = bnv.circos_plot(G, labels, nets, order="network_chain")
+    adjacency = nx.to_numpy_array(G, nodelist=range(len(labels)))
+    assert _ring_order(ax, labels) == [labels[i] for i in matrix_order(adjacency, nets, "network_chain")]
+    plt.close(fig)
+
+
+def test_circos_cluster_gaps_sit_at_the_largest_splits():
+    G, labels, nets, m = _gradient_graph(spread=0.9)
+    fig, ax = bnv.circos_plot(G, labels, nets, order="cluster", order_matrix=m)
+    centres = np.array([p.center for p in ax.patches if isinstance(p, Circle)])
+    steps = np.diff(np.unwrap(np.arctan2(centres[:, 1], centres[:, 0])))
+    heights = merge_heights(m, matrix_order(m, nets, "cluster"))
+    assert np.argmax(steps) == np.argmax(heights)
+    assert (steps > steps.min() + 1e-9).sum() <= len(set(nets)) - 1
+    plt.close(fig)
+
+
+def test_circos_split_networks_use_a_legend():
+    G, labels, nets, m = _gradient_graph(spread=0.9)
+    ordered = [nets[i] for i in matrix_order(m, nets, "cluster")]
+    runs = [s for k, s in enumerate(ordered) if k == 0 or s != ordered[k - 1]]
+    assert len(runs) > len(set(nets))
+    fig, ax = bnv.circos_plot(G, labels, nets, order="cluster", order_matrix=m)
+    assert ax.get_legend() is not None
+    assert not set(nets) & {t.get_text() for t in ax.texts}
+    assert len([p for p in ax.patches if isinstance(p, Wedge)]) == len(runs)
     plt.close(fig)
 
 
