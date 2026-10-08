@@ -23,7 +23,7 @@
 - The default clustering coefficient, betweenness and NBS permutations are computed much faster, with the same results.
 - Data problems are shown as warnings instead of printed text.
 - Category colours no longer repeat when there are more than 12 categories, neighbouring categories get different hues, and each category keeps its colour across plots whatever the node order; numeric node colours default to viridis, and 3-D spring plots colour nodes by network when network labels are given.
-- Node tables read from file keep the label "None" as text instead of treating it as missing.
+- Node tables read from file keep the label "None" as text instead of treating it as missing, and network-level graph metrics leave out ROIs labelled "None" by default however the atlas was read.
 - Matrix heatmaps and NBS plots show network colour strips, label networks instead of every ROI in large matrices, and leave a constant diagonal blank; the third NBS panel shows the group difference with significant edges marked instead of hiding the rest.
 - Circos plots draw curved chords coloured and sized by weight, with an edge colour bar and a ring of network names in place of the legend, and keep the node table's order within each network.
 

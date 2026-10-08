@@ -20,7 +20,7 @@ from brainnet3d.graph_theory.aggregation import (
 )
 from brainnet3d.exceptions import DataValidationError
 from brainnet3d.graph_theory.metrics import check_options, output_names, process_subject
-from brainnet3d.graph_theory.sparsify import requested_edges
+from brainnet3d.graph_theory.sparsify import requested_edges, resolve_sign
 
 
 @dataclass
@@ -60,6 +60,7 @@ def compute_graph_metrics(
     n_random: int = 0,
     random_swaps: float = 10,
     random_seed: int | None = None,
+    exclude_networks: str | list[str] | tuple[str, ...] | None = ("None",),
 ) -> GraphMetricsResult:
     """Compute graph-theory metrics from pre-computed connectivity matrices.
 
@@ -116,9 +117,11 @@ def compute_graph_metrics(
         networks, so its ratio is unstable and can change sign.
     random_swaps : average number of swaps per edge when randomizing (default 10).
     random_seed : seed for reproducible random networks.
+    exclude_networks : network labels whose ROIs are left out of the network level, e.g. unassigned parcels
+        (default "None"); the node level keeps them. None or () keeps every label.
     n_jobs : parallel workers for node-level computation; -1 = cpu_count - 1.
     output_dir : if given, saves CSV files there, one folder per level and one file per metric.
-    verbose : print node-level progress and the names of saved files.
+    verbose : print each level's graph method and sign rule, node-level progress and the names of saved files.
 
     Returns
     -------
@@ -156,8 +159,9 @@ def compute_graph_metrics(
     )
     if want_node:
         _check_node_matrices(matrices)
-    net2rois = build_net2rois(atlas, label_col, network_col) if want_network else {}
-    net_hemi2rois = build_net_hemi2rois(atlas, label_col, network_col, hemi_col) if want_hemi else {}
+    net_atlas = _drop_networks(atlas, network_col, exclude_networks, verbose) if want_network or want_hemi else atlas
+    net2rois = build_net2rois(net_atlas, label_col, network_col) if want_network else {}
+    net_hemi2rois = build_net_hemi2rois(net_atlas, label_col, network_col, hemi_col) if want_hemi else {}
     sizes = {}
     if want_node:
         sizes["node"] = min((len(df) for df in matrices.values()), default=0)
@@ -179,6 +183,8 @@ def compute_graph_metrics(
     }
 
     if want_network:
+        if verbose:
+            print(f"[graph_theory] Network-level: {len(net2rois)} networks, {_describe_graph(net_opts)}")
         result.network_df, result.net_corr_df = _network_level(
             "network", matrices, net2rois, apply_fisher_z, net_metrics, net_opts, result, curves, shortfalls,
             seeds["network"],
@@ -194,7 +200,8 @@ def compute_graph_metrics(
 
         workers = max(1, (os.cpu_count() or 2) - 1) if n_jobs == -1 else max(1, n_jobs)
         if verbose:
-            print(f"[graph_theory] Node-level: {len(subject_ids)} subjects, {workers} workers")
+            print(f"[graph_theory] Node-level: {len(subject_ids)} subjects, {workers} workers, "
+                  f"{_describe_graph(node_opts)}")
 
         with ProcessPoolExecutor(max_workers=workers) as executor:
             futures = {
@@ -232,6 +239,9 @@ def compute_graph_metrics(
         result.node_df = node_df.astype(float)
 
     if want_hemi:
+        if verbose:
+            print(f"[graph_theory] Network-level (hemisphere split): {len(net_hemi2rois)} networks, "
+                  f"{_describe_graph(net_opts)}")
         result.net_hemi_df, result.net_hemi_corr_df = _network_level(
             "network_hemi", matrices, net_hemi2rois, apply_fisher_z, net_metrics, net_opts, result, curves, shortfalls,
             seeds["network_hemi"],
@@ -298,6 +308,23 @@ def _network_level(
         _collect_curves(curves, level, sub_id, res)
         _collect_shortfall(shortfalls, level, sub_id, res)
     return net_df.astype(float), _net_corr_to_wide(all_net_corr)
+
+
+def _drop_networks(atlas: pd.DataFrame, network_col: str, exclude, verbose: bool) -> pd.DataFrame:
+    if exclude is None:
+        return atlas
+    labels = [exclude] if isinstance(exclude, str) else list(exclude)
+    drop = atlas[network_col].isin(labels)
+    if verbose and drop.any():
+        names = ", ".join(repr(x) for x in sorted(atlas.loc[drop, network_col].unique(), key=str))
+        print(f"[graph_theory] Network-level: leaving out {int(drop.sum())} ROIs labelled {names}")
+    return atlas[~drop]
+
+
+def _describe_graph(opts: dict) -> str:
+    method = opts["graph_method"]
+    name = getattr(method, "__name__", repr(method)) if callable(method) else method
+    return f"graph_method={name}, sign={resolve_sign(method, opts['sign'])}"
 
 
 def _collect_curves(curves: list[pd.DataFrame], level: str, sub_id: str, res: dict) -> None:

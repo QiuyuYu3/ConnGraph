@@ -1,3 +1,5 @@
+import re
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -165,6 +167,51 @@ def test_compute_graph_metrics_verbose_false_is_silent(tmp_path, capsys):
     )
     assert capsys.readouterr().out == ""
     assert (tmp_path / "node" / "strength.abs.csv").exists()
+
+
+def _atlas_with_unassigned():
+    matrices, atlas = _toy_inputs()
+    atlas.loc[[0, 5], "network_label"] = "None"
+    atlas["hemisphere"] = ["L"] * 6 + ["R"] * 6
+    return matrices, atlas
+
+
+def test_network_level_leaves_out_unassigned_rois_by_default():
+    matrices, atlas = _atlas_with_unassigned()
+    result = compute_graph_metrics(
+        matrices, atlas, level="both", hemi_split="both", metrics=["strength"], n_jobs=1, verbose=False,
+    )
+    assert list(result.network_df["strength.abs"].columns) == ["net0", "net1", "net2", "net3"]
+    assert not any("None" in net for net in result.net_hemi_df["strength.abs"].columns)
+    assert not any("None" in pair for pair in result.net_corr_df.columns)
+    assert list(result.node_df["strength.abs"].columns) == atlas["label"].tolist()
+
+
+@pytest.mark.parametrize("exclude, networks", [
+    ((), {"net0", "net1", "net2", "net3", "None"}),
+    (None, {"net0", "net1", "net2", "net3", "None"}),
+    ("net3", {"net0", "net1", "net2", "None"}),
+    (["None", "net3"], {"net0", "net1", "net2"}),
+])
+def test_exclude_networks_chooses_the_labels_left_out(exclude, networks):
+    matrices, atlas = _atlas_with_unassigned()
+    result = compute_graph_metrics(
+        matrices, atlas, level="network", hemi_split=False, metrics=["strength"], exclude_networks=exclude,
+        verbose=False,
+    )
+    assert set(result.network_df["strength.abs"].columns) == networks
+
+
+def test_verbose_reports_graph_method_sign_and_excluded_rois(capsys):
+    matrices, atlas = _atlas_with_unassigned()
+    compute_graph_metrics(
+        matrices, atlas, level="both", hemi_split=True, metrics=["strength"], graph_method="density",
+        graph_params={"density": 0.5}, network_graph_method="tmfg", n_jobs=1,
+    )
+    out = capsys.readouterr().out
+    assert re.search(r"Node-level.*graph_method=density, sign=positive", out)
+    assert re.search(r"hemisphere.*graph_method=tmfg, sign=abs", out)
+    assert re.search(r"leaving out 2 ROIs labelled 'None'", out)
 
 
 def _failing_method(corrmat):
