@@ -87,12 +87,13 @@ class BrainNetPlotter:
 
         After calling this, pass the metric name directly to plot():
             p.attach_metrics(result)
-            p.plot(node_color="strength", node_size="btwn_cent")
+            p.plot(node_color="strength.abs", node_size="btwn_cent")
 
         Parameters
         ----------
         result  : GraphMetricsResult from compute_graph_metrics (needs node_df).
-        metrics : subset of metrics to attach, e.g. ["strength", "btwn_cent"].
+        metrics : subset of metrics to attach, e.g. ["strength.abs", "btwn_cent"].
+                  A bare metric name works when result.node_df has one variant of it.
                   Defaults to all metrics found in result.node_df.
         """
         if result.node_df is None:
@@ -109,11 +110,14 @@ class BrainNetPlotter:
             )
 
         row       = result.node_df.loc[sid]
-        available = row.index.get_level_values(0).unique()
-        chosen    = metrics if metrics is not None else available
+        available = list(row.index.get_level_values(0).unique())
+        bases     = [name.split(".")[0] for name in available]
+        aliases   = {b: name for b, name in zip(bases, available) if bases.count(b) == 1}
+        chosen    = metrics if metrics is not None else available + list(aliases)
 
         self._extra_cols = {
-            metric: row[metric].to_dict() for metric in chosen if metric in available
+            name: row[aliases.get(name, name)].to_dict()
+            for name in chosen if name in available or name in aliases
         }
 
     def plot(
