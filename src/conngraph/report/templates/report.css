@@ -63,21 +63,15 @@ p.desc { color: var(--muted); margin: 0 0 0.9rem; }
 .warn { color: var(--warn); background: #fbf3dc; }
 .bad { color: var(--bad); background: #fdecec; }
 
-details.call { margin: 1rem 0 0; }
-details.call > summary { border: none; padding: 0.3rem 0; font-size: 0.85rem; font-weight: 500; color: var(--muted); }
-details.call pre { margin-top: 0.4rem; }
+.call { margin: 1rem 0 0; }
+.call-title { padding: 0.3rem 0; font-size: 0.85rem; font-weight: 500; color: var(--muted); }
+.call pre { margin-top: 0.4rem; }
 
-/* ---- collapsible steps ---- */
-details { margin-bottom: 1.75rem; }
-details > summary { list-style: none; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.55rem;
-                    padding: 0.35rem 0 0.45rem; font-weight: 600; font-size: 0.98rem; border-bottom: 1px solid var(--rule-soft); }
-details > summary::-webkit-details-marker { display: none; }
-details > summary::before { content: ""; width: 0.42rem; height: 0.42rem; border-right: 1.6px solid var(--faint);
-                            border-bottom: 1.6px solid var(--faint); transform: rotate(-45deg); transition: transform 0.15s;
-                            margin: 0 0.2rem 0 0.1rem; }
-details[open] > summary::before { transform: rotate(45deg); }
-details > summary:hover { color: var(--accent); }
-.details-body { padding: 0.9rem 0 0; }
+/* ---- steps ---- */
+.step { margin-bottom: 2.25rem; }
+h3.step-title { display: flex; align-items: baseline; gap: 0.55rem; margin: 0 0 0.9rem; padding: 0.35rem 0 0.45rem;
+                font-size: 0.98rem; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--ink);
+                border-bottom: 1px solid var(--rule-soft); }
 
 /* ---- pickers and figures ---- */
 select.picker { font: inherit; font-size: 0.84rem; color: var(--ink); appearance: none; border: 1px solid var(--rule);
@@ -136,4 +130,4 @@ table.versions { max-width: 420px; }
 .copy:hover { color: var(--ink); border-color: var(--faint); }
 
 @media (max-width: 900px) { .summary-grid, .figure-row { grid-template-columns: 1fr; } main { padding: 1.25rem 1rem 3rem; } }
-@media print { #topbar { display: none; } details { break-inside: avoid; } }
+@media print { #topbar { display: none; } .step { break-inside: avoid; } }

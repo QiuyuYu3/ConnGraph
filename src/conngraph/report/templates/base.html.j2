@@ -80,7 +80,7 @@ function copyOnClick(button, text) {
     });
   });
 }
-document.querySelectorAll('details.call').forEach(d => copyOnClick(d.querySelector('.copy'), () => d.querySelector('pre').textContent));
+document.querySelectorAll('.call').forEach(d => copyOnClick(d.querySelector('.copy'), () => d.querySelector('pre').textContent));
 copyOnClick(document.getElementById('copy-methods'), () => document.querySelector('.tab-content.active').innerText.trim());
 // the nav link of the section being read
 const navLinks = new Map([...document.querySelectorAll('#topbar a')].map(a => [a.getAttribute('href').slice(1), a]));
@@ -90,9 +90,6 @@ const spy = new IntersectionObserver(entries => entries.forEach(e => {
   navLinks.get(e.target.id)?.classList.add('active');
 }), {rootMargin: '-10% 0px -80% 0px'});
 document.querySelectorAll('h2[id]').forEach(h => spy.observe(h));
-document.querySelectorAll('details').forEach(d => d.addEventListener('toggle', () => {
-  if (d.open) d.querySelectorAll('.pane.on .js-plotly-plot, .always .js-plotly-plot').forEach(g => Plotly.Plots.resize(g));
-}));
 document.querySelectorAll('table.flat.sortable th').forEach(th => th.addEventListener('click', () => {
   const tb = th.closest('table').tBodies[0], rows = [...tb.rows], asc = th.dataset.asc !== '1';
   th.closest('tr').querySelectorAll('th').forEach(h => delete h.dataset.asc); th.dataset.asc = asc ? '1' : '0';

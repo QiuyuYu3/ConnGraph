@@ -186,8 +186,8 @@ def test_graph_report_numbers_captions_below_figures_and_folds_the_call(graph_re
     numbers = re.findall(r'<p class="caption"><b>Figure (\d+)\.</b>', text)
     assert numbers and numbers == [str(i) for i in range(1, len(numbers) + 1)]
     first = text.index('<p class="caption">')
-    assert "plotly-graph-div" in text[text.rindex("<details", 0, first):first]
-    assert '<details class="call">' in text and 'class="copy"' in text
+    assert "plotly-graph-div" in text[text.rindex('<section class="step">', 0, first):first]
+    assert '<div class="call">' in text and 'class="copy"' in text and "<details" not in text
 
 
 def test_short_pickers_are_buttons_and_long_ones_a_select():
