@@ -83,7 +83,7 @@ def input_variants(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
 def input_sessions(args: argparse.Namespace, parser: argparse.ArgumentParser) -> list[str | None]:
     """Sessions analysed one at a time: those named by --session-id, else every session in the input, else None."""
     filters = bids_filters(args, parser)
-    if "ses" in filters:
+    if "ses" in filters and "Query.ANY" not in filters["ses"]:
         if args.session_id:
             parser.error("give sessions either with --session-id or in --bids-filter-file, not both")
         return [f"ses-{v}" if v else None for v in dict.fromkeys(filters["ses"])]

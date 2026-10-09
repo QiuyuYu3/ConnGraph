@@ -8,9 +8,10 @@ import json
 import os
 import platform
 import warnings
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import Future, ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
+from functools import partial
 from collections.abc import Callable
 
 import numpy as np
@@ -229,38 +230,36 @@ def compute_graph_metrics(
             print(f"[graph_theory] Node-level: {len(subject_ids)} subjects, {workers} workers, "
                   f"{_describe_graph(node_opts)}")
 
-        with ProcessPoolExecutor(max_workers=workers) as executor:
-            futures = {
-                executor.submit(
-                    process_subject,
-                    sid,
-                    matrices[sid].values.astype(float),
-                    matrices[sid].columns.tolist(),
-                    node_metrics,
-                    **node_opts,
-                    random_seed=seeds["node"][sid],
-                ): sid
-                for sid in subject_ids
-                if sid in matrices
-            }
-            total = len(futures)
-            done = 0
-            for future in as_completed(futures):
-                done += 1
-                sid = futures[future]
-                if verbose:
-                    print(f"  [{done}/{total}] {sid}")
-                try:
-                    res = future.result()
-                except Exception as e:
-                    _record_failure(result, "node", sid, e)
-                    continue
-                for m in node_columns:
-                    for roi in atlas_rois:
-                        if roi in res[m]:
-                            node_df.at[sid, (m, roi)] = res[m][roi]
-                _collect_curves(curves, "node", sid, res)
-                _collect_shortfall(shortfalls, "node", sid, res)
+        calls = {
+            sid: partial(
+                process_subject,
+                sid,
+                matrices[sid].values.astype(float),
+                matrices[sid].columns.tolist(),
+                node_metrics,
+                **node_opts,
+                random_seed=seeds["node"][sid],
+            )
+            for sid in subject_ids
+            if sid in matrices
+        }
+        total = len(calls)
+        done = 0
+        for sid, future in _completed(calls, workers):
+            done += 1
+            if verbose:
+                print(f"  [{done}/{total}] {sid}")
+            try:
+                res = future.result()
+            except Exception as e:
+                _record_failure(result, "node", sid, e)
+                continue
+            for m in node_columns:
+                for roi in atlas_rois:
+                    if roi in res[m]:
+                        node_df.at[sid, (m, roi)] = res[m][roi]
+            _collect_curves(curves, "node", sid, res)
+            _collect_shortfall(shortfalls, "node", sid, res)
 
         result.node_df = node_df.astype(float)
 
@@ -449,6 +448,23 @@ def _collect_curves(curves: list[pd.DataFrame], level: str, sub_id: str, res: di
 def _collect_shortfall(shortfalls: list[str], level: str, sub_id: str, res: dict) -> None:
     if "shortfall" in res:
         shortfalls.append(f"  {level} / {sub_id}: {res['shortfall']}")
+
+
+def _completed(calls: dict, workers: int):
+    """(key, finished future) pairs, run in this process when there is one worker, else in a process pool."""
+    if workers == 1:
+        for key, call in calls.items():
+            future = Future()
+            try:
+                future.set_result(call())
+            except Exception as e:
+                future.set_exception(e)
+            yield key, future
+        return
+    with ProcessPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(call): key for key, call in calls.items()}
+        for future in as_completed(futures):
+            yield futures[future], future
 
 
 def _record_failure(result: GraphMetricsResult, level: str, sub_id: str, exc: Exception) -> None:

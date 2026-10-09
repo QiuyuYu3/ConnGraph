@@ -356,17 +356,20 @@ ENTITIES = {
     "segmentation": "seg", "statistic": "stat", "chromophore": "chromo",
 }
 _ABSENT = (None, "Query.NONE")
+_PRESENT = "Query.ANY"
 
 
 def _check_filters(filters: dict | None) -> dict[str, list]:
-    """Filters keyed by file-name entity, each a list of accepted values (bare, without key-) or [None]."""
+    """Filters keyed by file-name entity: accepted values without key-, None for absent, "Query.ANY" for any."""
     out = {}
     for name, value in (filters or {}).items():
         key = ENTITIES.get(name, name if name in ENTITIES.values() else None)
         if key is None:
             raise ValueError(f"Unknown BIDS entity {name!r} in the filters; use one of {sorted(ENTITIES)}.")
+        if value == "Query.OPTIONAL":
+            continue
         values = value if isinstance(value, list) else [value]
-        out[key] = [None if v in _ABSENT else str(v).removeprefix(f"{key}-") for v in values]
+        out[key] = [None if v in _ABSENT else v if v == _PRESENT else str(v).removeprefix(f"{key}-") for v in values]
     return out
 
 
@@ -376,6 +379,8 @@ def _entities(path: str) -> dict[str, str]:
 
 
 def _same(key: str, a: str, b: str) -> bool:
+    if b == _PRESENT:
+        return True
     if key in ("run", "echo") and a.isdigit() and b.isdigit():
         return int(a) == int(b)
     return a == b
