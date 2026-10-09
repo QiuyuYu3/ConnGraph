@@ -14,7 +14,7 @@ conngraph INPUT OUTPUT group [options]
 | `participant` | Computes graph-theory metrics, at the node level and the network level, and writes one set of files and an HTML report (`OUTPUT/sub-<label>.html`, skipped with `--no-report`) per participant. `--participant-label` limits it to some participants, so a cluster can run one job per participant. |
 | `group` | Collects the participant results into tables and an HTML report. With a groups table, it also compares two groups with permutation t-tests, adjusting for `--covariates` if given: the graph metrics and the connectivity within and between networks by default, and every edge when `--compare` names `edges`. `--correction` (`fdr`, `fwe` or `none`) is required for these comparisons. `--nbs-thresh` adds the network-based statistic. |
 
-Graph options (method, metrics, random networks) belong to the participant level, where `--graph-method` is required; group comparison options belong to the group level. Input options and the report options `--coords`, `--surfaces` and `--no-report` are given at both. Run `conngraph --help` for all options.
+Graph options (method, metrics, random networks) belong to the participant level, where `--graph-method` is required; group comparison options belong to the group level. Input options and the report options `--coords`, `--surfaces`, `--interactive-brain` and `--no-report` are given at both. Run `conngraph --help` for all options.
 
 ## Input
 
@@ -89,4 +89,4 @@ Each `compare/` table has one row per test with the t statistic (positive when t
 
 ## Reports
 
-The reports link their static figures from the `figures/` folders, so keep those next to the reports when moving them. The interactive figures load plotly from its CDN, so viewing them needs an internet connection; each has a camera button that saves it as PNG. For publication figures at 300 dpi, use the plotting functions of the Python package (`BrainNetPlotter.plot_views`, `circos_plot`, `spring_plot`, `plot_nbs_matrices`), which save to any path at 300 dpi.
+The reports link their static figures from the `figures/` folders, so keep those next to the reports when moving them. Brain figures are static images unless `--interactive-brain` adds rotatable 3-D views, which make the reports larger. The interactive figures load plotly from its CDN, so viewing them needs an internet connection; each has a camera button that saves it as PNG. For publication figures at 300 dpi, use the plotting functions of the Python package (`BrainNetPlotter.plot_views`, `circos_plot`, `spring_plot`, `plot_nbs_matrices`), which save to any path at 300 dpi.

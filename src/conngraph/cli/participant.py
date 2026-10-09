@@ -99,10 +99,13 @@ def _write_participant(result, sid: str, out: pathlib.Path, session: str | None,
     return params
 
 
-def _meshes(args: argparse.Namespace, nodes: pd.DataFrame) -> list:
+def _meshes(args: argparse.Namespace, nodes: pd.DataFrame) -> list | None:
+    """Surfaces for the interactive brain views, or None when they are off."""
     from conngraph.report import figures
     from conngraph.report.pages import _surfaces
 
+    if not args.interactive_brain:
+        return None
     if not {"x", "y", "z"} <= set(nodes.columns):
         return []
     return figures.surface_meshes(_surfaces(_shared.surfaces(args)))

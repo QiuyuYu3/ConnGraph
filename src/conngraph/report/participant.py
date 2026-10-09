@@ -36,7 +36,7 @@ from conngraph.report.pages import (
 
 
 def participant_section(result, sid: str, matrix: pd.DataFrame, nodes: pd.DataFrame, params: dict, section_id: str,
-                        title: str, meshes: list, figs=None, surfaces: tuple[str, str] | None = None) -> dict:
+                        title: str, meshes: list | None, figs=None, surfaces: tuple[str, str] | None = None) -> dict:
     """One participant's results in one session and atlas as plain data; figs saves the static brain views."""
     opts = params["options"]
     networks = _column(nodes, opts["label_col"], opts["network_col"])
@@ -74,8 +74,9 @@ def participant_section(result, sid: str, matrix: pd.DataFrame, nodes: pd.DataFr
             static = [(m, _metric_title(m), _static_node_brain(result, nodes, opts["label_col"], cols,
                                                                node[m].reindex(cols).to_numpy(float), _metric_title(m),
                                                                surfaces, figs, m)) for m in metrics]
-            parts.append('<div class="option-label">On the brain: static</div>' + _picker("node-static", static))
-        if xyz is not None:
+            label = "On the brain: static" if meshes is not None else "On the brain"
+            parts.append(f'<div class="option-label">{label}</div>' + _picker("node-static", static))
+        if xyz is not None and meshes is not None:
             brains = []
             for m in metrics:
                 values = node[m].reindex(cols).to_numpy(float)
@@ -84,7 +85,7 @@ def participant_section(result, sid: str, matrix: pd.DataFrame, nodes: pd.DataFr
                     xyz[shown], [lab for lab, k in zip(labels, shown) if k],
                     [n for n, k in zip(nets or [""] * len(cols), shown) if k], values[shown], _metric_title(m), meshes))))
             parts.append('<div class="option-label">On the brain: interactive</div>' + _picker("node-brain", brains))
-        else:
+        elif xyz is None:
             notes.append(_no_coordinates(nodes))
         if nets is not None:
             boxes = [(m, _metric_title(m), figures.to_div(figures.node_boxplot(

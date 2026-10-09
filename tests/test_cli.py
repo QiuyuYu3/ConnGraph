@@ -82,7 +82,7 @@ def test_group_level_collects_the_participants_into_tables_and_a_report(xcpd, su
     assert params["input"]["source"] == "XCP-D" and params["input"]["atlas"] == "Toy"
     report = (group / "graph_report.html").read_text(encoding="utf-8")
     assert "Run command" in report and "derived from XCP-D (Toy atlas; fsLR space" in report
-    assert "Option 2: interactive" in report
+    assert "Group mean on the brain" in report and "scatter3d" not in report
 
 
 def test_group_tables_match_the_python_api(dataset, tmp_path):
@@ -698,7 +698,7 @@ def test_participant_level_writes_one_report_per_participant(dataset, xcpd, surf
     out = tmp_path / "out"
     cli.main([str(root), str(out), "participant", *XCPD, "--graph-method", "density", "--graph-param", "density=0.3",
               "--network-graph-method", "full", "--metrics", "strength", "eff_global", "--coords", str(coords),
-              "--surfaces", *surfaces, "--n-jobs", "1", "--quiet"])
+              "--surfaces", *surfaces, "--interactive-brain", "--n-jobs", "1", "--quiet"])
     assert sorted(p.name for p in out.glob("sub-*.html")) == [f"sub-{i:02d}.html" for i in range(1, 7)]
     text = (out / "sub-01.html").read_text(encoding="utf-8")
     assert re.findall(r'<h2 id="([^"]+)"', text)[:3] == ["Summary", "ses-01_atlas-Toy", "ses-02_atlas-Toy"]

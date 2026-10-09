@@ -17,23 +17,27 @@ _FONT = dict(family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif", s
 _AXIS = dict(showline=True, linecolor="#b8c2cc", gridcolor="#eef0f3", zeroline=False, ticks="outside", tickcolor="#b8c2cc")
 _LEVEL_NAMES = {"node": "Node level", "network": "Network level", "network_hemi": "Network level (hemispheres)"}
 _FADED = 0.25
-# plot height of ordered_heatmap and the spacing its network names need
-_HEATMAP_PLOT_PX = 500
+# smallest plot height ordered_heatmap is laid out for, and the spacing its network names need there
+_HEATMAP_PLOT_PX = 400
 _TICK_GAP_PX = 13
 
 
-def style(fig: go.Figure, height: int, **layout) -> go.Figure:
+def style(fig: go.Figure, aspect: float, **layout) -> go.Figure:
     layout.setdefault("margin", dict(l=60, r=20, t=30, b=50))
-    fig.update_layout(template="none", font=_FONT, height=height, plot_bgcolor="white", paper_bgcolor="white",
-                      hoverlabel=dict(font_size=12), **layout)
+    fig.update_layout(template="none", font=_FONT, meta=dict(aspect=aspect), plot_bgcolor="white",
+                      paper_bgcolor="white", hoverlabel=dict(font_size=12), **layout)
     fig.update_xaxes(**_AXIS)
     fig.update_yaxes(**_AXIS)
     return fig
 
 
 def to_div(fig: go.Figure) -> str:
-    return fig.to_html(full_html=False, include_plotlyjs=False,
-                       config={"displaylogo": False, "responsive": True, "toImageButtonOptions": {"scale": 3}})
+    """The figure in a box of its width-to-height ratio, so it fills the column it is placed in."""
+    meta = fig.layout.meta
+    aspect = meta.get("aspect", 1.5) if isinstance(meta, dict) else 1.5
+    div = fig.to_html(full_html=False, include_plotlyjs=False,
+                      config={"displaylogo": False, "responsive": True, "toImageButtonOptions": {"scale": 3}})
+    return f'<div class="plot" style="aspect-ratio:{aspect:.3g}">{div}</div>'
 
 
 def network_order(names: list[str], groups: list[str] | None) -> list[int]:
@@ -62,13 +66,13 @@ def level_boxplot(df: pd.DataFrame, palette: dict, title: str, hemi_split: bool)
             fig.add_trace(go.Scatter(x=[None], y=[None], mode="markers", name=f"{hemi} hemisphere",
                                      marker=dict(color="#9aa5b1", size=6, opacity=opacity, line=dict(width=0.5, color=INK))))
         _category_axis(fig, nets)
-        style(fig, 380, yaxis_title=title, legend=dict(orientation="h", x=1, xanchor="right", y=1.12))
+        style(fig, 2.0, yaxis_title=title, legend=dict(orientation="h", x=1, xanchor="right", y=1.12))
     else:
         cols = sorted(df.columns, key=natural_key)
         for i, col in enumerate(cols):
             fig.add_traces(_box(df[col], i, palette.get(col), 0.6, col, seed=i))
         _category_axis(fig, cols)
-        style(fig, 360, yaxis_title=title, showlegend=False)
+        style(fig, 2.2, yaxis_title=title, showlegend=False)
     return fig
 
 
@@ -98,7 +102,7 @@ def node_boxplot(values: pd.Series, networks: pd.Series, palette: dict, title: s
     for i, net in enumerate(nets):
         fig.add_traces(_box(values[networks == net], i, palette.get(net), 0.6, net, seed=i, size=5))
     _category_axis(fig, nets)
-    return style(fig, 340, yaxis_title=title, showlegend=False)
+    return style(fig, 2.2, yaxis_title=title, showlegend=False)
 
 
 def ordered_heatmap(M: np.ndarray, names: list[str], groups: list[str] | None, zmax: float, value: str,
@@ -130,9 +134,10 @@ def ordered_heatmap(M: np.ndarray, names: list[str], groups: list[str] | None, z
         if n > 40:
             starts, ends = [0] + bounds, bounds + [n]
             ticks, text = _spaced_group_ticks(labels, ordered, starts, ends, _HEATMAP_PLOT_PX)
-    style(fig, 640, shapes=shapes, width=740, margin=dict(l=120, r=20, t=20, b=120))
-    fig.update_xaxes(tickvals=ticks, ticktext=text, tickangle=-45, showgrid=False, showline=False)
-    fig.update_yaxes(tickvals=ticks, ticktext=text, autorange="reversed", showgrid=False, showline=False)
+    style(fig, 1.1, shapes=shapes, margin=dict(l=120, r=20, t=20, b=120))
+    fig.update_xaxes(tickvals=ticks, ticktext=text, tickangle=-45, showgrid=False, showline=False, constrain="domain")
+    fig.update_yaxes(tickvals=ticks, ticktext=text, autorange="reversed", showgrid=False, showline=False,
+                     scaleanchor="x", constrain="domain")
     return fig
 
 
@@ -155,10 +160,9 @@ def count_heatmap(counts: pd.DataFrame) -> go.Figure:
     fig = go.Figure(go.Heatmap(z=counts.values, x=list(counts.columns), y=list(counts.index), colorscale="Reds",
                                text=counts.values, texttemplate="%{text}", colorbar=dict(title="edges", thickness=12),
                                hovertemplate="%{y} – %{x}: %{z} edges<extra></extra>"))
-    size = 160 + 32 * len(counts)
-    style(fig, size, width=size + 80, margin=dict(l=110, r=20, t=10, b=110))
-    fig.update_yaxes(autorange="reversed", showgrid=False)
-    fig.update_xaxes(showgrid=False, tickangle=-45)
+    style(fig, 1.15, margin=dict(l=110, r=20, t=10, b=110))
+    fig.update_yaxes(autorange="reversed", showgrid=False, scaleanchor="x", constrain="domain")
+    fig.update_xaxes(showgrid=False, tickangle=-45, constrain="domain")
     return fig
 
 
@@ -182,7 +186,7 @@ def curves_figure(curves: pd.DataFrame, metrics: list[str], titles: dict[str, st
         fig.update_yaxes(title_text=_LEVEL_NAMES[lv], row=r, col=1)
     for c in range(1, len(metrics) + 1):
         fig.update_xaxes(title_text=xlabel, row=len(levels), col=c)
-    style(fig, 280 * len(levels) + 40, margin=dict(l=70, r=20, t=40, b=50))
+    style(fig, 1.3 * len(metrics) / len(levels), margin=dict(l=70, r=20, t=40, b=50))
     fig.update_annotations(font_size=12)
     return fig
 
@@ -193,7 +197,7 @@ def null_histogram(null: np.ndarray, sizes: np.ndarray, labels: list[str], signi
         color = "#c0392b" if sig else "#7f8c8d"
         fig.add_vline(x=size, line_color=color, line_width=2, annotation_text=label, annotation_font_color=color,
                       annotation_position="top")
-    return style(fig, 300, xaxis_title="Largest component size under permutation (edges)", yaxis_title="Permutations",
+    return style(fig, 3.2, xaxis_title="Largest component size under permutation (edges)", yaxis_title="Permutations",
                  bargap=0.05, margin=dict(l=60, r=20, t=40, b=50))
 
 
@@ -211,13 +215,13 @@ def surface_meshes(surfaces: tuple[str, str] | None, fraction: float = 0.06) -> 
     return meshes
 
 
-def _scene(traces: list, meshes: list, height: int = 580) -> go.Figure:
+def _scene(traces: list, meshes: list) -> go.Figure:
     surface = [go.Mesh3d(x=v[:, 0], y=v[:, 1], z=v[:, 2], i=f[:, 0], j=f[:, 1], k=f[:, 2], color="#d9d4ca", opacity=0.12,
                          hoverinfo="skip", showscale=False, lighting=dict(ambient=0.7, diffuse=0.5, specular=0.05))
                for v, f in meshes]
     fig = go.Figure(surface + traces)
     blank = dict(visible=False, showbackground=False)
-    fig.update_layout(template="none", font=_FONT, height=height, margin=dict(l=0, r=0, t=10, b=0),
+    fig.update_layout(template="none", font=_FONT, meta=dict(aspect=4 / 3), margin=dict(l=0, r=0, t=10, b=0),
                       scene=dict(xaxis=blank, yaxis=blank, zaxis=blank, aspectmode="data",
                                  camera=dict(eye=dict(x=-1.6, y=0.1, z=0.35), up=dict(x=0, y=0, z=1))),
                       legend=dict(itemsizing="constant"))
@@ -258,7 +262,7 @@ def brain_edges(xyz: np.ndarray, labels: list[str], networks: list[str], edges: 
             x=xyz[idx, 0], y=xyz[idx, 1], z=xyz[idx, 2], mode="markers", name=net,
             marker=dict(size=2.5 + 1.4 * np.sqrt(degree[idx]), color=palette.get(net, "#9aa5b1"), line=dict(width=0)),
             text=[f"{labels[i]}<br>{net}<br>{degree[i]} edges" for i in idx], hovertemplate="%{text}<extra></extra>"))
-    return _scene(traces, meshes, 600)
+    return _scene(traces, meshes)
 
 
 _RING = (1.03, 1.065, 1.15)  # inner and outer radius of the network arcs, radius of the network names
@@ -304,7 +308,7 @@ def circos_figure(G, labels: list[str], nets: list[str], palette: dict, colorbar
     traces, names = _ring_traces(G, labels, nets, palette, xy, angles, step)
     fig.add_traces(traces)
     fig.update_layout(annotations=names)
-    return _square(fig, 1.4, legend=False)
+    return _square(fig, 1.4, legend=False, aspect=1.0)
 
 
 def spring_figure(G, labels: list[str], nets: list[str], palette: dict, seed: int = 42) -> go.Figure:
@@ -330,7 +334,7 @@ def spring_figure(G, labels: list[str], nets: list[str], palette: dict, seed: in
             marker=dict(color=palette.get(net, "#9aa5b1"), size=7 + 11 * strength[sel] / peak, opacity=0.9,
                         line=dict(width=0.5, color="white")),
             **_node_hover(labels, sel, net, G, strength)))
-    return _square(fig, 1.1, legend=True)
+    return _square(fig, 1.1, legend=True, aspect=0.85)
 
 
 def _ring_positions(nets: list[str], gap: float = 0.04) -> tuple[np.ndarray, np.ndarray, float]:
@@ -420,9 +424,9 @@ def _ordered_networks(nets: list[str]) -> list[str]:
     return sorted(set(nets), key=lambda s: (s == "None", natural_key(s)))
 
 
-def _square(fig: go.Figure, lim: float, legend: bool) -> go.Figure:
+def _square(fig: go.Figure, lim: float, legend: bool, aspect: float) -> go.Figure:
     axis = dict(visible=False, range=[-lim, lim])
-    fig.update_layout(template="none", font=_FONT, height=520, margin=dict(l=10, r=10, t=10, b=10),
+    fig.update_layout(template="none", font=_FONT, meta=dict(aspect=aspect), margin=dict(l=10, r=10, t=10, b=10),
                       plot_bgcolor="white", paper_bgcolor="white", xaxis=axis, yaxis=dict(axis, scaleanchor="x"),
                       showlegend=legend, legend=dict(font=dict(size=10), itemsizing="constant", orientation="h",
                                                      x=0.5, xanchor="center", y=0, yanchor="top"),

@@ -45,11 +45,11 @@ class GraphMetricsResult:
     global_df:        pd.DataFrame | None = None
 
     def save_report(self, path, nodes: pd.DataFrame | None = None, surfaces: tuple[str, str] | None = None,
-                    static_brain: bool = True) -> None:
+                    static_brain: bool = True, interactive_brain: bool = False) -> None:
         """Write an HTML report (plotly loads from its CDN); nodes overrides the atlas, e.g. to add x, y, z."""
         from conngraph.report.pages import save_graph_report
 
-        save_graph_report(self, path, nodes, surfaces, static_brain)
+        save_graph_report(self, path, nodes, surfaces, static_brain, interactive_brain)
 
 
 def compute_graph_metrics(

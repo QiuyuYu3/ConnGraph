@@ -128,7 +128,7 @@ def _graph_metrics(args, parser, sidecars, matrices, atlas, variant, out, comman
     _save(result, str(out), verbose=False)
     if not args.no_report:
         result.save_report(out / "graph_report.html", nodes=_shared.report_nodes(args, atlas, variant),
-                           surfaces=_shared.surfaces(args))
+                           surfaces=_shared.surfaces(args), interactive_brain=args.interactive_brain)
     if not args.quiet:
         print(f"[{parser.prog}] Collected {len(ids)} participant(s) in {out}")
     return result
@@ -241,7 +241,7 @@ def _nbs(args, parser, matrices, groups, missing, atlas, variant, out, command) 
         nodes = _shared.report_nodes(args, atlas, variant)
         result.save_report(out / "nbs_report.html", nodes=atlas if nodes is None else nodes,
                            surfaces=_shared.surfaces(args),
-                           label_col=label_col, network_col=network_col)
+                           label_col=label_col, network_col=network_col, interactive_brain=args.interactive_brain)
         if not args.quiet:
             print(f"[{parser.prog}] Report: {out / 'nbs_report.html'}")
 

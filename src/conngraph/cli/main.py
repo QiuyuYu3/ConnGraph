@@ -75,6 +75,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="brain for the figures: left and right .surf.gii, or one skull-stripped brain volume (NIfTI or "
                         "AFNI BRIK/HEAD) whose smoothed outline is cut at x = 0 into hemispheres (default: fsLR 32k "
                         "midthickness)")
+    s.add_argument("--interactive-brain", action="store_true",
+                   help="add rotatable 3-D brain views to the reports beside the static ones; the reports get larger")
 
     p = _LevelOptions(parser, "participant", "participant level: graph metrics")
     p.add("--level", choices=["node", "network", "both"],

@@ -11,7 +11,7 @@
 ### Added
 
 - A `conngraph` command in BIDS App style: the participant level computes graph metrics per participant, the group level collects them into tables and a report and compares groups. It reads XCP-D or fnirs-pipe outputs, or a folder of matrix or time series files.
-- HTML reports for each participant, for graph metrics and for NBS, with interactive figures, static figures saved beside the report, and a Methods section written from the run's settings.
+- HTML reports for each participant, for graph metrics and for NBS, with interactive figures (rotatable 3-D brain views with `--interactive-brain`), static figures saved beside the report, and a Methods section written from the run's settings.
 - More input formats (unlabelled matrices, CIFTI, AFNI, nilearn), and connectivity computed from regional time series.
 - Two more ways to build the graph (the disparity filter and PMFG), and more metrics, computed by default: nodal and global efficiency, path length, closeness and eigenvector centrality, participation coefficient, within-module degree z, modularity on the atlas networks or Louvain modules, and the small-world index.
 - Hover cards, an edge threshold slider and network toggles in the interactive window; network-bundled circos plots.

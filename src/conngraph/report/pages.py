@@ -31,7 +31,7 @@ _MAX_BRAIN_EDGES = 300
 
 
 def save_graph_report(result, path, nodes: pd.DataFrame | None = None, surfaces: tuple[str, str] | None = None,
-                      static_brain: bool = True) -> None:
+                      static_brain: bool = True, interactive_brain: bool = False) -> None:
     """Write the HTML report of a compute_graph_metrics result; see GraphMetricsResult.save_report."""
     params = result.params
     opts, levels = params["options"], params["levels"]
@@ -75,7 +75,7 @@ def save_graph_report(result, path, nodes: pd.DataFrame | None = None, surfaces:
     if result.node_df is not None:
         body.append(dict(id="Node", title="Node level", desc=_level_desc(params, "node"),
                          steps=_node_steps(result, _metric_names(result.node_df), nodes, label_col, networks, palette,
-                                           surfaces, static_brain, notes, figs)))
+                                           surfaces, static_brain, interactive_brain, notes, figs)))
         sections.append(("Node", "Node level"))
 
     if result.global_df is not None:
@@ -121,7 +121,8 @@ def save_graph_report(result, path, nodes: pd.DataFrame | None = None, surfaces:
 
 
 def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: tuple[str, str] | None = None,
-                    static_brain: bool = True, label_col: str = "label", network_col: str = "network") -> None:
+                    static_brain: bool = True, label_col: str = "label", network_col: str = "network",
+                    interactive_brain: bool = False) -> None:
     """Write the HTML report of a run_nbs result; see NBSResult.save_report."""
     params, o = result.params, result.params["options"]
     figs = _FigureFolder(path)
@@ -166,21 +167,22 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
         else:
             drawn, what = iu, f"all {n_sig} significant edges"
         xyz = _coordinates(nodes, label_col, labels)
-        if xyz is not None:
+        if xyz is not None and (static_brain or interactive_brain):
             degree = adj_sig.sum(axis=1)
-            meshes = figures.surface_meshes(_surfaces(surfaces))
-            parts = []
+            static = interactive = None
             if static_brain:
-                parts.append('<div class="option-label">Option 1: static</div>'
-                             + _static_nbs_brain(nodes, label_col, network_col, labels, drawn, diff, degree,
-                                                 palette, surfaces, figs))
-            parts.append('<div class="option-label">Option 2: interactive</div>' + figures.to_div(figures.brain_edges(
-                xyz, labels, nets or ["None"] * len(labels), drawn, np.array([diff[i, j] for i, j in drawn]), degree,
-                palette, meshes, ("Group 1 > Group 2", "Group 1 < Group 2"))))
-            steps.append(_step(f"{next(letter)}. On the brain", hint="(static and interactive)", html="".join(parts),
+                static = _static_nbs_brain(nodes, label_col, network_col, labels, drawn, diff, degree, palette,
+                                           surfaces, figs)
+            if interactive_brain:
+                interactive = figures.to_div(figures.brain_edges(
+                    xyz, labels, nets or ["None"] * len(labels), drawn, np.array([diff[i, j] for i, j in drawn]),
+                    degree, palette, figures.surface_meshes(_surfaces(surfaces)),
+                    ("Group 1 > Group 2", "Group 1 < Group 2")))
+            html_, hint = _brain_views(static, interactive)
+            steps.append(_step(f"{next(letter)}. On the brain", hint=hint, html=html_,
                                desc=f"Showing {what}, coloured by the sign of the group difference (group 1 − group 2); "
                                     "node size is the number of significant edges at each region."))
-        else:
+        elif xyz is None:
             notes.append(_no_coordinates(nodes))
         if nets:
             import networkx as nx
@@ -362,15 +364,14 @@ def _compare_heatmap(name: str, table: pd.DataFrame, kind: str, networks: dict |
     return f'<div class="option-label">{label}</div>' + figures.to_div(fig)
 
 
-def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, static_brain, notes,
-                figs) -> list[dict]:
+def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, static_brain, interactive_brain,
+                notes, figs) -> list[dict]:
     steps = []
     labels = list(result.node_df.columns.get_level_values(1).unique())
     xyz = _coordinates(nodes, label_col, labels)
-    has_xyz = xyz is not None
-    if has_xyz:
+    if xyz is not None and (static_brain or interactive_brain):
         keep = ~np.isnan(xyz).any(axis=1)
-        meshes = figures.surface_meshes(_surfaces(surfaces))
+        meshes = figures.surface_meshes(_surfaces(surfaces)) if interactive_brain else []
         nets = [networks.get(lab, "None") if networks is not None else "" for lab in labels]
         static, interactive = [], []
         for m in metrics:
@@ -379,18 +380,20 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
             if static_brain:
                 static.append((m, t, _static_node_brain(result, nodes, label_col, labels, values, t, surfaces,
                                                         figs, m)))
-            shown = keep & ~np.isnan(values)
-            interactive.append((m, t, figures.to_div(figures.brain_values(
-                xyz[shown], [lab for lab, k in zip(labels, shown) if k], [n for n, k in zip(nets, shown) if k],
-                values[shown], t, meshes))))
-        parts = (['<div class="option-label">Option 1: static</div>' + _picker("node-static", static)] if static else [])
-        parts.append('<div class="option-label">Option 2: interactive</div>' + _picker("node-3d", interactive))
-        steps.append(_step("a. Group mean on the brain", picker=True, hint="(static and interactive)", html="".join(parts),
-                           desc="Colour and size both show the mean over participants. The interactive view can be "
-                                "rotated and hovered for region names, on a simplified surface."))
-    else:
+            if interactive_brain:
+                shown = keep & ~np.isnan(values)
+                interactive.append((m, t, figures.to_div(figures.brain_values(
+                    xyz[shown], [lab for lab, k in zip(labels, shown) if k], [n for n, k in zip(nets, shown) if k],
+                    values[shown], t, meshes))))
+        html_, hint = _brain_views(_picker("node-static", static) if static else None,
+                                   _picker("node-3d", interactive) if interactive else None)
+        steps.append(_step("a. Group mean on the brain", picker=True, hint=hint, html=html_,
+                           desc="Colour and size both show the mean over participants."
+                                + (" The interactive view can be rotated and hovered for region names, on a "
+                                   "simplified surface." if interactive_brain else "")))
+    elif xyz is None:
         notes.append(_no_coordinates(nodes))
-    letter = iter("abcdef"[1 if has_xyz else 0:])
+    letter = iter("abcdef"[len(steps):])
     if networks is not None:
         boxes = []
         for m in metrics:
@@ -407,7 +410,7 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
             table["Network"] = [networks.get(lab, "None") for lab in top.index]
         table["Group mean"] = top.values
         tops.append((m, _metric_title(m), _table(table)))
-    steps.append(_step(f"{next(letter)}. Highest regions", picker=True, open=False, html=_picker("node-top", tops),
+    steps.append(_step(f"{next(letter)}. Highest regions", picker=True, open=False, html=_picker("node-top", tops, columns=3),
                        desc="The 15 regions with the highest mean over participants."))
     if result.mean_matrix is not None:
         M = result.mean_matrix
@@ -468,7 +471,7 @@ def _rebuilt_graph(matrix: pd.DataFrame, params: dict, is_z: bool):
 
 def _circos_images(G, labels, nets, palette, colorbar_title) -> list[str]:
     return [_figure_block("Circos", figures.to_div(figures.circos_figure(G, labels, nets, palette, colorbar_title))),
-            _figure_block("Circos, bundled through networks and coloured by network", figures.to_div(
+            _figure_block("Circos, bundled by network", figures.to_div(
                 figures.circos_figure(G, labels, nets, palette, colorbar_title, bundled=True)))]
 
 
@@ -479,6 +482,14 @@ def _nbs_matrices(result, adj_sig, labels, nets, group_names) -> str:
     panes = [(f"g{k}", name, figures.to_div(figures.ordered_heatmap(M, labels, nets, lim, name, marks)))
              for k, (name, M) in enumerate(zip(group_names, (result.mean_g1, result.mean_g2)), 1)]
     return _picker("nbs-means", panes, "Group")
+
+
+def _brain_views(static: str | None, interactive: str | None) -> tuple[str, str]:
+    """The step body and title hint for static and/or interactive brain views."""
+    if static is None or interactive is None:
+        return static or interactive, ""
+    return ('<div class="option-label">Option 1: static</div>' + static
+            + '<div class="option-label">Option 2: interactive</div>' + interactive, "(static and interactive)")
 
 
 def _figure_block(label: str, img: str) -> str:
@@ -562,10 +573,12 @@ def _step(title: str, html: str, desc: str = "", open: bool = True, picker: bool
     return dict(title=title, html=html, desc=desc, open=open, picker=picker, hint=hint)
 
 
-def _picker(group: str, panes: list[tuple[str, str, str]], label: str = "Metric") -> str:
+def _picker(group: str, panes: list[tuple[str, str, str]], label: str = "Metric", columns: int = 2) -> str:
     """Buttons, or a select when the labels are many or long, showing one pane at a time; panes are (key, label, html)."""
     if len(panes) == 1:
         return panes[0][2]
+    cells = "".join(f"<div>{_figure_block(t, h)}</div>" for _, t, h in panes)
+    return f'<div class="figure-row" style="--columns:{min(columns, len(panes))}">{cells}</div>'
     bodies = "".join(f'<div class="pane{" on" if i == 0 else ""}" data-group="{group}" data-key="{k}">{h}</div>'
                      for i, (k, _, h) in enumerate(panes))
     if len(panes) <= 4 and sum(len(t) for _, t, _ in panes) <= 70:

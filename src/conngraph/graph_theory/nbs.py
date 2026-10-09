@@ -22,11 +22,12 @@ class NBSResult:
     mean_g2: np.ndarray | None = None
 
     def save_report(self, path, nodes: pd.DataFrame | None = None, surfaces: tuple[str, str] | None = None,
-                    static_brain: bool = True, label_col: str = "label", network_col: str = "network") -> None:
+                    static_brain: bool = True, label_col: str = "label", network_col: str = "network",
+                    interactive_brain: bool = False) -> None:
         """Write an HTML report (plotly loads from its CDN); nodes adds networks and, with x, y, z, brain figures."""
         from conngraph.report.pages import save_nbs_report
 
-        save_nbs_report(self, path, nodes, surfaces, static_brain, label_col, network_col)
+        save_nbs_report(self, path, nodes, surfaces, static_brain, label_col, network_col, interactive_brain)
 
 
 def run_nbs(

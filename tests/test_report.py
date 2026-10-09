@@ -171,12 +171,12 @@ def _sections(text):
 
 def test_graph_report_has_every_section_and_the_methods(graph_result, surfaces, tmp_path):
     path = tmp_path / "graph.html"
-    graph_result.save_report(path, surfaces=surfaces, static_brain=False)
+    graph_result.save_report(path, surfaces=surfaces, static_brain=False, interactive_brain=True)
     text = path.read_text(encoding="utf-8")
     assert _sections(text) == ["Summary", "Network", "NetworkHemi", "Node", "Global", "Errors", "Methods", "Versions"]
     assert "https://cdn.plot.ly/" in text
     assert "Triangulated Maximally Filtered Graph" in text
-    assert "Option 2: interactive" in text and "Option 1: static" not in text
+    assert "scatter3d" in text and "Option 1: static" not in text
     assert text.count('class="plotly-graph-div"') >= 8
 
 
@@ -191,20 +191,29 @@ def test_graph_report_numbers_captions_below_figures_and_folds_the_call(graph_re
     assert '<div class="call">' in text and 'class="copy"' in text and "<details" not in text
 
 
-def test_short_pickers_are_buttons_and_long_ones_a_select():
+def test_pickers_lay_every_pane_out_in_a_grid():
     from conngraph.report.pages import _picker
 
-    short = _picker("m", [("a", "Regions", "A"), ("b", "Networks", "B")], "Matrix")
-    assert '<button type="button" class="on" data-key="a">Regions</button>' in short and "<select" not in short
-    long = _picker("m", [(str(i), f"Participation coefficient {i}", "x") for i in range(5)])
-    assert '<select class="picker" data-group="m">' in long and "<button" not in long
+    assert _picker("m", [("a", "Regions", "A")]) == "A"
+    grid = _picker("m", [(str(i), f"Metric {i}", f"<p>{i}</p>") for i in range(5)])
+    assert grid.startswith('<div class="figure-row" style="--columns:2">')
+    assert all(f"Metric {i}</div><p>{i}</p>" in grid for i in range(5)) and "<button" not in grid
+
+
+def test_plots_take_their_height_from_an_aspect_ratio(graph_result, tmp_path):
+    path = tmp_path / "graph.html"
+    graph_result.save_report(path, static_brain=False)
+    text = path.read_text(encoding="utf-8")
+    assert text.count('<div class="plot" style="aspect-ratio:') == text.count('class="plotly-graph-div"')
+    assert '"height":' not in text
 
 
 def test_graph_report_renders_the_static_brain(graph_result, surfaces, tmp_path):
     path = tmp_path / "graph.html"
     graph_result.save_report(path, surfaces=surfaces, static_brain=True)
     text = path.read_text(encoding="utf-8")
-    assert "Option 1: static" in text and "data:image" not in text
+    assert "Group mean on the brain" in text and "data:image" not in text
+    assert "Option 1: static" not in text and "scatter3d" not in text
     pngs = sorted(p.name for p in (tmp_path / "figures").glob("*.png"))
     assert pngs and all(name.startswith("graph_") for name in pngs)
     assert all(f'src="figures/{name}"' in text for name in pngs)
@@ -234,8 +243,8 @@ def test_graph_report_leaves_dropped_nodes_off_the_brain(dataset, tmp_path):
     result = compute_graph_metrics(matrices, dataset.nodes_df, level="node", network_col="network",
                                    metrics=["strength"], n_jobs=1, verbose=False)
     assert result.node_df["strength.abs"][gone].isna().all()
-    result.save_report(tmp_path / "graph.html", static_brain=False)
-    assert "Option 2: interactive" in (tmp_path / "graph.html").read_text(encoding="utf-8")
+    result.save_report(tmp_path / "graph.html", static_brain=False, interactive_brain=True)
+    assert "scatter3d" in (tmp_path / "graph.html").read_text(encoding="utf-8")
 
 
 def test_graph_report_summary_names_the_time_series_measure(dataset, tmp_path):
