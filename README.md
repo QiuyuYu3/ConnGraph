@@ -1,6 +1,6 @@
 # ConnGraph
 
-Graph-theory metrics and network-based statistics for brain connectivity, with HTML reports and 3-D brain figures.
+Graph-theory metrics, group comparisons and network-based statistics for brain connectivity, with HTML reports and 3-D brain figures.
 
 This package is in early development. The options may change, and documentation is in preparation.
 
@@ -26,9 +26,9 @@ conngraph INPUT OUTPUT group [options]
 | Level | What it does |
 |---|---|
 | `participant` | Computes graph-theory metrics, at the node level and the network level, and writes one set of files and an HTML report (`OUTPUT/sub-<label>.html`, skipped with `--no-report`) per participant. `--participant-label` limits it to some participants, so a cluster can run one job per participant. |
-| `group` | Collects the participant results into tables and an HTML report. With a groups table, it also compares two groups with permutation t-tests, adjusting for `--covariates` if given: the graph metrics and the connectivity within and between networks by default, and every edge when `--compare` names `edges`. `--nbs-thresh` adds the network-based statistic. |
+| `group` | Collects the participant results into tables and an HTML report. With a groups table, it also compares two groups with permutation t-tests, adjusting for `--covariates` if given: the graph metrics and the connectivity within and between networks by default, and every edge when `--compare` names `edges`. `--correction` (`fdr`, `fwe` or `none`) is required for these comparisons. `--nbs-thresh` adds the network-based statistic. |
 
-Graph options (method, metrics, random networks) belong to the participant level; report and group comparison options belong to the group level. Input options are given at both. Run `conngraph --help` for all options.
+Graph options (method, metrics, random networks) belong to the participant level; group comparison options belong to the group level. Input options and the report options `--coords`, `--surfaces` and `--no-report` are given at both. Run `conngraph --help` for all options.
 
 Example on XCP-D output with the Gordon atlas:
 
@@ -68,7 +68,7 @@ With several sessions, the session label follows the participant: `sub-01_ses-01
 - Tables may carry the node labels as headers; without them, rows and columns follow the order of `nodes.tsv`.
 - Matrices hold Pearson correlations; add `--values z` if they hold Fisher z values.
 - `nodes.tsv` has one row per node. Without x, y, z the report leaves out the brain figures. For XCP-D input with the Gordon atlas, coordinates are added automatically.
-- Brain figures are drawn in the fsLR 32k surfaces. `--surfaces` (group level) takes another left and right `.surf.gii`, or one skull-stripped brain volume (NIfTI or AFNI BRIK/HEAD), such as a pediatric template, whose smoothed outline is used instead. Node coordinates must be in the template's space.
+- Brain figures are drawn in the fsLR 32k surfaces. `--surfaces` takes another left and right `.surf.gii`, or one skull-stripped brain volume (NIfTI or AFNI BRIK/HEAD), such as a pediatric template, whose smoothed outline is used instead. Node coordinates must be in the template's space.
 
 `--participant-label` and `--session-id` select participants and sessions, as in XCP-D; for `xcpd` and `fnirs-pipe`, `--task-id` selects the task. Each session is analysed on its own; without `--session-id`, every session in `INPUT` is.
 
@@ -82,12 +82,13 @@ A participant with several runs left after filtering has each run analysed on it
 
 ## Output
 
-The participant level writes, for each participant, session and atlas or chromophore, one table per level with a row per node or network and a column per metric, the network-level connectivity, and a `_metrics.json` with every setting:
+The participant level writes, for each participant, session and atlas or chromophore, one table per level with a row per node or network and a column per metric, the network-level connectivity, and a `_metrics.json` with every setting, plus one report per participant:
 
 ```
 OUTPUT/
     dataset_description.json
     sub-01.html                       the participant's report, a section per session and atlas
+    sub-01/figures/                   its static brain views (300 dpi PNG)
     sub-01/ses-01/
         sub-01_ses-01_atlas-Gordon_level-node_metrics.tsv
         sub-01_ses-01_atlas-Gordon_level-networkhemi_metrics.tsv
@@ -103,6 +104,8 @@ OUTPUT/
 ```
 
 Without sessions the `ses-` folders are left out; matrix and time series input has no atlas folder. fNIRS channels have no networks, so only the node level is computed.
+
+The reports link their static figures from the `figures/` folders, so keep those next to the reports when moving them. The interactive figures load plotly from its CDN, so viewing them needs an internet connection; each has a camera button that saves it as PNG. For publication figures at 300 dpi, use the plotting functions of the Python package (`BrainNetPlotter.plot_views`, `circos_plot`, `spring_plot`, `plot_nbs_matrices`), which save to any path at 300 dpi.
 
 Each `compare/` table has one row per test with the t statistic (positive when the first group of `--contrast` is higher), its p-value, FDR-corrected and family-wise (max-T, `--n-perms` permutations) p-values, the group means and sizes, and whether the result is significant under the `--correction` you chose (FDR, family-wise or uncorrected; required, with `--alpha`, default 0.05). Corrections apply within a family: one metric at one level, the whole-graph metrics of one level, the network blocks of one level, or all edges. Values missing or constant across participants are not tested.
 
