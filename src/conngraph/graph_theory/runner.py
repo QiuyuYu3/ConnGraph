@@ -5,6 +5,7 @@ Top-level entry point: compute_graph_metrics.
 from __future__ import annotations
 
 import json
+import multiprocessing
 import os
 import platform
 import warnings
@@ -499,7 +500,8 @@ def _completed(calls: dict, workers: int):
                 future.set_exception(e)
             yield key, future
         return
-    with ProcessPoolExecutor(max_workers=workers) as executor:
+    # spawn on every platform: forking a parent that already runs threads can deadlock
+    with ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context("spawn")) as executor:
         futures = {executor.submit(call): key for key, call in calls.items()}
         for future in as_completed(futures):
             yield futures[future], future

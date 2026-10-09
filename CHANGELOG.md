@@ -8,6 +8,7 @@
 - Everything installs with the package; there are no optional extras.
 - Saved figures are 300 dpi.
 - Result tables, including those of `compute_graph_metrics(output_dir=...)`, are tab-separated `.tsv` files.
+- Parallel work starts fresh worker processes on every platform, so a script that runs it needs an `if __name__ == "__main__":` guard on Linux too.
 
 ### Added
 

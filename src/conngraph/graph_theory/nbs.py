@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import multiprocessing
 import os
 import platform
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -150,7 +151,9 @@ def _null_distribution(pooled, draws, setup, observed_max, n_jobs, verbose) -> n
         finally:
             _WORKER.clear()
         return null
-    with ProcessPoolExecutor(max_workers=workers, initializer=_init_worker, initargs=(pooled, setup)) as pool:
+    # spawn on every platform: forking a parent that already runs threads can deadlock
+    with ProcessPoolExecutor(max_workers=workers, initializer=_init_worker, initargs=(pooled, setup),
+                             mp_context=multiprocessing.get_context("spawn")) as pool:
         futures = {pool.submit(_null_chunk, draws[s:s + chunk]): s for s in starts}
         done = np.zeros(k, dtype=bool)
         for f in as_completed(futures):

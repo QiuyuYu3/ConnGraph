@@ -797,10 +797,10 @@ def test_report_workers_fit_in_the_memory_limit(capsys):
 def test_a_failed_participant_report_is_logged_and_the_others_are_written(xcpd, tmp_path, monkeypatch, capsys):
     from conngraph.cli import participant
 
-    def fail_for_sub02(args, parser, sid, *rest):
+    def fail_for_sub02(args, prog, sid, *rest):
         if sid.removeprefix("sub-").startswith("02"):
             raise RuntimeError("cannot draw sub-02")
-        save(args, parser, sid, *rest)
+        save(args, prog, sid, *rest)
 
     save = participant._save_section
     monkeypatch.setattr(participant, "_save_section", fail_for_sub02)

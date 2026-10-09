@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import multiprocessing
 import os
 import pathlib
 import sys
@@ -83,12 +84,15 @@ def _sections(args, parser, ids, matrices, atlas, session, variant) -> None:
     nodes = _shared.report_nodes(args, atlas, variant)
     nodes = atlas if nodes is None else nodes
     meshes = _meshes(args, nodes)
-    jobs = {sid: (args, parser, sid, matrices[sid], nodes, session, variant, meshes) for sid in ids}
+    # older Pythons cannot send argparse objects to worker processes
+    sent = argparse.Namespace(**{k: v for k, v in vars(args).items() if k != "_level_options"})
+    jobs = {sid: (sent, parser.prog, sid, matrices[sid], nodes, session, variant, meshes) for sid in ids}
     workers = _report_workers(args, parser, len(ids), max(len(matrices[sid]) for sid in ids))
     if workers == 1:
         errors = {sid: _try_section(*job) for sid, job in jobs.items()}
     else:
-        with ProcessPoolExecutor(max_workers=workers) as pool:
+        # spawn on every platform: forking a parent that already runs threads can deadlock
+        with ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context("spawn")) as pool:
             futures = {sid: pool.submit(_try_section, *job) for sid, job in jobs.items()}
             errors = {}
             for sid, future in futures.items():
@@ -189,7 +193,7 @@ def _meshes(args: argparse.Namespace, nodes: pd.DataFrame) -> list | None:
     return figures.surface_meshes(_surfaces(_shared.surfaces(args)))
 
 
-def _save_section(args, parser, sid, matrix, nodes, session, variant, meshes) -> None:
+def _save_section(args, prog, sid, matrix, nodes, session, variant, meshes) -> None:
     """This participant's report section for one session and atlas, from its files, kept until every session has run."""
     from conngraph.cli.group import _read_participants
     from conngraph.report.participant import participant_section
@@ -202,7 +206,7 @@ def _save_section(args, parser, sid, matrix, nodes, session, variant, meshes) ->
     stem = file_stem(sid, session, variant)[1]
     sidecar = _sidecar(args, sid, session, variant)
     params = json.loads(sidecar.read_text(encoding="utf-8"))
-    result = _read_participants([(sidecar, params)], {str(c): c for c in matrix.columns}, parser.prog)
+    result = _read_participants([(sidecar, params)], {str(c): c for c in matrix.columns}, prog)
     figs = _FigureFolder(out / f"sub-{label}.html", out / f"sub-{label}" / "figures", stem)
     section = participant_section(result, sid, matrix, nodes, params, "_".join(parts) or "results",
                                   " ".join(parts) or "Results", meshes, figs, _shared.surfaces(args))
