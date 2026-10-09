@@ -8,7 +8,7 @@ Turn a connectivity matrix and a node table into graph-theory metrics and an int
 
 ### 0.3.0
 
-- A `conngraph` command in BIDS App style for XCP-D, fnirs-pipe, matrix and time series input, with a participant level and a group level.
+- A `conngraph` command in BIDS App style for XCP-D, NIRSPipe, matrix and time series input, with a participant level and a group level.
 - HTML reports for each participant, for the group's graph metrics, for group comparisons and for NBS, built from the result files they link to and rebuilt with `--reports-only`.
 - Two-group comparisons of graph metrics, network connectivity and edges with permutation t-tests and covariates.
 - Brain figures on any template, given as surfaces or a brain volume.

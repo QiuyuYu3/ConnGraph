@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import html
 import json
+import math
 import os
 import pathlib
 import warnings
@@ -587,19 +588,43 @@ def _picker(panes: list[tuple[str, str, str]], columns: int = 2) -> str:
     return f'<div class="figure-row" style="--columns:{min(columns, len(panes))}">{cells}</div>'
 
 
+def _sig3(v: float) -> str:
+    if v == 0:
+        return "0"
+    if not 1e-4 <= abs(v) < 1e6:
+        return f"{v:.3g}"
+    return f"{v:.{max(0, 2 - math.floor(math.log10(abs(v))))}f}"
+
+
+def _float_format(name: str, values: pd.Series):
+    """p-values to 3 decimals; else one decimal count per column, or per cell when the column spans over tenfold."""
+    if name == "p" or str(name).startswith("p "):
+        return lambda v: "&lt; 0.001" if v < 0.001 else f"{v:.3f}"
+    finite = np.abs(values[np.isfinite(values) & (values != 0)].to_numpy(dtype=float))
+    if not len(finite) or finite.max() >= 10 * finite.min() or not 1e-4 <= finite.min() < 1e6:
+        return _sig3
+    decimals = max(0, 2 - math.floor(math.log10(np.median(finite))))
+    return lambda v: f"{v:.{decimals}f}"
+
+
 def _table(df: pd.DataFrame, sortable: bool = True) -> str:
-    head = "".join(f'<th class="{"num" if pd.api.types.is_numeric_dtype(df[c]) else ""}">{html.escape(str(c))}</th>'
+    # short headers such as "p FDR" stay on one line
+    head = "".join(f'<th class="{"num" if pd.api.types.is_numeric_dtype(df[c]) else ""}">'
+                   f'{html.escape(str(c)).replace(" ", "&nbsp;") if len(str(c)) <= 12 else html.escape(str(c))}</th>'
                    for c in df.columns)
+    formats = {c: _float_format(c, df[c]) for c in df.columns if pd.api.types.is_float_dtype(df[c])}
     rows = []
     for row in df.itertuples(index=False):
         cells = []
-        for v in row:
+        for c, v in zip(df.columns, row):
             if isinstance(v, (bool, np.bool_)) or not isinstance(v, (int, float, np.integer, np.floating)):
                 cells.append(f"<td>{v}</td>")
             elif isinstance(v, (int, np.integer)):
                 cells.append(f'<td class="num" data-v="{v}">{v}</td>')
+            elif not np.isfinite(v):
+                cells.append(f'<td class="num" data-v="{v}"><span class="na">n/a</span></td>')
             else:
-                cells.append(f'<td class="num" data-v="{v:.10g}">{v:.4g}</td>')
+                cells.append(f'<td class="num" data-v="{v:.10g}">{formats.get(c, _sig3)(v)}</td>')
         rows.append("<tr>" + "".join(cells) + "</tr>")
     return f'<table class="flat{" sortable" if sortable else ""}"><thead><tr>{head}</tr></thead><tbody>{"".join(rows)}</tbody></table>'
 

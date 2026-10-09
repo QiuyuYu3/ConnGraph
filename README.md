@@ -1,10 +1,10 @@
 # ConnGraph
 
-Graph-theory metrics, group comparisons and network-based statistics for brain connectivity, with HTML reports and 3-D brain figures.
+Graph-theory metrics, group comparisons and network-based statistics for brain connectivity from any neuroimaging modality (fMRI, fNIRS, EEG, MEG), with HTML reports and 3-D brain figures.
 
 ![A brain network on the brain, as a bundled circos plot and in a spring layout](https://raw.githubusercontent.com/QiuyuYu3/brainnet3d/main/docs/images/banner.png)
 
-- Takes connectivity matrices or regional time series as input, in common table, NumPy, MATLAB, CIFTI and AFNI formats (XCP-D derivatives are read as they are).
+- Works with any neuroimaging data that gives a connectivity matrix between regions or channels: fMRI, fNIRS, EEG, MEG and others. XCP-D (fMRI) and NIRSPipe (fNIRS) derivatives are read as they are; any other data, such as EEG coherence or phase-locking matrices, can be given as connectivity matrices or regional time series in common table, NumPy, MATLAB, CIFTI and AFNI formats.
 - Builds a graph for each participant with one of twelve methods, such as TMFG, density thresholding or orthogonal minimum spanning trees, and computes node, network and whole-graph metrics with bctpy, the Python Brain Connectivity Toolbox.
 - Compares two groups on the metrics, the network blocks and every edge, with covariates and permutation-based corrections, and runs the network-based statistic.
 - Writes an HTML report for each participant and for the group, with a Methods section written from the run's settings.

@@ -22,15 +22,15 @@ NODES_FILE = "nodes.tsv"
 
 
 def add_input_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("input_dir", help="XCP-D or fnirs-pipe derivatives folder, or a folder of matrix or time "
+    parser.add_argument("input_dir", help="XCP-D or NIRSPipe derivatives folder, or a folder of matrix or time "
                                           "series files (see --input-type)")
     parser.add_argument("output_dir", help="folder for the results; created if missing")
     parser.add_argument("--version", action="version", version=f"%(prog)s {conngraph.__version__}")
     parser.add_argument("--quiet", action="store_true", help="print nothing but errors")
 
     g = parser.add_argument_group("input")
-    g.add_argument("--input-type", choices=["xcpd", "fnirs-pipe", "matrix", "timeseries"], required=True,
-                   help="xcpd: XCP-D derivatives tree, one result folder per atlas; fnirs-pipe: fnirs-pipe "
+    g.add_argument("--input-type", choices=["xcpd", "nirspipe", "matrix", "timeseries"], required=True,
+                   help="xcpd: XCP-D derivatives tree, one result folder per atlas; nirspipe: NIRSPipe "
                         "derivatives tree, one result folder per chromophore; matrix: a folder with nodes.tsv and one "
                         "sub-<label>_matrix.<ext> per participant; timeseries: the same with "
                         "sub-<label>_timeseries.<ext>")
@@ -47,30 +47,30 @@ def add_input_arguments(parser: argparse.ArgumentParser) -> None:
     g.add_argument("--atlases", nargs="+", metavar="ATLAS",
                    help="xcpd: atlas names as in the file names, e.g. Gordon; each gets its own result folder")
     g.add_argument("--chromophore", nargs="+", choices=["hbo", "hbr"], default=["hbo", "hbr"],
-                   help="fnirs-pipe: chromophores to analyse, each in its own result folder (default: hbo hbr)")
+                   help="nirspipe: chromophores to analyse, each in its own result folder (default: hbo hbr)")
     g.add_argument("--session-id", nargs="+", metavar="LABEL",
                    help="sessions to analyse, with or without ses-, each in its own result folder (default: every "
                         "session in the input)")
     g.add_argument("--bids-filter-file", type=_read_json, metavar="FILE",
-                   help='xcpd and fnirs-pipe: JSON file of BIDS entities the files must carry, as for XCP-D; the "bold" '
-                        '(xcpd) or "nirs" (fnirs-pipe) entry is used, e.g. {"bold": {"acquisition": "mb", "run": 1}}')
-    g.add_argument("--task-id", default="rest", help="xcpd and fnirs-pipe: task label in the file names (default: rest)")
+                   help='xcpd and nirspipe: JSON file of BIDS entities the files must carry, as for XCP-D; the "bold" '
+                        '(xcpd) or "nirs" (nirspipe) entry is used, e.g. {"bold": {"acquisition": "mb", "run": 1}}')
+    g.add_argument("--task-id", default="rest", help="xcpd and nirspipe: task label in the file names (default: rest)")
     g.add_argument("--space", default="fsLR", help="xcpd: space label in the file names (default: fsLR)")
     g.add_argument("--participant-label", nargs="+", metavar="LABEL", help="participants to include, with or without sub-")
     g.add_argument("--bad-node-threshold", type=float, default=0.9,
                    help="drop nodes with more than this fraction of missing values (default: 0.9)")
     g.add_argument("--drop-mode", choices=["union", "intersection"], default="union",
-                   help="matrix, timeseries and fnirs-pipe input: drop a node missing in any participant (union, "
+                   help="matrix, timeseries and nirspipe input: drop a node missing in any participant (union, "
                         "default) or in all (intersection)")
 
 
 def input_variants(args: argparse.Namespace, parser: argparse.ArgumentParser) -> list[str | None]:
-    """One entry per separate analysis, named as its result folder: an atlas for XCP-D, a chromophore for fnirs-pipe."""
+    """One entry per separate analysis, named as its result folder: an atlas for XCP-D, a chromophore for NIRSPipe."""
     if args.input_type == "xcpd":
         if not args.atlases:
             parser.error("--atlases is required for XCP-D input")
         return [f"atlas-{a}" for a in dict.fromkeys(args.atlases)]
-    if args.input_type == "fnirs-pipe":
+    if args.input_type == "nirspipe":
         return [f"chromo-{c}" for c in dict.fromkeys(args.chromophore)]
     return [None]
 
@@ -90,7 +90,7 @@ def input_sessions(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
             raise SystemExit(f"{parser.prog}: {args.input_dir} mixes files with and without a session (ses-) label")
     else:
         labels = [s.removeprefix("sub-") for s in args.participant_label] if args.participant_label else ["*"]
-        datatype = "nirs" if args.input_type == "fnirs-pipe" else "func"
+        datatype = "nirs" if args.input_type == "nirspipe" else "func"
         found = {os.path.basename(os.path.dirname(p)) for lbl in labels
                  for p in glob.glob(os.path.join(args.input_dir, f"sub-{lbl}", "ses-*", datatype))}
     return sorted(s for s in found if s) or [None]
@@ -102,10 +102,10 @@ def bids_filters(args: argparse.Namespace, parser: argparse.ArgumentParser) -> d
 
     if args.bids_filter_file is None:
         return {}
-    if args.input_type not in ("xcpd", "fnirs-pipe"):
-        parser.error("--bids-filter-file needs xcpd or fnirs-pipe input")
+    if args.input_type not in ("xcpd", "nirspipe"):
+        parser.error("--bids-filter-file needs xcpd or nirspipe input")
     try:
-        return _check_filters(args.bids_filter_file.get("nirs" if args.input_type == "fnirs-pipe" else "bold"))
+        return _check_filters(args.bids_filter_file.get("nirs" if args.input_type == "nirspipe" else "bold"))
     except ValueError as exc:
         parser.error(str(exc))
 
@@ -123,7 +123,7 @@ def _read_json(path: str) -> dict:
 def run_all(args: argparse.Namespace, parser: argparse.ArgumentParser, run, error_folder: str) -> int:
     """Call run(session, variant) for each session and variant; with several, a failure is noted and the rest run."""
     kind = args.connectivity
-    if args.input_type in ("matrix", "fnirs-pipe") and (kind or args.shrinkage):
+    if args.input_type in ("matrix", "nirspipe") and (kind or args.shrinkage):
         parser.error("--connectivity and --shrinkage need timeseries or XCP-D input")
     if args.shrinkage and not kind and args.input_type != "timeseries":
         parser.error("--shrinkage needs --connectivity")
@@ -189,8 +189,8 @@ def load_input(args: argparse.Namespace, parser: argparse.ArgumentParser,
     filters = bids_filters(args, parser)
     if "ses" in filters:
         filters["ses"] = [session.removeprefix("ses-") if session else None]
-    if args.input_type == "fnirs-pipe":
-        return conngraph.load_fnirs_pipe(args.input_dir, variant.removeprefix("chromo-"), session=session,
+    if args.input_type == "nirspipe":
+        return conngraph.load_nirspipe(args.input_dir, variant.removeprefix("chromo-"), session=session,
                                           task=args.task_id,
                                           bad_node_threshold=args.bad_node_threshold, drop_mode=args.drop_mode,
                                           verbose=verbose, bids_filters=filters)

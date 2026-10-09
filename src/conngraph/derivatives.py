@@ -1,6 +1,6 @@
 """
 Loaders for BIDS derivatives that name their connectivity matrices *_relmat.tsv:
-XCP-D and fnirs-pipe. Each returns matrices and a node table in the format
+XCP-D and NIRSPipe. Each returns matrices and a node table in the format
 expected by compute_graph_metrics.
 """
 
@@ -292,7 +292,7 @@ def load_xcpd_flat(
 CHROMOPHORES = ("hbo", "hbr")
 
 
-def load_fnirs_pipe(
+def load_nirspipe(
     deriv_dir: str,
     chromophore: str,
     session: str | None = None,
@@ -304,11 +304,11 @@ def load_fnirs_pipe(
     bids_filters: dict | None = None,
 ) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
     """
-    Load one chromophore's channel-by-channel Pearson matrices from a fnirs-pipe derivatives folder.
+    Load one chromophore's channel-by-channel Pearson matrices from a NIRSPipe derivatives folder.
 
     Parameters
     ----------
-    deriv_dir : fnirs-pipe output folder holding ``sub-*/[ses-*/]nirs/``.
+    deriv_dir : NIRSPipe output folder holding ``sub-*/[ses-*/]nirs/``.
     chromophore : "hbo" or "hbr"; the two are never mixed.
     session : session label such as ``"ses-01"`` or ``"01"``; None takes each subject's one matching file, with or without a session.
     task : task label in the file names.
@@ -356,13 +356,13 @@ def load_fnirs_pipe(
         raise DataValidationError("No matrices could be loaded. Check deriv_dir, chromophore, session, task."
                                   + _first_reasons(skipped))
     if verbose:
-        print(f"[load_fnirs_pipe] Loaded {len(matrices)} {chromophore} matrix/matrices")
+        print(f"[load_nirspipe] Loaded {len(matrices)} {chromophore} matrix/matrices")
 
     before = matrices
     if bad_node_threshold < 1.0:
         matrices = _drop_bad_nodes(matrices, bad_node_threshold, drop_mode)
     nodes = pd.DataFrame({"label": list(next(iter(matrices.values())).columns)})
-    record_input(nodes, before, matrices, bad_node_threshold, drop_mode, source="fnirs-pipe", path=deriv_dir,
+    record_input(nodes, before, matrices, bad_node_threshold, drop_mode, source="NIRSPipe", path=deriv_dir,
                  chromophore=chromophore, task=_label(filters, "task", task), session=session, skipped=skipped,
                  **_filter_record(filters), **({"split_runs": split} if split else {}))
     return matrices, nodes

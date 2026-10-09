@@ -56,8 +56,8 @@ def graph_methods(params: dict) -> dict[str, str]:
     if loaded.get("source") == "XCP-D":
         source = (f" computed from XCP-D regional time series ({loaded['atlas']} atlas; {loaded['space']} space)" if series
                   else f" derived from XCP-D ({loaded['atlas']} atlas; {loaded['space']} space; Pearson's r)")
-    elif loaded.get("source") == "fnirs-pipe":
-        source = f" derived from fnirs-pipe ({_CHROMO[loaded['chromophore']]}; Pearson's r)"
+    elif loaded.get("source") == "NIRSPipe":
+        source = f" derived from NIRSPipe ({_CHROMO[loaded['chromophore']]}; Pearson's r)"
     elif series:
         source = " computed from regional time series"
 
@@ -95,7 +95,7 @@ def graph_methods(params: dict) -> dict[str, str]:
     fisher = opts.get("apply_fisher_z", True)
     z = {"z": "Fisher z-transformed connectivity" if fisher else "connectivity",
          "back": " and converted back to r" if fisher else ""}
-    if "node" in levels and loaded.get("source") == "fnirs-pipe":
+    if "node" in levels and loaded.get("source") == "NIRSPipe":
         para4.append(("level_node_channels", {"n": levels["node"]["n_nodes"]}))
     elif "node" in levels:
         atlas = f" of the {loaded['atlas']} atlas" if loaded.get("atlas") else ""

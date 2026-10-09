@@ -40,7 +40,7 @@ def run(args: argparse.Namespace, parser: argparse.ArgumentParser, session: str 
     if not ids:
         raise SystemExit(f"{parser.prog}: none of --participant-label {' '.join(args.participant_label)} has a matrix")
     label_col, network_col = _shared.node_columns(args)
-    level = args.level or ("node" if args.input_type == "fnirs-pipe" else "both")
+    level = args.level or ("node" if args.input_type == "nirspipe" else "both")
     metrics = "all" if args.metrics == ["all"] else args.metrics
     try:
         result = compute_graph_metrics(

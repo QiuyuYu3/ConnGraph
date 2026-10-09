@@ -4,7 +4,7 @@ ConnGraph: graph-theory metrics, group statistics, reports and brain figures for
 
 from conngraph.loaders                  import load, load_group, load_timeseries, load_gordon_atlas
 from conngraph.connectivity             import compute_connectivity
-from conngraph.derivatives              import load_xcpd, load_xcpd_flat, load_fnirs_pipe
+from conngraph.derivatives              import load_xcpd, load_xcpd_flat, load_nirspipe
 from conngraph.core.dataset             import ConnectivityDataset
 from conngraph.viz.plotter              import BrainNetPlotter
 from conngraph.viz.network_graphs       import spring_plot, circos_plot, spring_plot_3d, matrix_heatmap
@@ -21,7 +21,7 @@ __version__ = "0.3.0"
 __all__ = [
     "load", "load_group", "load_timeseries", "load_gordon_atlas",
     "compute_connectivity",
-    "load_xcpd", "load_xcpd_flat", "load_fnirs_pipe",
+    "load_xcpd", "load_xcpd_flat", "load_nirspipe",
     "ConnectivityDataset",
     "BrainNetPlotter",
     "spring_plot", "circos_plot", "spring_plot_3d", "matrix_heatmap",

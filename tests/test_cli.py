@@ -442,8 +442,8 @@ def test_connectivity_options_need_time_series(dataset, tmp_path):
                   "correlation"] + FAST)
 
 
-def _fnirs_pipe_tree(dataset, root):
-    """fnirs-pipe output for the toy participants: one matrix per chromophore, channels named after the toy nodes."""
+def _nirspipe_tree(dataset, root):
+    """NIRSPipe output for the toy participants: one matrix per chromophore, channels named after the toy nodes."""
     for sid, mat in dataset.matrices.items():
         folder = root / sid / "ses-01" / "nirs"
         folder.mkdir(parents=True)
@@ -455,19 +455,19 @@ def _fnirs_pipe_tree(dataset, root):
     return root
 
 
-def test_fnirs_pipe_input_handles_each_chromophore_on_its_own(dataset, tmp_path):
-    root = _fnirs_pipe_tree(dataset, tmp_path / "fnirs")
+def test_nirspipe_input_handles_each_chromophore_on_its_own(dataset, tmp_path):
+    root = _nirspipe_tree(dataset, tmp_path / "fnirs")
     out = tmp_path / "out"
     fast = ["--graph-method", "full", "--metrics", "strength", "--n-jobs", "1", "--quiet"]
-    _both(root, out, fast, common=["--input-type", "fnirs-pipe"])
+    _both(root, out, fast, common=["--input-type", "nirspipe"])
     sid = sorted(dataset.matrices)[0]
     for chromo in ("hbo", "hbr"):
         assert (out / sid / "ses-01" / f"{sid}_ses-01_chromo-{chromo}_level-node_metrics.tsv").exists()
         params = _params(out / "group" / "ses-01" / f"chromo-{chromo}")
-        assert (params["input"]["source"], params["input"]["chromophore"]) == ("fnirs-pipe", chromo)
+        assert (params["input"]["source"], params["input"]["chromophore"]) == ("NIRSPipe", chromo)
         assert list(params["levels"]) == ["node"]
     only = tmp_path / "hbr_only"
-    cli.main([str(root), str(only), "participant", "--input-type", "fnirs-pipe", "--chromophore", "hbr",
+    cli.main([str(root), str(only), "participant", "--input-type", "nirspipe", "--chromophore", "hbr",
               "--session-id", "01", *fast])
     assert sorted(p.name.split("_")[2] for p in (only / sid / "ses-01").glob("*.tsv")) == ["chromo-hbr"]
 

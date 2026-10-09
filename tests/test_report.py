@@ -9,7 +9,7 @@ import pytest
 from conngraph.graph_theory import compute_graph_metrics
 from conngraph.graph_theory.nbs import run_nbs
 from conngraph.report.methods import graph_methods, nbs_methods
-from conngraph.report.pages import _column
+from conngraph.report.pages import _column, _table
 
 pytest.importorskip("bct")
 
@@ -515,3 +515,14 @@ def test_graph_report_skips_the_group_network_for_a_custom_method(dataset, tmp_p
     assert not result.failed.get("node")
     result.save_report(tmp_path / "graph.html", static_brain=False)
     assert "Group network" not in (tmp_path / "graph.html").read_text(encoding="utf-8")
+
+
+def test_table_formats_numbers_by_column():
+    df = pd.DataFrame({"Network": ["a", "b", "c"], "Strength": [0.304, 0.5057, 0.4091], "p FDR": [3e-14, 0.0123, 0.5],
+                       "Mixed": [0.0390, 1.005, np.nan], "Edges": [3, 12, 7]})
+    cells = re.findall(r'<td class="num"[^>]*>(.*?)</td>', _table(df))
+    assert cells[:4] == ["0.304", "&lt; 0.001", "0.0390", "3"]
+    assert cells[4:8] == ["0.506", "0.012", "1.00", "12"]
+    assert cells[10] == '<span class="na">n/a</span>'
+    assert 'data-v="3e-14"' in _table(df)
+    assert "<th class=\"num\">p&nbsp;FDR</th>" in _table(df)

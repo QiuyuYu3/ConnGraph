@@ -25,7 +25,7 @@ The reports are built from the files written to `OUTPUT`, so they always show wh
 | Type | `INPUT` |
 |---|---|
 | `xcpd` | an XCP-D derivatives folder; name one or more atlases with `--atlases` |
-| `fnirs-pipe` | a fnirs-pipe derivatives folder; HbO and HbR are analysed separately (`--chromophore` picks one) |
+| `nirspipe` | a NIRSPipe derivatives folder; HbO and HbR are analysed separately (`--chromophore` picks one) |
 | `matrix` | a folder of connectivity matrices, laid out as below |
 | `timeseries` | a folder of regional time series, laid out as below; connectivity is computed first (`--connectivity`) |
 
@@ -48,9 +48,9 @@ With several sessions, the session label follows the participant: `sub-01_ses-01
 - `nodes.tsv` has one row per node. Without x, y, z the report leaves out the brain figures. For XCP-D input with the Gordon atlas, coordinates are added automatically.
 - Brain figures are drawn in the fsLR 32k surfaces. `--surfaces` takes another left and right `.surf.gii`, or one skull-stripped brain volume (NIfTI or AFNI BRIK/HEAD), such as a pediatric template, whose smoothed outline is used instead. Node coordinates must be in the template's space.
 
-`--participant-label` and `--session-id` select participants and sessions, as in XCP-D; for `xcpd` and `fnirs-pipe`, `--task-id` selects the task. Each session is analysed on its own; without `--session-id`, every session in `INPUT` is.
+`--participant-label` and `--session-id` select participants and sessions, as in XCP-D; for `xcpd` and `nirspipe`, `--task-id` selects the task. Each session is analysed on its own; without `--session-id`, every session in `INPUT` is.
 
-For files that differ in other BIDS entities, such as several runs or acquisitions, `--bids-filter-file` takes the same JSON file as XCP-D. Its `"bold"` entry (`"nirs"` for fnirs-pipe) names the entities the files must carry; a list accepts any of its values and `null` requires the entity to be absent. Task, space or session given there replace `--task-id`, `--space` and `--session-id`.
+For files that differ in other BIDS entities, such as several runs or acquisitions, `--bids-filter-file` takes the same JSON file as XCP-D. Its `"bold"` entry (`"nirs"` for nirspipe) names the entities the files must carry; a list accepts any of its values and `null` requires the entity to be absent. Task, space or session given there replace `--task-id`, `--space` and `--session-id`.
 
 ```json
 {"bold": {"acquisition": "multiband", "run": 1}}
