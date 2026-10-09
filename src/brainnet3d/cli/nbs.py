@@ -45,6 +45,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     out = pathlib.Path(args.output_dir)
     matrices, atlas = _shared.load_input(args, parser)
+    label_col, network_col = _shared.node_columns(args)
 
     table = pd.read_csv(args.groups, sep="\t" if args.groups.endswith((".tsv", ".txt")) else ",", dtype=str)
     for col in (args.participant_column, args.group_column):
@@ -81,7 +82,7 @@ def main(argv: list[str] | None = None) -> int:
         nodes = _shared.report_nodes(args, atlas)
         result.save_report(out / "nbs_report.html", nodes=atlas if nodes is None else nodes,
                            surfaces=_shared.surfaces(args), static_brain=not args.no_static_brain,
-                           label_col=args.label_col, network_col=args.network_col)
+                           label_col=label_col, network_col=network_col)
         if not args.quiet:
             print(f"[{parser.prog}] Report: {out / 'nbs_report.html'}")
     return 0

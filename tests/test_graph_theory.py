@@ -709,6 +709,44 @@ def test_run_nbs_does_not_use_edgewise_bct_loop(monkeypatch):
     assert res.null.shape == (20,)
 
 
+@pytest.mark.parametrize("paired", [False, True])
+def test_run_nbs_worker_count_does_not_change_results(paired):
+    bct = pytest.importorskip("bct")
+    import contextlib
+    import io
+
+    g1, g2 = _effect_groups()
+    x = np.stack([m.values for m in g1.values()], axis=2)
+    y = np.stack([m.values for m in g2.values()], axis=2)
+    with contextlib.redirect_stdout(io.StringIO()):
+        pval, adj, null = bct.nbs_bct(x, y, 1.0, k=120, paired=paired, seed=4)
+    for n_jobs in (1, 2):
+        res = run_nbs(g1, g2, thresh=1.0, k=120, paired=paired, seed=4, verbose=False, n_jobs=n_jobs)
+        np.testing.assert_array_equal(res.pval, pval)
+        np.testing.assert_array_equal(res.adj, adj)
+        np.testing.assert_array_equal(res.null, null)
+
+
+def test_run_nbs_spreads_permutations_over_workers_only_when_worthwhile(monkeypatch):
+    pytest.importorskip("bct")
+    from concurrent.futures import ThreadPoolExecutor
+
+    from brainnet3d.graph_theory import nbs as nbs_module
+
+    pools = []
+
+    class Recording(ThreadPoolExecutor):
+        def __init__(self, max_workers, **kwargs):
+            pools.append(max_workers)
+            super().__init__(max_workers=max_workers, **kwargs)
+
+    monkeypatch.setattr(nbs_module, "ProcessPoolExecutor", Recording)
+    g1, g2 = _effect_groups()
+    run_nbs(g1, g2, thresh=1.0, k=120, seed=0, verbose=False, n_jobs=3)
+    run_nbs(g1, g2, thresh=1.0, k=20, seed=0, verbose=False, n_jobs=3)
+    assert pools == [3]
+
+
 def test_run_nbs_rejects_threshold_with_no_edges():
     bct = pytest.importorskip("bct")
     g1, g2 = _effect_groups()

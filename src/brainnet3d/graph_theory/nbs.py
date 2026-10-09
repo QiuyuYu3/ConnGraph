@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import platform
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -36,6 +38,7 @@ def run_nbs(
     paired: bool = False,
     seed: int | None = None,
     verbose: bool = True,
+    n_jobs: int = -1,
 ) -> NBSResult:
     """
     Run Network-Based Statistics comparing two groups of connectivity matrices.
@@ -50,6 +53,7 @@ def run_nbs(
     paired   : True for paired t-test (groups must be the same size).
     seed     : random seed for reproducibility; when None, the seed drawn is recorded in ``result.params``.
     verbose  : print permutation progress.
+    n_jobs   : worker processes for the permutations; -1 = cpu_count - 1. Results do not depend on it.
 
     Returns
     -------
@@ -97,21 +101,14 @@ def run_nbs(
 
     if seed is None:
         seed = int(np.random.SeedSequence().generate_state(1)[0])  # a seed that can be recorded and passed back
+    # every draw is made here in bct's order, so the worker count cannot change the result
     rng = get_rng(seed)
-    pooled = np.hstack((x_edges, y_edges))
-    null = np.zeros(k)
-    hits = 0
-    for u in range(k):
-        if paired:
-            flip = np.sign(0.5 - rng.rand(1, nx))
-            d = pooled * np.hstack((flip, flip))
-        else:
-            d = pooled[:, rng.permutation(nx + ny)]
-        perm_sizes = _component_edge_counts(stat(d[:, :nx], d[:, nx:], tail) > thresh, iu, n, get_components)[1]
-        null[u] = perm_sizes.max() if perm_sizes.size else 0
-        hits += null[u] >= max_size
-        if verbose and (u % max(k // 10, 1) == 0 or u == k - 1):
-            print(f"permutation {u} of {k}.  p-value so far is {hits / (u + 1):.3f}")
+    if paired:
+        draws = np.array([np.sign(0.5 - rng.rand(1, nx))[0] for _ in range(k)])
+    else:
+        draws = np.array([rng.permutation(nx + ny) for _ in range(k)])
+    null = _null_distribution(np.hstack((x_edges, y_edges)), draws, (nx, n, thresh, tail, paired),
+                              max_size, n_jobs, verbose)
 
     pval = np.array([np.count_nonzero(null >= s) / k for s in sizes])
     from brainnet3d.graph_theory.runner import _jsonable, _package_versions
@@ -126,6 +123,71 @@ def run_nbs(
     })
     return NBSResult(pval=pval, adj=adj, null=null, labels=labels, params=params,
                      mean_g1=X.mean(axis=2), mean_g2=Y.mean(axis=2))
+
+
+_MIN_PER_CHUNK = 25
+_WORKER: dict = {}
+
+
+def _null_distribution(pooled, draws, setup, observed_max, n_jobs, verbose) -> np.ndarray:
+    k = len(draws)
+    workers = max(1, (os.cpu_count() or 2) - 1) if n_jobs == -1 else max(1, n_jobs)
+    chunk = max(_MIN_PER_CHUNK, -(-k // (4 * workers)))
+    starts = list(range(0, k, chunk))
+    workers = min(workers, len(starts))
+    null = np.zeros(k)
+    report = _Progress(k, observed_max, verbose)
+    if workers == 1:
+        _init_worker(pooled, setup)
+        try:
+            for s in starts:
+                null[s:s + chunk] = _null_chunk(draws[s:s + chunk])
+                report(null[:s + chunk])
+        finally:
+            _WORKER.clear()
+        return null
+    with ProcessPoolExecutor(max_workers=workers, initializer=_init_worker, initargs=(pooled, setup)) as pool:
+        futures = {pool.submit(_null_chunk, draws[s:s + chunk]): s for s in starts}
+        done = np.zeros(k, dtype=bool)
+        for f in as_completed(futures):
+            s = futures[f]
+            null[s:s + chunk] = f.result()
+            done[s:s + chunk] = True
+            report(null[done])
+    return null
+
+
+class _Progress:
+    """Prints about ten progress lines with the p-value of the largest component so far."""
+
+    def __init__(self, k: int, observed_max: float, verbose: bool):
+        self.k, self.observed_max, self.verbose, self.next = k, observed_max, verbose, 0
+
+    def __call__(self, finished: np.ndarray) -> None:
+        if not self.verbose or (finished.size < self.next and finished.size < self.k):
+            return
+        self.next = finished.size + max(self.k // 10, 1)
+        p = np.count_nonzero(finished >= self.observed_max) / finished.size
+        print(f"permutation {finished.size} of {self.k}.  p-value so far is {p:.3f}")
+
+
+def _init_worker(pooled: np.ndarray, setup: tuple) -> None:
+    _WORKER["pooled"], _WORKER["setup"] = pooled, setup
+
+
+def _null_chunk(draws: np.ndarray) -> np.ndarray:
+    from bct import get_components
+
+    pooled = _WORKER["pooled"]
+    nx, n, thresh, tail, paired = _WORKER["setup"]
+    stat = _paired_t if paired else _two_sample_t
+    iu = np.triu_indices(n, 1)
+    out = np.zeros(len(draws))
+    for i, draw in enumerate(draws):
+        d = pooled * np.concatenate((draw, draw)) if paired else pooled[:, draw]
+        sizes = _component_edge_counts(stat(d[:, :nx], d[:, nx:], tail) > thresh, iu, n, get_components)[1]
+        out[i] = sizes.max() if sizes.size else 0
+    return out
 
 
 def _two_sample_t(a: np.ndarray, b: np.ndarray, tail: str) -> np.ndarray:

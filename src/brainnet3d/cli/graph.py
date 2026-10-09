@@ -66,6 +66,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     out = pathlib.Path(args.output_dir)
     matrices, atlas = _shared.load_input(args, parser)
+    label_col, network_col = _shared.node_columns(args)
 
     metrics = None
     if args.metrics:
@@ -73,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         result = compute_graph_metrics(
             matrices, atlas, level=args.level, hemi_split={"true": True, "false": False, "both": "both"}[args.hemi_split],
-            metrics=metrics, label_col=args.label_col, network_col=args.network_col, hemi_col=args.hemi_col,
+            metrics=metrics, label_col=label_col, network_col=network_col, hemi_col=args.hemi_col,
             apply_fisher_z=not args.no_fisher_z, graph_method=args.graph_method,
             graph_params=dict(args.graph_param) if args.graph_param else None, sign=args.sign,
             network_graph_method=args.network_graph_method,
