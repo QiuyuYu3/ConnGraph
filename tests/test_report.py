@@ -179,6 +179,26 @@ def test_graph_report_has_every_section_and_the_methods(graph_result, surfaces, 
     assert text.count('class="plotly-graph-div"') >= 8
 
 
+def test_graph_report_numbers_captions_below_figures_and_folds_the_call(graph_result, tmp_path):
+    path = tmp_path / "graph.html"
+    graph_result.save_report(path, static_brain=False)
+    text = path.read_text(encoding="utf-8")
+    numbers = re.findall(r'<p class="caption"><b>Figure (\d+)\.</b>', text)
+    assert numbers and numbers == [str(i) for i in range(1, len(numbers) + 1)]
+    first = text.index('<p class="caption">')
+    assert "plotly-graph-div" in text[text.rindex("<details", 0, first):first]
+    assert '<details class="call">' in text and 'class="copy"' in text
+
+
+def test_short_pickers_are_buttons_and_long_ones_a_select():
+    from conngraph.report.pages import _picker
+
+    short = _picker("m", [("a", "Regions", "A"), ("b", "Networks", "B")], "Matrix")
+    assert '<button type="button" class="on" data-key="a">Regions</button>' in short and "<select" not in short
+    long = _picker("m", [(str(i), f"Participation coefficient {i}", "x") for i in range(5)])
+    assert '<select class="picker" data-group="m">' in long and "<button" not in long
+
+
 def test_graph_report_renders_the_static_brain(graph_result, surfaces, tmp_path):
     path = tmp_path / "graph.html"
     graph_result.save_report(path, surfaces=surfaces, static_brain=True)

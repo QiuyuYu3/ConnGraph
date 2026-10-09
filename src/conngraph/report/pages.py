@@ -563,12 +563,17 @@ def _step(title: str, html: str, desc: str = "", open: bool = True, picker: bool
 
 
 def _picker(group: str, panes: list[tuple[str, str, str]], label: str = "Metric") -> str:
-    """A select showing one pane at a time; panes are (key, label, html)."""
+    """Buttons, or a select when the labels are many or long, showing one pane at a time; panes are (key, label, html)."""
     if len(panes) == 1:
         return panes[0][2]
-    options = "".join(f'<option value="{k}">{html.escape(t)}</option>' for k, t, _ in panes)
     bodies = "".join(f'<div class="pane{" on" if i == 0 else ""}" data-group="{group}" data-key="{k}">{h}</div>'
                      for i, (k, _, h) in enumerate(panes))
+    if len(panes) <= 4 and sum(len(t) for _, t, _ in panes) <= 70:
+        on = ' class="on"'
+        buttons = "".join(f'<button type="button"{on if i == 0 else ""} data-key="{k}">{html.escape(t)}</button>'
+                          for i, (k, t, _) in enumerate(panes))
+        return f'<span class="hint">{label}</span><span class="seg" data-group="{group}">{buttons}</span>{bodies}'
+    options = "".join(f'<option value="{k}">{html.escape(t)}</option>' for k, t, _ in panes)
     return f'<label class="hint">{label} </label><select class="picker" data-group="{group}">{options}</select>{bodies}'
 
 

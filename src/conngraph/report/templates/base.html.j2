@@ -39,6 +39,7 @@
   <button class="tab-btn" onclick="showTab(event,'tab-plain')">Plain text</button>
   <button class="tab-btn" onclick="showTab(event,'tab-md')">Markdown</button>
   <button class="tab-btn" onclick="showTab(event,'tab-latex')">LaTeX</button>
+  <button type="button" class="copy" id="copy-methods">Copy</button>
 </div>
 <div id="tab-rendered" class="tab-content active"><div class="boilerplate-html">{{ methods.html }}</div></div>
 <div id="tab-plain" class="tab-content"><pre>{{ methods.plain }}</pre></div>
@@ -59,13 +60,36 @@ function showTab(event, id) {
   event.target.classList.add('active');
 }
 // a picker shows one pane of its group; Plotly sizes a hidden plot wrongly, so resize on show
-document.querySelectorAll('select.picker').forEach(sel => sel.addEventListener('change', () => {
-  document.querySelectorAll(`.pane[data-group="${sel.dataset.group}"]`).forEach(p => {
-    const on = p.dataset.key === sel.value;
+function showPane(group, key) {
+  document.querySelectorAll(`.pane[data-group="${group}"]`).forEach(p => {
+    const on = p.dataset.key === key;
     p.classList.toggle('on', on);
     if (on) p.querySelectorAll('.js-plotly-plot').forEach(g => Plotly.Plots.resize(g));
   });
+}
+document.querySelectorAll('select.picker').forEach(sel => sel.addEventListener('change', () => showPane(sel.dataset.group, sel.value)));
+document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => {
+  b.parentElement.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  showPane(b.parentElement.dataset.group, b.dataset.key);
 }));
+function copyOnClick(button, text) {
+  button.addEventListener('click', e => {
+    e.preventDefault(); e.stopPropagation();
+    navigator.clipboard.writeText(text()).then(() => {
+      button.textContent = 'Copied'; setTimeout(() => { button.textContent = 'Copy'; }, 1200);
+    });
+  });
+}
+document.querySelectorAll('details.call').forEach(d => copyOnClick(d.querySelector('.copy'), () => d.querySelector('pre').textContent));
+copyOnClick(document.getElementById('copy-methods'), () => document.querySelector('.tab-content.active').innerText.trim());
+// the nav link of the section being read
+const navLinks = new Map([...document.querySelectorAll('#topbar a')].map(a => [a.getAttribute('href').slice(1), a]));
+const spy = new IntersectionObserver(entries => entries.forEach(e => {
+  if (!e.isIntersecting) return;
+  navLinks.forEach(a => a.classList.remove('active'));
+  navLinks.get(e.target.id)?.classList.add('active');
+}), {rootMargin: '-10% 0px -80% 0px'});
+document.querySelectorAll('h2[id]').forEach(h => spy.observe(h));
 document.querySelectorAll('details').forEach(d => d.addEventListener('toggle', () => {
   if (d.open) d.querySelectorAll('.pane.on .js-plotly-plot, .always .js-plotly-plot').forEach(g => Plotly.Plots.resize(g));
 }));

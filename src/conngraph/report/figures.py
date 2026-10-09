@@ -11,8 +11,8 @@ from plotly.subplots import make_subplots
 
 from conngraph.viz.colormap import natural_key
 
-INK = "#2c3e50"
-ACCENT = "#2980b9"
+INK = "#1f2328"
+ACCENT = "#1d4e89"
 _FONT = dict(family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif", size=12, color=INK)
 _AXIS = dict(showline=True, linecolor="#b8c2cc", gridcolor="#eef0f3", zeroline=False, ticks="outside", tickcolor="#b8c2cc")
 _LEVEL_NAMES = {"node": "Node level", "network": "Network level", "network_hemi": "Network level (hemispheres)"}

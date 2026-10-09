@@ -6,18 +6,25 @@
   <table>{% for key, value in column %}<tr><th>{{ key }}</th><td>{{ value }}</td></tr>{% endfor %}</table>
   {%- endfor %}
 </div>
-<h3>{{ call_title }}</h3>
-<pre>{{ call }}</pre>
+<details class="call">
+  <summary>{{ call_title }} <button type="button" class="copy">Copy</button></summary>
+  <pre>{{ call }}</pre>
+</details>
 
+{%- set figure = namespace(n=0) %}
 {% for section in body %}
 <h2 id="{{ section.id }}">{{ section.title }}</h2>
 {% if section.desc %}<p class="desc">{{ section.desc }}</p>{% endif %}
 {% for step in section.steps %}
+{#- a step holding a figure gets its description as a numbered caption below it #}
+{%- set captioned = step.desc and ('plotly-graph-div' in step.html or 'class="figure"' in step.html) %}
+{%- if captioned %}{% set figure.n = figure.n + 1 %}{% endif %}
 <details{% if step.open %} open{% endif %}>
   <summary>{{ step.title }}{% if step.hint %} <span class="hint">{{ step.hint }}</span>{% endif %}</summary>
   <div class="details-body{% if not step.picker %} always{% endif %}">
-    {% if step.desc %}<p class="desc">{{ step.desc }}</p>{% endif %}
+    {% if step.desc and not captioned %}<p class="desc">{{ step.desc }}</p>{% endif %}
     {{ step.html }}
+    {% if captioned %}<p class="caption"><b>Figure {{ figure.n }}.</b> {{ step.desc }}</p>{% endif %}
   </div>
 </details>
 {% endfor %}
