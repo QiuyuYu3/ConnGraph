@@ -211,3 +211,38 @@ def test_panel_render_is_not_blank(dataset, surfaces):
     red = ((r > 120) & (g < 0.5 * r) & (b < 0.5 * r)).mean()
     assert drawn > 0.1 and red > 0.01
     plt.close(fig)
+
+
+def _tick_labels(fig, ax):
+    fig.canvas.draw()
+    lo, hi = sorted(ax.get_xlim())
+    ticks = [t for t in ax.xaxis.get_major_ticks() if lo <= t.get_loc() <= hi and t.label1.get_visible()]
+    return [t.label1 for t in ticks]
+
+
+@pytest.mark.parametrize("width", [3.5, 10.5])
+def test_colorbar_ticks_are_three_round_values_that_do_not_overlap(dataset, width):
+    fig = _views(dataset, edge_threshold=0.4, node_color="x", edge_colorvminvmax=(-0.12, 0.12), width=width,
+                 legend=["node_color", "edge_color"])
+    for name in ("node_color", "edge_color"):
+        labels = _tick_labels(fig, _legends(fig)[name])
+        assert len(labels) == 3
+        boxes = [lab.get_window_extent() for lab in labels]
+        assert all(a.x1 < b.x0 for a, b in zip(boxes, boxes[1:]))
+    edge_ticks = [t.get_loc() for t in _legends(fig)["edge_color"].xaxis.get_major_ticks()]
+    assert np.allclose(sorted(edge_ticks)[:3], [-0.1, 0.0, 0.1])
+    plt.close(fig)
+
+
+def test_legend_titles_replace_default_titles(dataset):
+    fig = _views(dataset, edge_threshold=0.4, legend=["node_color", "edge_color"],
+                 legend_titles={"edge_color": "group difference", "node_color": "Network"})
+    legends = _legends(fig)
+    assert legends["edge_color"].get_title() == "group difference"
+    assert legends["node_color"].get_legend().get_title().get_text() == "Network"
+    plt.close(fig)
+
+
+def test_legend_titles_rejects_unknown_names(dataset):
+    with pytest.raises(ValueError, match="legend_titles"):
+        _views(dataset, edge_threshold=0.4, legend_titles={"edge_colour": "x"})

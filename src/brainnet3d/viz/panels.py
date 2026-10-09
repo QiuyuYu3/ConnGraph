@@ -148,7 +148,7 @@ def _crop(image: np.ndarray, background, pad: int) -> np.ndarray:
 
 
 def views_figure(scene, a: dict, panels: list[list[dict]], legend, panel_size: int, titles: bool,
-                 width: float | None = None) -> Figure:
+                 width: float | None = None, legend_titles: dict | None = None) -> Figure:
     lo, hi = _bounds(scene.actors)
     parallel_scale = 0.5 * float((hi - lo).max()) * 1.03
     px_per_mm = panel_size / (2 * parallel_scale)
@@ -172,7 +172,7 @@ def views_figure(scene, a: dict, panels: list[list[dict]], legend, panel_size: i
         [(p["title"] if p["title"] is not None else panel_title(p["view"], p["hemisphere"])) if titles else None for p in row]
         for row in panels
     ]
-    items = legend_items(scene, a, legend, width_factor)
+    items = legend_items(scene, a, legend, width_factor, legend_titles)
 
     fg = "white" if np.mean(mcolors.to_rgb(a["background"])) < 0.5 else "black"
     style = {"text.color": fg, "axes.labelcolor": fg, "xtick.color": fg, "ytick.color": fg, "axes.edgecolor": fg}
@@ -194,7 +194,11 @@ def _fit_dpi(widths_px: list[list[float]], width: float) -> float:
     return max(sum(row) / r for row, r in zip(widths_px, room))
 
 
-def legend_items(scene, a: dict, legend, width_factor: float = 1.0) -> list[dict]:
+def legend_items(scene, a: dict, legend, width_factor: float = 1.0, legend_titles: dict | None = None) -> list[dict]:
+    titles = dict(legend_titles or {})
+    unknown = set(titles) - set(LEGEND_NAMES)
+    if unknown:
+        raise ValueError(f"Unknown legend_titles entries {sorted(unknown)}. Choose from: {', '.join(LEGEND_NAMES)}.")
     if legend is False:
         return []
     if legend is True:
@@ -209,6 +213,8 @@ def legend_items(scene, a: dict, legend, width_factor: float = 1.0) -> list[dict
     for name in names:
         item = _legend_item(name, scene, a, width_factor)
         if item is not None:
+            if name in titles:
+                item["title"] = str(titles[name])
             items.append(item)
         elif legend is not True:
             warnings.warn(f"No legend for '{name}': that style is not mapped to data.", stacklevel=4)
@@ -380,6 +386,9 @@ def _draw_legend(add_axes, item: dict, x: float, top: float, w: float, h: float,
         cax = add_axes(x + 0.1 * w, top + 0.25, 0.8 * w, 0.14, label)
         norm = mcolors.Normalize(item["vmin"], item["vmax"])
         bar = cax.figure.colorbar(ScalarMappable(norm=norm, cmap=item["cmap"]), cax=cax, orientation="horizontal")
+        if item["vmax"] > item["vmin"]:
+            # three round ticks, as in the size legend; the default locator crowds a narrow bar
+            bar.set_ticks(_round_values(item["vmin"], item["vmax"]))
         bar.ax.tick_params(labelsize=_FONT)
         cax.set_title(item["title"], fontsize=_TITLE_FONT)
         return

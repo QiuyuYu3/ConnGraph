@@ -8,10 +8,12 @@
 - NBS results record their options, groups, package versions and random seed; a run without a seed can be repeated with the recorded one.
 - Hovering over a node in the interactive window shows a card with its label, network, hemisphere and the values used for node size or colour.
 - The interactive window has an edge threshold slider and a network list that hides or shows each network.
+- Legend titles of multi-view figures can be changed.
 
 ### Fixed
 
 - 3-D edges drawn as tubes take the chosen edge colour; they were always drawn gold.
+- Colour bars in multi-view figures show three round tick values instead of crowded labels.
 
 ## [0.2.0] - 2026-10-08
 
