@@ -15,6 +15,7 @@
 - More input formats (unlabelled matrices, CIFTI, AFNI, nilearn), and connectivity computed from regional time series.
 - Two more ways to build the graph (the disparity filter and PMFG), and more metrics, computed by default: nodal and global efficiency, path length, closeness and eigenvector centrality, participation coefficient, within-module degree z, modularity on the atlas networks or Louvain modules, and the small-world index.
 - Hover cards, an edge threshold slider and network toggles in the interactive window; network-bundled circos plots.
+- Brain figures can use any template: a pair of `.surf.gii` files or a brain volume (NIfTI or AFNI), whose outline is used.
 - Two-group comparisons of graph metrics, network connectivity and edges with permutation t-tests, covariates, and FDR and family-wise corrected p-values (`compare_groups`), with an HTML report.
 - NBS permutations run in parallel.
 

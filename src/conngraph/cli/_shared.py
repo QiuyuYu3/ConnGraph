@@ -248,7 +248,17 @@ def report_nodes(args: argparse.Namespace, nodes: pd.DataFrame, variant: str | N
 
 
 def surfaces(args: argparse.Namespace) -> tuple[str, str] | None:
-    return tuple(args.surfaces) if args.surfaces else None
+    """The two hemisphere files of --surfaces; a single volume is turned into them (and cached) on first use."""
+    from conngraph.viz.surface import _volume_surfaces, is_volume
+
+    if not args.surfaces:
+        return None
+    if len(args.surfaces) == 1:
+        if not is_volume(args.surfaces[0]):
+            raise SystemExit(f"conngraph: --surfaces needs a left and a right .surf.gii, or one NIfTI or AFNI volume; "
+                             f"got {args.surfaces[0]}")
+        return _volume_surfaces(args.surfaces[0])
+    return tuple(args.surfaces)
 
 
 def command_line(prog: str, argv: list[str]) -> str:

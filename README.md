@@ -68,6 +68,7 @@ With several sessions, the session label follows the participant: `sub-01_ses-01
 - Tables may carry the node labels as headers; without them, rows and columns follow the order of `nodes.tsv`.
 - Matrices hold Pearson correlations; add `--values z` if they hold Fisher z values.
 - `nodes.tsv` has one row per node. Without x, y, z the report leaves out the brain figures. For XCP-D input with the Gordon atlas, coordinates are added automatically.
+- Brain figures are drawn in the fsLR 32k surfaces. `--surfaces` (group level) takes another left and right `.surf.gii`, or one skull-stripped brain volume (NIfTI or AFNI BRIK/HEAD), such as a pediatric template, whose smoothed outline is used instead. Node coordinates must be in the template's space.
 
 `--participant-label` and `--session-id` select participants and sessions, as in XCP-D; for `xcpd` and `fnirs-pipe`, `--task-id` selects the task. Each session is analysed on its own; without `--session-id`, every session in `INPUT` is.
 

@@ -101,8 +101,9 @@ def build_parser() -> argparse.ArgumentParser:
     g.add("--no-static-brain", action="store_true", help="leave the static brain renderings out of the reports")
     g.add("--coords", help="table with label, x, y, z for the brain figures; Gordon coordinates are added "
                            "automatically")
-    g.add("--surfaces", nargs=2, metavar=("LEFT", "RIGHT"),
-          help="left and right .surf.gii for the brain figures (default: fsLR 32k midthickness)")
+    g.add("--surfaces", nargs="+", metavar="FILE",
+          help="brain for the figures: left and right .surf.gii, or one skull-stripped brain volume (NIfTI or AFNI "
+               "BRIK/HEAD) whose smoothed outline is cut at x = 0 into hemispheres (default: fsLR 32k midthickness)")
     t = _LevelOptions(parser, "group", "group level: comparing two groups")
     t.add("--groups", help="table with one row per participant, e.g. participants.tsv; runs the comparisons")
     t.add("--participant-column", default="participant_id", help="participant column (default: participant_id)")
@@ -139,6 +140,8 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, argparse.ArgumentPa
             parser.error(f"{flag} needs --groups")
     if args.alpha is None:
         args.alpha = 0.05
+    if args.surfaces is not None and len(args.surfaces) > 2:
+        parser.error("--surfaces takes a left and a right .surf.gii, or one brain volume")
     if args.n_perms < 1:
         parser.error("--n-perms must be at least 1")
     return args, parser
