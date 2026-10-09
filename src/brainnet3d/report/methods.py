@@ -38,15 +38,21 @@ def graph_methods(params: dict) -> dict[str, str]:
     opts, levels = params["options"], params["levels"]
     first = levels.get("node") or next(iter(levels.values()))
     loaded = params.get("input") or {}
+    series = bool(loaded.get("connectivity"))
     source = ""
     if loaded.get("source") == "XCP-D":
-        source = f" derived from XCP-D ({loaded['atlas']} atlas; {loaded['space']} space; Pearson's r)"
+        source = (f" computed from XCP-D regional time series ({loaded['atlas']} atlas; {loaded['space']} space)" if series
+                  else f" derived from XCP-D ({loaded['atlas']} atlas; {loaded['space']} space; Pearson's r)")
+    elif series:
+        source = " computed from regional time series"
 
-    para1 = [("input", {"source": source, "ver": params["packages"]["brainnet3d"]}),
-             ("participants", {"n": len(params["subjects"])})]
+    para1 = [("input", {"source": source, "ver": params["packages"]["brainnet3d"]})]
+    para1 += _input_sentences(params)
+    para1.append(("participants", {"n": len(params["subjects"])}))
     if loaded.get("bad_node_threshold", 1.0) < 1.0:
         scope = "any participant" if loaded.get("drop_mode", "union") == "union" else "every participant"
-        para1.append(("bad_nodes", {"pct": f"{100 * loaded['bad_node_threshold']:g}", "scope": scope}))
+        para1.append(("bad_series" if series else "bad_nodes",
+                      {"pct": f"{100 * loaded['bad_node_threshold']:g}", "scope": scope}))
 
     para2 = [_graph_sentence(first), ("sign_" + first["sign"], {})]
     if first["graph_method"] == "tmfg":
@@ -98,10 +104,22 @@ def nbs_methods(params: dict) -> dict[str, str]:
         "thresh": o["thresh"], "k": o["k"],
         "shuffle": "the sign of each paired difference" if o["paired"] else "the group labels",
     }
-    sentences = [("nbs_intro", slots)]
+    sentences = [("nbs_intro", slots)] + _input_sentences(params)
     if (params.get("input") or {}).get("fisher_z"):
         sentences.append(("nbs_fisher", {}))
     return render([sentences + [("nbs", slots)]])
+
+
+def _input_sentences(params: dict) -> list[tuple[str, dict]]:
+    """How the matrices were obtained, when the loader computed them from time series or read Fisher z values."""
+    loaded = params.get("input") or {}
+    if loaded.get("connectivity"):
+        measure = "Pearson correlation" if loaded["connectivity"] == "correlation" else loaded["connectivity"]
+        key = "connectivity_shrinkage" if loaded.get("shrinkage") else "connectivity"
+        return [(key, {"measure": measure, "ver": params["packages"].get("nilearn")})]
+    if loaded.get("values") == "z":
+        return [("values_z", {})]
+    return []
 
 
 def render(paragraphs: list[list[tuple[str, dict]]]) -> dict[str, str]:

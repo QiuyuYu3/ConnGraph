@@ -418,7 +418,7 @@ def _package_versions() -> dict[str, str | None]:
     import brainnet3d
 
     versions: dict[str, str | None] = {"brainnet3d": brainnet3d.__version__}
-    for name in ("numpy", "scipy", "pandas", "networkx", "bctpy", "topcorr"):
+    for name in ("numpy", "scipy", "pandas", "networkx", "bctpy", "topcorr", "nilearn", "scikit-learn"):
         try:
             versions[name] = version(name)
         except PackageNotFoundError:

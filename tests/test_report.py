@@ -80,6 +80,47 @@ def test_graph_methods_describe_an_xcpd_input(dataset):
     assert "each of the 24 parcels of the Gordon atlas." in plain
 
 
+def _methods_with_input(dataset, record):
+    atlas = dataset.nodes_df.copy()
+    atlas.attrs["brainnet3d_input"] = {"n_loaded": 6, "bad_node_threshold": 0.9, "drop_mode": "union",
+                                       "dropped": [], **record}
+    result = compute_graph_metrics(dataset.matrices, atlas, level="node", network_col="network", metrics=["strength"],
+                                   n_jobs=1, verbose=False)
+    return result.params, graph_methods(result.params)["plain"]
+
+
+def test_graph_methods_describe_xcpd_time_series(dataset):
+    params, plain = _methods_with_input(dataset, {
+        "source": "XCP-D", "atlas": "Gordon", "space": "fsLR", "connectivity": "partial correlation", "shrinkage": True,
+    })
+    assert params["packages"]["nilearn"]
+    assert ("Functional connectivity matrices computed from XCP-D regional time series (Gordon atlas; fsLR space) "
+            "were used as input") in plain
+    assert "Connectivity was estimated as partial correlation" in plain
+    assert "Ledoit-Wolf shrinkage" in plain and f"nilearn v{params['packages']['nilearn']}" in plain
+    assert "Nodes whose time series had missing or constant values in any participant were excluded" in plain
+    assert "Pearson's r" not in plain and "of connectivity values were missing" not in plain
+
+
+def test_graph_methods_describe_other_time_series(dataset):
+    _, plain = _methods_with_input(dataset, {"source": "time series", "connectivity": "correlation", "shrinkage": False})
+    assert "Functional connectivity matrices computed from regional time series were used as input" in plain
+    assert "Connectivity was estimated as Pearson correlation with nilearn" in plain
+    assert "Ledoit-Wolf" not in plain and "XCP-D" not in plain
+
+
+def test_graph_methods_note_fisher_z_input(dataset):
+    _, plain = _methods_with_input(dataset, {"source": "matrix files", "values": "z"})
+    assert "The input matrices contained Fisher z values, which were converted back to correlation coefficients." in plain
+    _, plain = _methods_with_input(dataset, {"source": "matrix files", "values": "r"})
+    assert "Fisher z values" not in plain
+
+
+def test_nbs_methods_describe_time_series_input(nbs_result):
+    params = {**nbs_result.params, "input": {"source": "time series", "connectivity": "correlation", "shrinkage": False}}
+    assert "Connectivity was estimated as Pearson correlation" in nbs_methods(params)["plain"]
+
+
 def test_graph_methods_from_load_group_state_the_node_rule(graph_result):
     assert graph_result.params["input"]["source"] == "matrix files"
     plain = graph_methods(graph_result.params)["plain"]
@@ -143,6 +184,18 @@ def test_graph_report_without_coordinates_skips_the_brain(dataset, tmp_path):
     text = path.read_text(encoding="utf-8")
     assert "Option 2: interactive" not in text
     assert "no x, y, z coordinates" in text
+
+
+def test_graph_report_summary_names_the_time_series_measure(dataset, tmp_path):
+    atlas = dataset.nodes_df.drop(columns=["x", "y", "z"])
+    atlas.attrs["brainnet3d_input"] = {"source": "time series", "connectivity": "partial correlation", "shrinkage": True,
+                                       "n_loaded": 6, "bad_node_threshold": 0.9, "drop_mode": "union", "dropped": ["r1"]}
+    result = compute_graph_metrics(dataset.matrices, atlas, level="node", network_col="network",
+                                   metrics=["strength"], n_jobs=1, verbose=False)
+    result.save_report(tmp_path / "graph.html")
+    text = (tmp_path / "graph.html").read_text(encoding="utf-8")
+    assert "time series (partial correlation, Ledoit-Wolf shrinkage)" in text
+    assert "1 nodes with missing or constant time series were dropped when the data were loaded: r1." in text
 
 
 def test_nbs_report_lists_components_and_settings(nbs_result, dataset, surfaces, tmp_path):

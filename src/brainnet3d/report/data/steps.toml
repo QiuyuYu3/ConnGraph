@@ -17,6 +17,22 @@ plain = "Matrices were loaded for {n} participants."
 [bad_nodes]
 plain = "Nodes for which more than {pct}% of connectivity values were missing in {scope} were excluded across all participants."
 
+# TODO: review wording
+[bad_series]
+plain = "Nodes whose time series had missing or constant values in {scope} were excluded across all participants."
+
+# TODO: review wording
+[connectivity]
+plain = "Connectivity was estimated as {measure} with nilearn v{ver} {todo:nilearn}."
+
+# TODO: review wording
+[connectivity_shrinkage]
+plain = "Connectivity was estimated as {measure} with nilearn v{ver} {todo:nilearn}, using Ledoit-Wolf shrinkage of the covariance {todo:Ledoit-Wolf shrinkage}."
+
+# TODO: review wording
+[values_z]
+plain = "The input matrices contained Fisher z values, which were converted back to correlation coefficients."
+
 # ---- graph construction ----
 
 [graph_tmfg]

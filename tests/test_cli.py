@@ -53,7 +53,7 @@ def test_graph_command_writes_tables_parameters_description_and_report(xcpd, tmp
 
 def test_graph_command_reads_a_folder_of_matrix_files(mock_dir, tmp_path):
     out = tmp_path / "graph"
-    graph_cli.main([str(mock_dir), str(out), "--input-format", "csv", "--nodes", str(mock_dir / "nodes.csv"),
+    graph_cli.main([str(mock_dir), str(out), "--input-format", "matrix", "--nodes", str(mock_dir / "nodes.csv"),
                     "--network-col", "network", "--level", "node", "--graph-method", "density",
                     "--graph-param", "density=0.2,0.3", "--metrics", "strength", "--n-jobs", "1", "--no-report", "--quiet"])
     params = json.loads((out / "parameters.json").read_text(encoding="utf-8"))
@@ -91,6 +91,67 @@ def test_nbs_command_reports_groups_missing_from_the_data(xcpd, tmp_path):
     with pytest.raises(SystemExit, match="sub-99"):
         nbs_cli.main([str(root), str(tmp_path / "out"), "--atlas", "Toy", "--groups", str(table), "--group-column", "dx",
                       "--contrast", "A", "B", "--thresh", "1.0", "--quiet"])
+
+
+FAST = ["--network-col", "network", "--level", "node", "--graph-method", "density", "--graph-param", "density=0.2",
+        "--metrics", "strength", "--n-jobs", "1", "--no-report", "--quiet"]
+
+
+def _toy_series(dataset, seed):
+    rng = np.random.default_rng(seed)
+    n = len(dataset.nodes_df)
+    return pd.DataFrame(rng.standard_normal((100, n)) @ rng.standard_normal((n, n)), columns=dataset.nodes_df["label"])
+
+
+def test_graph_command_reads_a_folder_of_time_series(dataset, mock_dir, tmp_path):
+    folder = tmp_path / "ts"
+    folder.mkdir()
+    for i in range(3):
+        np.savetxt(folder / f"sub-{i:02d}_timeseries.txt", _toy_series(dataset, i).to_numpy())
+    out = tmp_path / "graph"
+    graph_cli.main([str(folder), str(out), "--input-format", "timeseries", "--nodes", str(mock_dir / "nodes.csv"),
+                    "--pattern", "*_timeseries.txt", "--connectivity", "partial-correlation", "--shrinkage"] + FAST)
+    params = json.loads((out / "parameters.json").read_text(encoding="utf-8"))
+    assert params["input"]["source"] == "time series"
+    assert (params["input"]["connectivity"], params["input"]["shrinkage"]) == ("partial correlation", True)
+    assert params["subjects"] == ["sub-00", "sub-01", "sub-02"]
+
+
+def test_graph_command_computes_xcpd_connectivity_from_time_series(dataset, tmp_path):
+    stem = "_ses-01_task-rest_space-fsLR_seg-Toy_stat-mean_timeseries.tsv"
+    for i in range(1, 4):
+        func = tmp_path / "xcpd" / f"sub-{i:02d}" / "ses-01" / "func"
+        func.mkdir(parents=True)
+        _toy_series(dataset, i).to_csv(func / f"sub-{i:02d}{stem}", sep="\t", index=False)
+    atlas_dir = tmp_path / "xcpd" / "atlases" / "atlas-Toy"
+    atlas_dir.mkdir(parents=True)
+    nodes = dataset.nodes_df
+    pd.DataFrame({"label": nodes["label"], "network": nodes["network"],
+                  "hemisphere": nodes["hemisphere"]}).to_csv(atlas_dir / "atlas-Toy_dseg.tsv", sep="\t", index=False)
+    out = tmp_path / "graph"
+    graph_cli.main([str(tmp_path / "xcpd"), str(out), "--atlas", "Toy", "--connectivity", "correlation"] + FAST)
+    params = json.loads((out / "parameters.json").read_text(encoding="utf-8"))
+    assert (params["input"]["source"], params["input"]["connectivity"]) == ("XCP-D", "correlation")
+
+
+def test_graph_command_reads_unlabelled_fisher_z_matrices(dataset, mock_dir, tmp_path):
+    folder = tmp_path / "z"
+    folder.mkdir()
+    for sid, mat in dataset.matrices.items():
+        z = np.arctanh(np.clip(mat.to_numpy(float), -0.999, 0.999))
+        np.save(folder / f"{sid}.npy", z)
+    out = tmp_path / "graph"
+    graph_cli.main([str(folder), str(out), "--input-format", "matrix", "--nodes", str(mock_dir / "nodes.csv"),
+                    "--pattern", "*.npy", "--values", "z"] + FAST)
+    params = json.loads((out / "parameters.json").read_text(encoding="utf-8"))
+    assert params["input"]["values"] == "z"
+    assert params["subjects"] == sorted(dataset.matrices)
+
+
+def test_connectivity_options_need_time_series(mock_dir, tmp_path):
+    with pytest.raises(SystemExit):
+        graph_cli.main([str(mock_dir), str(tmp_path), "--input-format", "matrix", "--nodes",
+                        str(mock_dir / "nodes.csv"), "--connectivity", "correlation"] + FAST)
 
 
 def test_fisher_z_is_applied_before_nbs(xcpd):
