@@ -58,6 +58,17 @@ For files that differ in other BIDS entities, such as several runs or acquisitio
 
 A participant with several runs left after filtering has each run analysed on its own (`01_run-1`, `01_run-2`), with a warning in the report; group comparisons stop instead, since they need one matrix per participant. XCP-D's `--combine-runs` merges runs before conngraph sees the data; for XCP-D output without it, `--combine-runs` together with `--connectivity` z-scores each run's time series and concatenates them in run order before computing connectivity.
 
+### EEG and MEG
+
+EEG and MEG connectivity matrices can be analysed as `matrix` input. The pipeline was written for correlations, so a few precautions apply:
+
+- Add `--no-fisher-z` when the matrices hold the phase-locking value, the weighted phase lag index, coherence or any other measure that is not a correlation; otherwise they are Fisher z-transformed when averaged and compared. The colour bars of the matrix figures still read "r".
+- Give matrices, not time series: `timeseries` input computes Pearson correlations of the signals.
+- Only undirected measures are supported. Directed measures such as Granger causality give asymmetric matrices, which are not checked and give meaningless results.
+- `nodes.tsv` needs a network column, such as the lobe or region of each channel; without one, add `--level node`.
+- Analyse one frequency band at a time, with each band's matrices in its own `INPUT` folder.
+- Brain figures need x, y, z in the template's space. Regions of a source-space atlas have them; scalp electrode positions lie outside the brain surface.
+
 ## Output
 
 The participant level writes, for each participant, session and atlas or chromophore, one table per level with a row per node or network and a column per metric, the network-level connectivity, and a `_metrics.json` with every setting, plus one report per participant:

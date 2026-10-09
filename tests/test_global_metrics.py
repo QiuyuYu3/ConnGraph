@@ -214,7 +214,7 @@ def test_runner_puts_global_metrics_in_their_own_table(tmp_path):
     assert "eff_global.wei" not in result.node_df.columns.get_level_values(0)
     assert "participation.pos.networks" in result.node_df.columns.get_level_values(0)
     assert "participation.pos.networks" not in result.net_hemi_df.columns.get_level_values(0)
-    saved = pd.read_csv(tmp_path / "global" / "node.csv")
+    saved = pd.read_csv(tmp_path / "global" / "node.tsv", sep="\t")
     assert list(saved.columns) == ["ID", "eff_global.wei"]
 
 
