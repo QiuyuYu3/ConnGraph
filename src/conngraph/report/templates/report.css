@@ -92,9 +92,8 @@ table.flat { border-collapse: collapse; font-size: 0.85rem; width: auto; min-wid
 table.flat th, table.flat td { border: none; border-bottom: 1px solid var(--rule-soft); padding: 0.32rem 1.4rem 0.32rem 0;
                                font-variant-numeric: tabular-nums; text-align: left; }
 table.flat th { color: var(--faint); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em;
-                border-bottom: 1px solid var(--rule); cursor: pointer; position: sticky; top: 0; background: #fff; }
+                border-bottom: 1px solid var(--rule); cursor: pointer; background: #fff; }
 table.flat td.num, table.flat th.num { text-align: right; }
-.scroll { max-height: 26rem; overflow: auto; }
 
 /* ---- footer ---- */
 .section-hint { font-size: 0.88rem; color: var(--muted); }

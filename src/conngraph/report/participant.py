@@ -103,7 +103,7 @@ def participant_section(result, sid: str, matrix: pd.DataFrame, nodes: pd.DataFr
             table = df.loc[sid].unstack(0)
             table.columns = [_metric_title(m) for m in table.columns]
             tables.append(f'<div class="option-label">{_level_title(level).capitalize()}</div>'
-                          f'<div class="scroll">{_table(table.rename_axis("Network").reset_index())}</div>')
+                          + _table(table.rename_axis("Network").reset_index()))
     if tables:
         steps.append(_step(f"{next(letter)}. Network metrics", data=link("network_df", "net_hemi_df"), html="".join(tables),
                            desc="Each network node's value in the network-level graph."))

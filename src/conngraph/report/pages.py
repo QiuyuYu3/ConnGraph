@@ -61,16 +61,12 @@ def save_graph_report(result, path, nodes: pd.DataFrame | None = None, surfaces:
         zmax = float(np.nanmax(np.abs(M.values))) or 1.0
         heat = figures.ordered_heatmap(M.values, list(M.index), [net_of(n) for n in M.index], zmax,
                                        "Fisher z" if opts.get("apply_fisher_z", True) else "r")
-        means = pd.DataFrame({_metric_title(m): df[m].mean() for m in names})
-        means.insert(0, "Node", means.index)
         body.append(dict(id=sid, title=title, desc=_level_desc(params, level), steps=[
             _step("a. Metric distributions", data=link(values), html=_picker(boxes),
                   desc="One box per network node" + (", left hemisphere darker than right" if hemi else "")
                        + "; each point is a participant (hover for the ID)."),
             _step("b. Connectivity", data=link(connectivity), html=figures.to_div(heat),
                   desc="Group mean connectivity within (diagonal) and between network nodes: the matrix these graphs were built from."),
-            _step("c. Group means", data=link(values), html=f'<div class="scroll">{_table(means.reset_index(drop=True))}</div>',
-                  desc="Mean over participants of each network node's value."),
         ]))
         sections.append((sid, title))
 
@@ -270,12 +266,12 @@ def save_compare_report(result, path, nodes: pd.DataFrame | None = None, label_c
             if len(sig):
                 shown = sig.head(_MAX_COMPARE_ROWS)
                 desc = (f"{len(sig)} significant at {_P_NAMES[o['correction']]} p < {alpha}, smallest p first"
-                        + (f"; the first {_MAX_COMPARE_ROWS} are shown, all are in {name}.tsv"
+                        + (f"; the first {_MAX_COMPARE_ROWS} are shown, every test is listed in {name}.tsv"
                            if len(sig) > _MAX_COMPARE_ROWS else "") + ".")
             else:
                 shown = table[table["t"].notna()].sort_values(kind).head(10)
                 desc = f"No test reached {_P_NAMES[o['correction']]} p < {alpha}; the ten smallest p-values are shown."
-            html_ = f'<div class="scroll">{_table(_compare_rows(shown, networks, g1, g2))}</div>'
+            html_ = _table(_compare_rows(shown, networks, g1, g2))
             heat = _compare_heatmap(name, table, kind, networks)
             if heat:
                 html_ += heat
@@ -321,7 +317,7 @@ _COMPARE_TITLES = {"metrics_node": "Node level", "metrics_network": "Network lev
                    "global_network": "Network-level graph", "global_networkhemi": "Network-level graph (hemispheres)",
                    "blocks_network": "Between networks", "blocks_networkhemi": "Between networks (hemispheres)",
                    "edges": "Every edge"}
-_MAX_COMPARE_ROWS = 500
+_MAX_COMPARE_ROWS = 10
 
 
 def _compare_rows(table: pd.DataFrame, networks: dict | None, g1: str, g2: str) -> pd.DataFrame:
@@ -666,14 +662,9 @@ def _global_steps(df: pd.DataFrame, link) -> list[dict]:
         values = pd.DataFrame({_level_title(lvl): df[(lvl, m)] for lvl in df.columns.get_level_values(0).unique()
                                if (lvl, m) in df.columns})
         boxes.append((m, _metric_title(m), figures.to_div(figures.level_boxplot(values, {}, _metric_title(m), False))))
-    means = df.mean().unstack(0).reindex(names)
-    means.columns = [_level_title(c) for c in means.columns]
-    means.insert(0, "Metric", [_metric_title(m) for m in names])
     return [
         _step("a. Distributions", data=link("global_df"), html=_picker(boxes),
               desc="One value per participant for the whole graph, one box per level; hover for the ID."),
-        _step("b. Group means", data=link("global_df"), html=f'<div class="scroll">{_table(means.reset_index(drop=True))}</div>',
-              desc="Mean over participants."),
     ]
 
 
