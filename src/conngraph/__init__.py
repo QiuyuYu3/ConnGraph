@@ -15,6 +15,7 @@ from conngraph.viz.views                import save_three_views, save_orbit_gif,
 from conngraph.viz.nbs_plots            import plot_nbs_matrices
 from conngraph.graph_theory             import compute_graph_metrics, GraphMetricsResult
 from conngraph.graph_theory.nbs         import run_nbs, NBSResult
+from conngraph.graph_theory.compare     import compare_groups, GroupComparisonResult
 
 __version__ = "0.2.0"
 __all__ = [
@@ -31,4 +32,5 @@ __all__ = [
     "plot_nbs_matrices",
     "compute_graph_metrics", "GraphMetricsResult",
     "run_nbs", "NBSResult",
+    "compare_groups", "GroupComparisonResult",
 ]

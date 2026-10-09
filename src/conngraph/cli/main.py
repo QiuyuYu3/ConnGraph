@@ -8,6 +8,7 @@ import argparse
 import sys
 
 from conngraph.cli import _shared
+from conngraph.graph_theory.compare import COMPARISONS
 from conngraph.graph_theory.metrics import PARTITIONS, SIGNED_FALLBACKS
 from conngraph.graph_theory.sparsify import GRAPH_METHODS, SIGNS
 
@@ -61,7 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--no-fisher-z", action="store_true",
                    help="participant: average raw r instead of Fisher z at the network level; group: test raw r")
     s.add_argument("--random-seed", type=int,
-                   help="participant: seed for the random networks; group: seed for the NBS permutations; a drawn "
+                   help="participant: seed for the random networks; group: seed for the permutations; a drawn "
                         "seed is recorded when omitted")
     s.add_argument("--n-jobs", "--nprocs", type=int, default=-1,
                    help="parallel workers (default: all but one); results do not depend on it")
@@ -102,13 +103,18 @@ def build_parser() -> argparse.ArgumentParser:
                            "automatically")
     g.add("--surfaces", nargs=2, metavar=("LEFT", "RIGHT"),
           help="left and right .surf.gii for the brain figures (default: fsLR 32k midthickness)")
-    t = _LevelOptions(parser, "group", "group level: network-based statistic between two groups")
-    t.add("--groups", help="table with one row per participant, e.g. participants.tsv")
+    t = _LevelOptions(parser, "group", "group level: comparing two groups")
+    t.add("--groups", help="table with one row per participant, e.g. participants.tsv; runs the comparisons")
     t.add("--participant-column", default="participant_id", help="participant column (default: participant_id)")
     t.add("--group-column", help="column holding each participant's group")
     t.add("--contrast", nargs=2, metavar=("GROUP1", "GROUP2"), help="the two groups to compare")
+    t.add("--compare", nargs="*", choices=COMPARISONS, metavar="{metrics,blocks,edges}",
+          help="what to compare with permutation t-tests: graph metrics, connectivity within and between networks, "
+               "edges (default: metrics blocks); give none to skip")
+    t.add("--covariates", nargs="+", metavar="COL",
+          help="columns of the groups table to adjust for; text columns become indicator columns (not used by NBS)")
+    t.add("--n-perms", type=int, default=5000, help="permutations for the comparisons and NBS (default: 5000)")
     t.add("--nbs-thresh", type=float, help="t-statistic threshold for keeping an edge; runs NBS")
-    t.add("--nbs-perms", type=int, default=5000, help="permutations (default: 5000)")
     t.add("--nbs-tail", choices=["both", "left", "right"], default="both", help="tail of the test (default: both)")
     parser.set_defaults(_level_options=(p, g, t))
     return parser
@@ -121,6 +127,13 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, argparse.ArgumentPa
         options.resolve(args, parser)
     if args.nbs_thresh is not None and not (args.groups and args.group_column and args.contrast):
         parser.error("--nbs-thresh needs --groups, --group-column and --contrast")
+    if args.groups and not (args.group_column and args.contrast):
+        parser.error("--groups needs --group-column and --contrast")
+    for flag, value in (("--compare", args.compare), ("--covariates", args.covariates)):
+        if value is not None and not args.groups:
+            parser.error(f"{flag} needs --groups")
+    if args.n_perms < 1:
+        parser.error("--n-perms must be at least 1")
     return args, parser
 
 

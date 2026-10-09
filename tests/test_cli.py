@@ -195,7 +195,7 @@ def test_participant_level_rejects_unknown_graph_param_syntax(xcpd, tmp_path):
         cli.main([str(root), str(tmp_path / "out"), "participant", *XCPD, "--graph-param", "density", "--quiet"])
 
 
-NBS = ["--nbs-thresh", "1.0", "--nbs-perms", "20", "--random-seed", "0"]
+NBS = ["--nbs-thresh", "1.0", "--n-perms", "20", "--random-seed", "0"]
 
 
 def _nbs_args(groups):
@@ -274,7 +274,8 @@ def test_input_type_is_required(xcpd, tmp_path, capsys):
 
 @pytest.mark.parametrize("option", [["--input-type", "xcpd-flat"], ["--input-format", "xcpd"], ["--atlas-file", "a.tsv"],
                                     ["--nodes", "n.tsv"], ["--pattern", "*.csv"], ["--label-col", "x"],
-                                    ["--network-col", "x"], ["--thresh", "1"], ["--perms", "10"], ["--seed", "1"]])
+                                    ["--network-col", "x"], ["--thresh", "1"], ["--perms", "10"], ["--seed", "1"],
+                                    ["--nbs-perms", "10"]])
 def test_removed_options_are_rejected(xcpd, tmp_path, capsys, option):
     root, _, _ = xcpd
     with pytest.raises(SystemExit):
@@ -560,3 +561,97 @@ def test_fisher_z_is_applied_before_nbs():
     m = pd.DataFrame([[1.0, 0.5], [0.5, 1.0]])
     z = fisher_z({"s": m})["s"]
     assert z.iloc[0, 1] == pytest.approx(np.arctanh(0.5)) and z.iloc[0, 0] == 0
+
+
+NETWORK = ["--graph-method", "density", "--graph-param", "density=0.3", "--metrics", "strength",
+           "--network-graph-method", "full", "--n-jobs", "1", "--quiet"]
+
+
+def _compare_args(groups, *extra):
+    return ["--groups", str(groups), "--group-column", "dx", "--contrast", "A", "B", "--n-perms", "20",
+            "--random-seed", "0", "--no-report", *extra]
+
+
+def test_a_groups_table_compares_metrics_and_blocks_by_default(dataset, xcpd, tmp_path):
+    root, _, groups = xcpd
+    out = tmp_path / "out"
+    assert _both(root, out, NETWORK, _compare_args(groups), common=XCPD) == 0
+    compare = out / "group" / "ses-01" / "atlas-Toy" / "compare"
+    assert sorted(p.name for p in compare.glob("*.tsv")) == ["blocks_networkhemi.tsv", "metrics_networkhemi.tsv",
+                                                             "metrics_node.tsv"]
+    node = pd.read_csv(compare / "metrics_node.tsv", sep="\t")
+    assert list(node.columns) == ["metric", "node", "t", "p", "p_fdr", "p_fwe", "mean_group1", "mean_group2",
+                                  "n_group1", "n_group2"]
+    assert len(node) == len(dataset.nodes_df) and set(node["metric"]) == {"strength.abs"}
+    params = _params(compare)
+    assert params["groups"] == {"g1": ["01", "02", "03"], "g2": ["04", "05", "06"]}
+    assert params["options"]["n_perms"] == 20 and params["options"]["seed"] == 0
+    assert params["graph"]["levels"]["node"]["graph_method"] == "density" and params["input"]["contrast"] == ["A", "B"]
+
+
+def test_edges_are_compared_when_named_and_need_no_participant_results(dataset, xcpd, tmp_path):
+    root, _, groups = xcpd
+    out = tmp_path / "out"
+    cli.main([str(root), str(out), "group", *XCPD, *_compare_args(groups, "--compare", "edges"), "--quiet"])
+    compare = out / "group" / "ses-01" / "atlas-Toy" / "compare"
+    n = len(dataset.nodes_df)
+    assert [p.name for p in compare.glob("*.tsv")] == ["edges.tsv"]
+    assert len(pd.read_csv(compare / "edges.tsv", sep="\t")) == n * (n - 1) // 2
+
+
+def test_comparing_metrics_needs_participant_results(xcpd, tmp_path):
+    root, _, groups = xcpd
+    with pytest.raises(SystemExit, match="participant-level results"):
+        cli.main([str(root), str(tmp_path / "out"), "group", *XCPD, *_compare_args(groups, "--compare", "metrics"),
+                  "--quiet"])
+
+
+def test_an_empty_compare_skips_the_comparisons(xcpd, tmp_path):
+    root, _, groups = xcpd
+    out = tmp_path / "out"
+    assert _both(root, out, NETWORK, _compare_args(groups, "--compare"), common=XCPD) == 0
+    assert not (out / "group" / "ses-01" / "atlas-Toy" / "compare").exists()
+
+
+def test_blocks_are_left_out_by_default_and_refused_when_named_without_the_network_level(xcpd, tmp_path):
+    root, _, groups = xcpd
+    out = tmp_path / "out"
+    assert _both(root, out, FAST, _compare_args(groups), common=XCPD) == 0
+    compare = out / "group" / "ses-01" / "atlas-Toy" / "compare"
+    assert [p.name for p in compare.glob("*.tsv")] == ["metrics_node.tsv"]
+    with pytest.raises(SystemExit, match="network level"):
+        cli.main([str(root), str(out), "group", *XCPD, *_compare_args(groups, "--compare", "blocks"), "--quiet"])
+
+
+def test_covariates_come_from_the_groups_table(xcpd, tmp_path):
+    root, _, _ = xcpd
+    table = tmp_path / "participants.tsv"
+    pd.DataFrame({"participant_id": [f"sub-{i:02d}" for i in range(1, 7)], "dx": ["A", "A", "A", "B", "B", "B"],
+                  "age": [20, 25, 31, 22, 40, "n/a"]}).to_csv(table, sep="\t", index=False)
+    out = tmp_path / "out"
+    with pytest.warns(UserWarning, match="06"):
+        _both(root, out, FAST, _compare_args(table, "--covariates", "age"), common=XCPD)
+    params = _params(out / "group" / "ses-01" / "atlas-Toy" / "compare")
+    assert params["covariate_columns"] == ["age"] and params["groups"]["g2"] == ["04", "05"]
+    with pytest.raises(SystemExit, match="no column 'sex'"):
+        cli.main([str(root), str(out), "group", *XCPD, *_compare_args(table, "--covariates", "sex"), "--quiet"])
+
+
+@pytest.mark.parametrize("option", [["--compare", "edges"], ["--covariates", "age"], ["--groups", "g.tsv"]])
+def test_comparison_options_need_a_complete_groups_table(xcpd, tmp_path, capsys, option):
+    root, _, _ = xcpd
+    with pytest.raises(SystemExit):
+        cli.main([str(root), str(tmp_path / "out"), "group", *XCPD, *option, "--quiet"])
+    err = capsys.readouterr().err
+    assert "needs --groups" in err or "needs --group-column" in err
+
+
+def test_nbs_warns_that_it_ignores_covariates(xcpd, tmp_path):
+    root, _, _ = xcpd
+    table = tmp_path / "participants.tsv"
+    pd.DataFrame({"participant_id": [f"sub-{i:02d}" for i in range(1, 7)], "dx": ["A", "A", "A", "B", "B", "B"],
+                  "age": [20, 25, 31, 22, 40, 33]}).to_csv(table, sep="\t", index=False)
+    with pytest.warns(UserWarning, match="NBS does not adjust"):
+        cli.main([str(root), str(tmp_path / "out"), "group", *XCPD, *_compare_args(table, "--covariates", "age"),
+                  "--nbs-thresh", "1.0", "--n-jobs", "1", "--quiet"])
+    assert (tmp_path / "out" / "group" / "ses-01" / "atlas-Toy" / "nbs" / "nbs_components.tsv").exists()

@@ -1,5 +1,5 @@
 """
-Group level: participant results collected into tables and a report, and the network-based statistic between groups.
+Group level: participant results collected into tables and a report, and comparisons between two groups.
 """
 
 from __future__ import annotations
@@ -25,14 +25,34 @@ def run(args: argparse.Namespace, parser: argparse.ArgumentParser, session: str 
     out = _shared.run_folder(args.output_dir, "group", session, variant)
     sidecars = _participant_results(args, session, variant)
     where = " ".join(x for x in (session, variant) if x)
-    if not sidecars and args.nbs_thresh is None:
+    compare = _comparisons(args, parser, sidecars)
+    if not sidecars and args.nbs_thresh is None and not compare:
         raise SystemExit(f"{parser.prog}: no participant-level results in {args.output_dir}"
                          + (f" for {where}" if where else "") + "; run the participant level first")
+    if args.covariates and args.nbs_thresh is not None:
+        warnings.warn("NBS does not adjust for --covariates; only the other comparisons do", stacklevel=2)
     matrices, atlas = _shared.load_input(args, parser, variant, session)
-    if sidecars:
-        _graph_metrics(args, parser, sidecars, matrices, atlas, variant, out, command)
+    result = _graph_metrics(args, parser, sidecars, matrices, atlas, variant, out, command) if sidecars else None
+    if not args.groups:
+        return
+    matrices = {sid: matrices[sid] for sid in _shared.chosen(matrices, args)}
+    groups, rows, missing = _contrast_groups(args, parser, matrices, atlas)
+    if compare:
+        _compare(args, parser, compare, result, matrices, groups, rows, missing, atlas, out / "compare", command)
     if args.nbs_thresh is not None:
-        _nbs(args, parser, matrices, atlas, variant, out / "nbs", command)
+        _nbs(args, parser, matrices, groups, missing, atlas, variant, out / "nbs", command)
+
+
+def _comparisons(args: argparse.Namespace, parser: argparse.ArgumentParser, sidecars: list) -> list[str]:
+    """Those named by --compare, else metrics and blocks whenever there are groups and participant results."""
+    if not args.groups:
+        return []
+    if args.compare is None:
+        return ["metrics", "blocks"] if sidecars else []
+    if {"metrics", "blocks"} & set(args.compare) and not sidecars:
+        raise SystemExit(f"{parser.prog}: comparing metrics or blocks needs participant-level results in "
+                         f"{args.output_dir}; run the participant level first")
+    return list(dict.fromkeys(args.compare))
 
 
 def _participant_results(args: argparse.Namespace, session: str | None, variant: str | None) -> list[pathlib.Path]:
@@ -108,6 +128,7 @@ def _graph_metrics(args, parser, sidecars, matrices, atlas, variant, out, comman
                            surfaces=_shared.surfaces(args), static_brain=not args.no_static_brain)
     if not args.quiet:
         print(f"[{parser.prog}] Collected {len(ids)} participant(s) in {out}")
+    return result
 
 
 def _comparable(params: dict) -> tuple:
@@ -125,13 +146,10 @@ def _read(sidecar: pathlib.Path, suffix: str, index: str | None = None) -> pd.Da
     return table.set_index(index) if index else table
 
 
-def _nbs(args, parser, matrices, atlas, variant, out, command) -> None:
-    from conngraph.graph_theory.nbs import run_nbs
-
-    label_col, network_col = _shared.node_columns(args)
-    matrices = {sid: matrices[sid] for sid in _shared.chosen(matrices, args)}
+def _contrast_groups(args, parser, matrices, atlas) -> tuple[dict, pd.DataFrame, list[str]]:
+    """{matrix key: group} for the two contrast groups, their rows of the groups table, and those without a matrix."""
     table = pd.read_csv(args.groups, sep="\t" if args.groups.endswith((".tsv", ".txt")) else ",", dtype=str)
-    for col in (args.participant_column, args.group_column):
+    for col in (args.participant_column, args.group_column, *(args.covariates or [])):
         if col not in table:
             raise SystemExit(f"{parser.prog}: {args.groups} has no column {col!r}")
     by_label = {str(k).removeprefix("sub-"): k for k in matrices}
@@ -142,9 +160,10 @@ def _nbs(args, parser, matrices, atlas, variant, out, command) -> None:
     if several:
         here = "XCP-D --combine-runs, or --combine-runs with --connectivity here" if args.input_type == "xcpd" else \
             "before running ConnGraph"
-        raise SystemExit(f"{parser.prog}: NBS needs one matrix per participant, but {len(several)} have several runs: "
-                         f"{'; '.join(several)}. Combine them ({here}) or pick one with --bids-filter-file.")
-    groups, missing = [], []
+        raise SystemExit(f"{parser.prog}: comparing groups needs one matrix per participant, but {len(several)} have "
+                         f"several runs: {'; '.join(several)}. Combine them ({here}) or pick one with "
+                         "--bids-filter-file.")
+    groups, missing = {}, []
     for name in args.contrast:
         ids = [str(p).removeprefix("sub-") for p in table.loc[table[args.group_column] == name, args.participant_column]]
         if not ids:
@@ -154,23 +173,61 @@ def _nbs(args, parser, matrices, atlas, variant, out, command) -> None:
         if not ids:
             raise SystemExit(f"{parser.prog}: no participant in group {name!r} has a matrix (missing: {', '.join(absent)})")
         missing += absent
-        groups.append(ids)
+        groups.update({by_label[i]: name for i in ids})
     if missing:
         warnings.warn(f"Leaving out {len(missing)} participant(s) in {args.groups} without a matrix: "
                       f"{', '.join(missing)}", stacklevel=2)
+    keys = table[args.participant_column].map(lambda p: by_label.get(str(p).removeprefix("sub-")))
+    rows = table[keys.isin(list(groups))].set_axis(keys[keys.isin(list(groups))])
+    return groups, rows[~rows.index.duplicated()], missing
 
+
+def _input_params(args, atlas, missing) -> dict:
+    return {**atlas.attrs.get(INPUT_ATTR, {}), "fisher_z": not args.no_fisher_z,
+            "groups_file": os.path.abspath(args.groups), "group_column": args.group_column,
+            "contrast": list(args.contrast), "missing": missing}
+
+
+def _compare(args, parser, compare, result, matrices, groups, rows, missing, atlas, out, command) -> None:
+    from conngraph.graph_theory.compare import compare_groups
+
+    if args.compare is None and result.net_corr_df is None and result.net_hemi_corr_df is None:
+        compare = [c for c in compare if c != "blocks"]
+    try:
+        comparison = compare_groups(groups, args.contrast, result, matrices if "edges" in compare else None, compare,
+                                    covariates=rows[args.covariates] if args.covariates else None,
+                                    n_perms=args.n_perms, seed=args.random_seed, apply_fisher_z=not args.no_fisher_z,
+                                    verbose=not args.quiet)
+    except ValueError as exc:
+        raise SystemExit(f"{parser.prog}: {exc}") from None
+    params = comparison.params
+    params["input"] = _input_params(args, atlas, missing)
+    if result is not None:
+        params["graph"] = {"options": result.params["options"], "levels": result.params["levels"]}
+    params["command"] = command
+    out.mkdir(parents=True, exist_ok=True)
+    for name, table in comparison.tables.items():
+        table.to_csv(out / f"{name}.tsv", sep="\t", index=False)
+    _shared.write_json(out / "parameters.json", params)
+    if not args.quiet:
+        print(f"[{parser.prog}] Group comparison: {out}")
+
+
+def _nbs(args, parser, matrices, groups, missing, atlas, variant, out, command) -> None:
+    from conngraph.graph_theory.nbs import run_nbs
+
+    label_col, network_col = _shared.node_columns(args)
     if not args.no_fisher_z:
         matrices = _shared.fisher_z(matrices)
-    g1, g2 = ({i: matrices[by_label[i]] for i in ids} for ids in groups)
+    g1, g2 = ({str(k).removeprefix("sub-"): matrices[k] for k, g in groups.items() if g == name}
+              for name in args.contrast)
     try:
-        result = run_nbs(g1, g2, thresh=args.nbs_thresh, k=args.nbs_perms, tail=args.nbs_tail, seed=args.random_seed,
+        result = run_nbs(g1, g2, thresh=args.nbs_thresh, k=args.n_perms, tail=args.nbs_tail, seed=args.random_seed,
                          verbose=not args.quiet, n_jobs=args.n_jobs)
     except Exception as exc:
         raise SystemExit(f"{parser.prog}: {exc}") from None
 
-    result.params["input"] = {**atlas.attrs.get(INPUT_ATTR, {}), "fisher_z": not args.no_fisher_z,
-                              "groups_file": os.path.abspath(args.groups), "group_column": args.group_column,
-                              "contrast": list(args.contrast), "missing": missing}
+    result.params["input"] = _input_params(args, atlas, missing)
     result.params["command"] = command
     _write_nbs_tables(result, out)
     _shared.write_json(out / "parameters.json", result.params)
