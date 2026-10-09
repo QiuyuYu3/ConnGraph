@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 
 import brainnet3d as bnv
+from brainnet3d.exceptions import DataValidationError
 from brainnet3d.graph_theory import load_xcpd_flat
 
 LABELS = [f"r{i}" for i in range(6)]
@@ -322,3 +323,14 @@ def test_load_reads_afni_netcc_blocks(tmp_path):
     np.testing.assert_array_equal(pc.to_numpy(), partial)
     with pytest.raises(bnv.exceptions.DataValidationError, match=r"'PCB'[\s\S]*CC"):
         bnv.load(str(tmp_path / "corr_000.netcc"), _afni_nodes(), mat_key="PCB")
+
+
+def test_load_group_needs_no_coordinates():
+    ds = bnv.load_group({"sub-a": _matrix(), "sub-b": _matrix(seed=1)}, pd.DataFrame({"label": LABELS}))
+    assert ds.roi_labels == LABELS
+
+
+def test_plotter_asks_for_coordinates():
+    ds = bnv.load(_matrix(), pd.DataFrame({"label": LABELS}))
+    with pytest.raises(DataValidationError, match="x, y, z"):
+        bnv.BrainNetPlotter(ds)

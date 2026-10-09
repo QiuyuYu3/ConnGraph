@@ -23,7 +23,7 @@ class ConnectivityDataset:
         {subject_id: N×N DataFrame with ROI labels as index AND columns}.
         Single-subject data should use subject_id = "single".
     nodes_df : pd.DataFrame
-        Must contain columns: label, x, y, z.
+        Must contain a label column; x, y, z are needed for the brain figures.
         Optional columns: network, hemisphere, + any user-defined columns
         that can later be mapped to node_size / node_color.
     """
@@ -35,7 +35,7 @@ class ConnectivityDataset:
         self._validate()
 
     def _validate(self):
-        required_node_cols = {"label", "x", "y", "z"}
+        required_node_cols = {"label"}
         missing = required_node_cols - set(self.nodes_df.columns)
         if missing:
             raise DataValidationError(f"nodes_df is missing required columns: {missing}")

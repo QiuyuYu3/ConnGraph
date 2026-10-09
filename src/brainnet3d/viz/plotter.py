@@ -78,6 +78,9 @@ class BrainNetPlotter:
         dataset:    ConnectivityDataset,
         subject_id: str = "single",
     ):
+        missing = [c for c in ("x", "y", "z") if c not in dataset.nodes_df.columns]
+        if missing:
+            raise DataValidationError(f"Brain figures need node coordinates x, y, z; the node table lacks {missing}.")
         self.dataset     = dataset
         self.subject_id  = subject_id
         self._extra_cols: dict = {}

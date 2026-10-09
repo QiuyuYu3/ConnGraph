@@ -59,7 +59,7 @@ def load(
         .npy, .mat or an array) whose rows follow the order of `nodes`, a
         CIFTI .pconn.nii or an AFNI 3dNetCorr .netcc, which carry their own region names.
     nodes : str | pd.DataFrame
-        Path to a CSV/TSV with at minimum: label, x, y, z.
+        Path to a CSV/TSV with a label column; x, y, z are needed for the brain figures.
     subject_id : label for this subject inside the dataset.
     bad_node_threshold : drop ROIs where NaN fraction exceeds this (0–1).
     values : "r" for correlations, "z" for Fisher z values (converted back to r);

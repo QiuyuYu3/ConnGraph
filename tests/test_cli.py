@@ -181,6 +181,17 @@ def test_matrix_folder_refuses_two_files_for_one_participant(dataset, tmp_path):
         graph_cli.main([str(folder), str(tmp_path / "out"), "--input-type", "matrix"] + FAST)
 
 
+def test_matrix_folder_runs_without_coordinates(dataset, tmp_path):
+    folder = tmp_path / "in"
+    folder.mkdir()
+    dataset.nodes_df[["label", "network"]].to_csv(folder / "nodes.tsv", sep="\t", index=False)
+    for sid, mat in dataset.matrices.items():
+        mat.to_csv(folder / f"{sid}_matrix.tsv", sep="\t")
+    out = tmp_path / "graph"
+    graph_cli.main([str(folder), str(out), "--input-type", "matrix"] + [a for a in FAST if a != "--no-report"])
+    assert "no x, y, z coordinates" in (out / "graph_report.html").read_text(encoding="utf-8")
+
+
 def test_matrix_folder_needs_nodes_tsv(dataset, tmp_path):
     folder = tmp_path / "in"
     folder.mkdir()

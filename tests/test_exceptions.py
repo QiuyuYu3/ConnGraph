@@ -27,7 +27,7 @@ def _nan_matrix():
 
 
 @pytest.mark.parametrize("make", [
-    lambda: bnv.ConnectivityDataset({"s": _square()}, _nodes().drop(columns="z")),
+    lambda: bnv.ConnectivityDataset({"s": _square()}, _nodes().drop(columns="label")),
     lambda: bnv.ConnectivityDataset({"s": _square().iloc[:3]}, _nodes()),
     lambda: bnv.ConnectivityDataset({"s": _square().set_axis(list("wxyz"), axis=0)}, _nodes()),
     lambda: compute_graph_metrics(
