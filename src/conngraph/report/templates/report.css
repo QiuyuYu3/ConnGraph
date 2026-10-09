@@ -92,7 +92,7 @@ table.flat { border-collapse: collapse; font-size: 0.86rem; width: auto; min-wid
 table.flat th, table.flat td { border: none; border-bottom: 1px solid var(--rule-soft); padding: 0.4rem 1.6rem 0.4rem 0;
                                font-variant-numeric: tabular-nums; text-align: left; }
 table.flat th { color: var(--muted); font-weight: 600; font-size: 0.8rem; vertical-align: bottom;
-                border-bottom: 1.5px solid var(--ink); background: #fff; }
+                border-bottom: 1px solid var(--faint); background: #fff; }
 table.flat td:first-child { font-weight: 500; }
 table.flat td.num, table.flat th.num { text-align: right; }
 table.flat td.num { white-space: nowrap; }
