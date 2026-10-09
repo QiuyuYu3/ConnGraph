@@ -22,6 +22,7 @@ from brainnet3d.graph_theory.aggregation import (
     compute_net_corr,
 )
 from brainnet3d.exceptions import DataValidationError
+from brainnet3d.loaders import INPUT_ATTR
 from brainnet3d.graph_theory.metrics import check_options, output_names, process_subject
 from brainnet3d.graph_theory.sparsify import requested_edges, resolve_sign
 
@@ -313,6 +314,7 @@ def compute_graph_metrics(
             "exclude_networks": exclude_networks,
         },
         "levels": levels,
+        "input": atlas.attrs.get(INPUT_ATTR, {}),
         "subjects": subject_ids,
         "excluded_rois": excluded,
         "failed": result.failed,

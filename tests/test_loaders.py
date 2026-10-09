@@ -91,3 +91,25 @@ def test_node_table_keeps_none_as_text(tmp_path):
     nodes = bnv.load(str(tmp_path / "matrix.csv"), str(tmp_path / "nodes.csv")).nodes_df
     assert nodes["network"].tolist()[:2] == ["None", "Default"] and pd.isna(nodes["network"].iloc[2])
     assert pd.api.types.is_float_dtype(nodes["score"]) and pd.isna(nodes["score"].iloc[1])
+
+
+def test_load_xcpd_flat_records_what_it_read_and_dropped(tmp_path):
+    flat_dir, atlas_path = _xcpd_flat_dir(tmp_path, bad_sub01=["r3"])
+    with pytest.warns(UserWarning):
+        _, atlas = load_xcpd_flat(flat_dir, atlas_path, atlas="Gordon", bad_node_threshold=0.5, verbose=False)
+    record = atlas.attrs["brainnet3d_input"]
+    assert record["source"] == "XCP-D"
+    assert (record["atlas"], record["space"], record["task"], record["session"]) == ("Gordon", "fsLR", "rest", "ses-01")
+    assert record["n_loaded"] == 2
+    assert (record["bad_node_threshold"], record["drop_mode"], record["dropped"]) == (0.5, "union", ["r3"])
+
+
+@pytest.mark.parametrize("mode", ["union", "intersection"])
+def test_load_group_records_the_drop_rule(mode):
+    mats = {"sub-a": _matrix(["r1", "r4"]), "sub-b": _matrix(["r1"], seed=1)}
+    with pytest.warns(UserWarning):
+        ds = bnv.load_group(mats, _nodes(), bad_node_threshold=0.5, drop_mode=mode)
+    record = ds.nodes_df.attrs["brainnet3d_input"]
+    assert record["source"] == "matrix files"
+    assert (record["n_loaded"], record["bad_node_threshold"], record["drop_mode"]) == (2, 0.5, mode)
+    assert record["dropped"] == (["r1", "r4"] if mode == "union" else ["r1"])

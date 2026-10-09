@@ -86,8 +86,16 @@ def save_graph_report(result, path, nodes: pd.DataFrame | None = None, surfaces:
     errors += params.get("warnings", [])
     failed = sum(len(v) for v in result.failed.values())
     first = levels.get("node") or next(iter(levels.values()))
+    loaded = params.get("input") or {}
+    if loaded.get("dropped"):
+        dropped = loaded["dropped"]
+        notes.append(f"{len(dropped)} nodes with more than {100 * loaded['bad_node_threshold']:g}% missing values were "
+                     f"dropped when the matrices were loaded: {', '.join(map(str, dropped[:20]))}"
+                     + (" …" if len(dropped) > 20 else "") + ".")
+    details = ", ".join(f"{k} {loaded[k]}" for k in ("atlas", "space", "task", "session") if loaded.get(k))
     summary = [
-        [("Participants", len(params["subjects"])),
+        ([("Input", loaded["source"] + (f" ({details})" if details else ""))] if loaded.get("source") else [])
+        + [("Participants", len(params["subjects"])),
          ("Levels", "; ".join(f"{_level_title(n)} ({d['n_nodes']} nodes)" for n, d in levels.items())),
          ("Graph construction", _method_text(first)),
          ("Sign rule", first["sign"]),

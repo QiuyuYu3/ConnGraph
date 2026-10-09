@@ -61,6 +61,30 @@ def test_graph_methods_follow_the_users_text_for_the_default_run(graph_result):
     assert 'class="todo"' in text["html"]
 
 
+def test_graph_methods_describe_an_xcpd_input(dataset):
+    atlas = dataset.nodes_df.copy()
+    atlas.attrs["brainnet3d_input"] = {
+        "source": "XCP-D", "atlas": "Gordon", "space": "fsLR", "task": "rest", "session": "ses-01", "n_loaded": 6,
+        "bad_node_threshold": 0.9, "drop_mode": "union", "dropped": [],
+    }
+    result = compute_graph_metrics(dataset.matrices, atlas, level="node", network_col="network", metrics=["strength"],
+                                   n_jobs=1, verbose=False)
+    assert result.params["input"]["source"] == "XCP-D"
+    plain = graph_methods(result.params)["plain"]
+    assert ("Functional connectivity matrices derived from XCP-D (Gordon atlas; fsLR space; Pearson's r) were used "
+            "as input for graph theory analysis") in plain
+    assert ("Nodes for which more than 90% of connectivity values were missing in any participant were excluded "
+            "across all participants.") in plain
+    assert "each of the 24 parcels of the Gordon atlas." in plain
+
+
+def test_graph_methods_from_load_group_state_the_node_rule(graph_result):
+    assert graph_result.params["input"]["source"] == "matrix files"
+    plain = graph_methods(graph_result.params)["plain"]
+    assert "matrices were used as input" in plain and "XCP-D" not in plain
+    assert "more than 90% of connectivity values were missing in any participant" in plain
+
+
 def test_graph_methods_describe_a_hemisphere_level_alone(dataset):
     result = compute_graph_metrics(dataset.matrices, dataset.nodes_df, level="network", network_col="network",
                                    metrics=["strength"], verbose=False)

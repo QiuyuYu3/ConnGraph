@@ -23,6 +23,18 @@ _NODE_NA_VALUES = [
     "", "#N/A", "#N/A N/A", "#NA", "-1.#IND", "-1.#QNAN", "-NaN", "-nan", "1.#IND", "1.#QNAN",
     "<NA>", "N/A", "NA", "NULL", "NaN", "n/a", "nan", "null",
 ]
+# Key in a node or atlas table's attrs where loaders note what they read; compute_graph_metrics copies it to params
+INPUT_ATTR = "brainnet3d_input"
+
+
+def record_input(table: pd.DataFrame, before: dict, after: dict, threshold: float, mode: str, **fields) -> pd.DataFrame:
+    """Note on the table how many matrices were read and which nodes the missing-value rule dropped."""
+    labels = lambda mats: set().union(*(m.columns for m in mats.values())) if mats else set()
+    table.attrs[INPUT_ATTR] = {
+        **fields, "n_loaded": len(after), "bad_node_threshold": threshold, "drop_mode": mode,
+        "dropped": sorted(labels(before) - labels(after), key=str),
+    }
+    return table
 
 
 def load(
@@ -51,8 +63,11 @@ def load(
     mat_df   = _read_matrix(matrix)
     nodes_df = _read_nodes(nodes)
 
-    mat_df   = _drop_bad_nodes({subject_id: mat_df}, bad_node_threshold)[subject_id]
+    raw      = {subject_id: mat_df}
+    kept     = _drop_bad_nodes(raw, bad_node_threshold)
+    mat_df   = kept[subject_id]
     nodes_df = _align_nodes(nodes_df, mat_df)
+    record_input(nodes_df, raw, kept, bad_node_threshold, "union", source="matrix files")
 
     return ConnectivityDataset(matrices={subject_id: mat_df}, nodes_df=nodes_df)
 
@@ -103,11 +118,13 @@ def load_group(
     else:
         raise TypeError("`matrices` must be a directory path (str) or a dict.")
 
+    before = raw
     raw = _drop_bad_nodes(raw, bad_node_threshold, drop_mode)
 
     nodes_df = _read_nodes(nodes)
     ref_mat  = next(iter(raw.values()))
     nodes_df = _align_nodes(nodes_df, ref_mat)
+    record_input(nodes_df, before, raw, bad_node_threshold, drop_mode, source="matrix files")
 
     return ConnectivityDataset(matrices=raw, nodes_df=nodes_df)
 

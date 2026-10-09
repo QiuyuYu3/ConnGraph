@@ -12,7 +12,7 @@ import warnings
 import pandas as pd
 
 from brainnet3d.exceptions import DataValidationError
-from brainnet3d.loaders import _drop_bad_nodes
+from brainnet3d.loaders import _drop_bad_nodes, record_input
 
 
 def load_xcpd(
@@ -121,6 +121,7 @@ def load_xcpd(
         print(f"[load_xcpd] Loaded {len(matrices)} matrix/matrices")
 
     # Drop bad nodes (union across subjects)
+    before = matrices
     if bad_node_threshold < 1.0:
         matrices = _drop_bad_nodes(matrices, bad_node_threshold)
 
@@ -138,6 +139,8 @@ def load_xcpd(
     if verbose:
         print(f"[load_xcpd] Atlas: {atlas_path} ({len(atlas_df)} ROIs)")
 
+    record_input(atlas_df, before, matrices, bad_node_threshold, "union", source="XCP-D", path=xcpd_dir,
+                 atlas=atlas, space=space, task=task, session=session)
     return matrices, atlas_df
 
 
@@ -235,6 +238,7 @@ def load_xcpd_flat(
     if verbose:
         print(f"[load_xcpd_flat] Loaded {len(matrices)} matrix/matrices")
 
+    before = matrices
     if bad_node_threshold < 1.0:
         matrices = _drop_bad_nodes(matrices, bad_node_threshold)
 
@@ -244,6 +248,8 @@ def load_xcpd_flat(
     if verbose:
         print(f"[load_xcpd_flat] Atlas: {atlas_path} ({len(atlas_df)} ROIs)")
 
+    record_input(atlas_df, before, matrices, bad_node_threshold, "union", source="XCP-D", path=flat_dir,
+                 atlas=atlas, space=space, task=task, session=session)
     return matrices, atlas_df
 
 

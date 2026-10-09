@@ -14,6 +14,9 @@ plain = "Functional connectivity matrices{source} were used as input for graph t
 [participants]
 plain = "Matrices were loaded for {n} participants."
 
+[bad_nodes]
+plain = "Nodes for which more than {pct}% of connectivity values were missing in {scope} were excluded across all participants."
+
 # ---- graph construction ----
 
 [graph_tmfg]

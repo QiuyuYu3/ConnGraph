@@ -37,11 +37,16 @@ def graph_methods(params: dict) -> dict[str, str]:
     """Methods text of a compute_graph_metrics run, as {"plain", "markdown", "latex", "html"}."""
     opts, levels = params["options"], params["levels"]
     first = levels.get("node") or next(iter(levels.values()))
-    source = params.get("input", {}).get("source_text", "")
+    loaded = params.get("input") or {}
+    source = ""
+    if loaded.get("source") == "XCP-D":
+        source = f" derived from XCP-D ({loaded['atlas']} atlas; {loaded['space']} space; Pearson's r)"
 
     para1 = [("input", {"source": source, "ver": params["packages"]["brainnet3d"]}),
              ("participants", {"n": len(params["subjects"])})]
-    para1 += params.get("input", {}).get("sentences", [])
+    if loaded.get("bad_node_threshold", 1.0) < 1.0:
+        scope = "any participant" if loaded.get("drop_mode", "union") == "union" else "every participant"
+        para1.append(("bad_nodes", {"pct": f"{100 * loaded['bad_node_threshold']:g}", "scope": scope}))
 
     para2 = [_graph_sentence(first), ("sign_" + first["sign"], {})]
     if first["graph_method"] == "tmfg":
@@ -66,7 +71,8 @@ def graph_methods(params: dict) -> dict[str, str]:
     z = {"z": "Fisher z-transformed connectivity" if fisher else "connectivity",
          "back": " and converted back to r" if fisher else ""}
     if "node" in levels:
-        para4.append(("level_node", {"n": levels["node"]["n_nodes"], "atlas": params.get("input", {}).get("atlas_text", "")}))
+        atlas = f" of the {loaded['atlas']} atlas" if loaded.get("atlas") else ""
+        para4.append(("level_node", {"n": levels["node"]["n_nodes"], "atlas": atlas}))
     if "network" in levels:
         para4.append(("level_network", {"n": levels["network"]["n_nodes"], **z}))
     if "network_hemi" in levels:
