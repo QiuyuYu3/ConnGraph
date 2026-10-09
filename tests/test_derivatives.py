@@ -128,3 +128,11 @@ def test_session_label_may_omit_the_prefix(tmp_path):
     matrices, nodes = bnv.load_fnirs_pipe(str(_fnirs_tree(tmp_path / "fnirs", session="ses-02")), "hbo", session="02",
                                           verbose=False)
     assert sorted(matrices) == ["01", "02"] and nodes.attrs["brainnet3d_input"]["session"] == "ses-02"
+
+
+def test_skipped_participants_are_recorded(tmp_path):
+    root = _xcpd_tree(tmp_path, "ses-01")
+    (root / "sub-03" / "ses-01" / "func").mkdir(parents=True)
+    with pytest.warns(UserWarning, match="sub-03"):
+        _, atlas = bnv.load_xcpd(str(root), "Gordon", verbose=False)
+    assert atlas.attrs["brainnet3d_input"]["skipped"] == ["sub-03: no file found"]

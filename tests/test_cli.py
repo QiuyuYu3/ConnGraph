@@ -390,3 +390,36 @@ def test_nbs_command_runs_each_session(dataset, xcpd, tmp_path):
     for ses in ("ses-01", "ses-02"):
         assert (out / ses / "atlas-Toy" / "nbs_components.tsv").exists()
         assert _session(out / ses / "atlas-Toy") == ses
+
+
+def _wave_without_sub06(dataset, root):
+    root = _xcpd_waves(dataset, root, ["ses-01", "ses-02"])
+    (root / "sub-06" / "ses-02" / "func" / f"sub-06_ses-02_{TAIL}").unlink()
+    return root
+
+
+def test_graph_report_lists_skipped_participants(dataset, xcpd, tmp_path):
+    _, coords, _ = xcpd
+    root = _wave_without_sub06(dataset, tmp_path / "xcpd")
+    out = tmp_path / "graph"
+    with pytest.warns(UserWarning, match="sub-06"):
+        graph_cli.main([str(root), str(out), "--input-type", "xcpd", "--atlases", "Toy", "--session-id", "02",
+                        "--coords", str(coords), "--no-static-brain"] + [a for a in FAST if a != "--no-report"])
+    report = (out / "ses-02" / "atlas-Toy" / "graph_report.html").read_text(encoding="utf-8")
+    assert "sub-06: no file found" in report
+
+
+def test_nbs_leaves_out_participants_missing_in_a_session(dataset, xcpd, tmp_path):
+    _, coords, groups = xcpd
+    root = _wave_without_sub06(dataset, tmp_path / "xcpd")
+    out = tmp_path / "nbs"
+    with pytest.warns(UserWarning, match="sub-06"):
+        nbs_cli.main([str(root), str(out), "--input-type", "xcpd", "--atlases", "Toy", "--session-id", "02",
+                      "--groups", str(groups), "--group-column", "dx", "--contrast", "A", "B", "--thresh", "1.0",
+                      "--perms", "20", "--seed", "0", "--n-jobs", "1", "--coords", str(coords), "--no-static-brain",
+                      "--quiet"])
+    out = out / "ses-02" / "atlas-Toy"
+    params = json.loads((out / "parameters.json").read_text(encoding="utf-8"))
+    assert params["groups"]["g2"] == ["04", "05"] and params["input"]["missing"] == ["sub-06"]
+    report = (out / "nbs_report.html").read_text(encoding="utf-8")
+    assert "session ses-02" in report and "sub-06" in report

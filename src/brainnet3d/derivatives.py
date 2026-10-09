@@ -144,7 +144,8 @@ def load_xcpd(
         print(f"[load_xcpd] Atlas: {atlas_path} ({len(atlas_df)} ROIs)")
 
     record_input(atlas_df, before, matrices, bad_node_threshold, "union", source="XCP-D", path=xcpd_dir,
-                 atlas=atlas, space=space, task=task, session=session, **_series_record(connectivity, shrinkage))
+                 atlas=atlas, space=space, task=task, session=session, skipped=skipped,
+                 **_series_record(connectivity, shrinkage))
     return matrices, atlas_df
 
 
@@ -255,7 +256,8 @@ def load_xcpd_flat(
         print(f"[load_xcpd_flat] Atlas: {atlas_path} ({len(atlas_df)} ROIs)")
 
     record_input(atlas_df, before, matrices, bad_node_threshold, "union", source="XCP-D", path=flat_dir,
-                 atlas=atlas, space=space, task=task, session=session, **_series_record(connectivity, shrinkage))
+                 atlas=atlas, space=space, task=task, session=session, skipped=skipped,
+                 **_series_record(connectivity, shrinkage))
     return matrices, atlas_df
 
 
@@ -321,7 +323,7 @@ def load_fnirs_pipe(
         matrices = _drop_bad_nodes(matrices, bad_node_threshold, drop_mode)
     nodes = pd.DataFrame({"label": list(next(iter(matrices.values())).columns)})
     record_input(nodes, before, matrices, bad_node_threshold, drop_mode, source="fnirs-pipe", path=deriv_dir,
-                 chromophore=chromophore, task=task, session=session)
+                 chromophore=chromophore, task=task, session=session, skipped=skipped)
     return matrices, nodes
 
 

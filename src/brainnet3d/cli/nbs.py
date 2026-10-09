@@ -8,6 +8,7 @@ import argparse
 import os
 import pathlib
 import sys
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -64,10 +65,15 @@ def _run(args, parser, variant, out, command, run_nbs, session=None) -> None:
         ids = [str(p).removeprefix("sub-") for p in table.loc[table[args.group_column] == name, args.participant_column]]
         if not ids:
             raise SystemExit(f"{parser.prog}: no participant in group {name!r} of column {args.group_column!r}")
-        missing += [f"sub-{i}" for i in ids if i not in by_label]
+        absent = [f"sub-{i}" for i in ids if i not in by_label]
+        ids = [i for i in ids if i in by_label]
+        if not ids:
+            raise SystemExit(f"{parser.prog}: no participant in group {name!r} has a matrix (missing: {', '.join(absent)})")
+        missing += absent
         groups.append(ids)
     if missing:
-        raise SystemExit(f"{parser.prog}: participants in {args.groups} without a matrix: {', '.join(missing)}")
+        warnings.warn(f"Leaving out {len(missing)} participant(s) in {args.groups} without a matrix: "
+                      f"{', '.join(missing)}", stacklevel=2)
 
     if not args.no_fisher_z:
         matrices = _shared.fisher_z(matrices)
@@ -80,7 +86,7 @@ def _run(args, parser, variant, out, command, run_nbs, session=None) -> None:
 
     result.params["input"] ={**atlas.attrs.get(INPUT_ATTR, {}), "fisher_z": not args.no_fisher_z,
                               "groups_file": os.path.abspath(args.groups), "group_column": args.group_column,
-                              "contrast": list(args.contrast)}
+                              "contrast": list(args.contrast), "missing": missing}
     result.params["command"] = command
     _write_tables(result, out)
     _shared.write_json(out / "parameters.json", result.params)

@@ -83,22 +83,14 @@ def save_graph_report(result, path, nodes: pd.DataFrame | None = None, surfaces:
         sections.append(("Curves", "Across values"))
 
     errors = [f"{lvl} / {sid}: {msg}" for lvl, subs in result.failed.items() for sid, msg in subs.items()]
-    errors += params.get("warnings", [])
+    loaded = params.get("input") or {}
+    warned = params.get("warnings", []) + _input_warnings(loaded)
+    errors += warned
     failed = sum(len(v) for v in result.failed.values())
     first = levels.get("node") or next(iter(levels.values()))
-    loaded = params.get("input") or {}
-    if loaded.get("dropped"):
-        dropped = loaded["dropped"]
-        what = ("with missing or constant time series were dropped when the data" if loaded.get("connectivity") else
-                f"with more than {100 * loaded['bad_node_threshold']:g}% missing values were dropped when the matrices")
-        notes.append(f"{len(dropped)} nodes {what} were loaded: {', '.join(map(str, dropped[:20]))}"
-                     + (" …" if len(dropped) > 20 else "") + ".")
-    details = ", ".join([f"{k} {loaded[k]}" for k in ("atlas", "space", "chromophore", "task", "session") if loaded.get(k)]
-                        + ([loaded["connectivity"]] if loaded.get("connectivity") else [])
-                        + (["Ledoit-Wolf shrinkage"] if loaded.get("shrinkage") else [])
-                        + (["Fisher z input"] if loaded.get("values") == "z" else []))
+    notes += _input_notes(loaded)
     summary = [
-        ([("Input", loaded["source"] + (f" ({details})" if details else ""))] if loaded.get("source") else [])
+        _input_row(loaded)
         + [("Participants", len(params["subjects"])),
          ("Levels", "; ".join(f"{_level_title(n)} ({d['n_nodes']} nodes)" for n, d in levels.items())),
          ("Graph construction", _method_text(first)),
@@ -108,7 +100,7 @@ def save_graph_report(result, path, nodes: pd.DataFrame | None = None, surfaces:
          ("brainnet3d", "v" + params["packages"]["brainnet3d"]),
          ("Python", params["python"]),
          ("Failed subjects", _flag(f"{failed}/{len(params['subjects'])}", failed == 0, "bad")),
-         ("Warnings", _flag(len(params.get("warnings", [])), not params.get("warnings"), "warn"))],
+         ("Warnings", _flag(len(warned), not warned, "warn"))],
     ]
     call = ("compute_graph_metrics", ["matrices", "atlas"],
             {**opts, "graph_method": first["graph_method"], "graph_params": first["graph_params"]})
@@ -221,9 +213,12 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
         body.append(dict(id="Edges", title="Significant edges", desc="", steps=steps))
         sections.append(("Edges", "Significant edges"))
 
-    names = (params.get("input") or {}).get("contrast") or ["", ""]
+    loaded = params.get("input") or {}
+    notes += _input_notes(loaded)
+    names = loaded.get("contrast") or ["", ""]
     summary = [
-        [("Group 1", f"{names[0] + ': ' if names[0] else ''}{len(params['groups']['g1'])} participants"),
+        _input_row(loaded)
+        + [("Group 1", f"{names[0] + ': ' if names[0] else ''}{len(params['groups']['g1'])} participants"),
          ("Group 2", f"{names[1] + ': ' if names[1] else ''}{len(params['groups']['g2'])} participants"),
          ("Test", "paired t-test" if o["paired"] else "two-sample t-test"),
          ("Threshold", f"t > {o['thresh']} ({o['tail']} tail)"),
@@ -235,7 +230,7 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
          ("Smallest p", _fmt_p(min(result.pval), k) if len(result.pval) else "–")],
     ]
     _write(path, "Network-based statistic report", params, sections, summary, ("run_nbs", ["matrices_g1", "matrices_g2"], o),
-           body, [], notes, nbs_methods(params), f"{len(params['groups']['g1'])} vs {len(params['groups']['g2'])}")
+           body, _input_warnings(loaded), notes, nbs_methods(params), f"{len(params['groups']['g1'])} vs {len(params['groups']['g2'])}")
 
 
 def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, static_brain, notes) -> list[dict]:
@@ -535,6 +530,40 @@ def _coordinates(nodes: pd.DataFrame | None, label_col: str, labels: list[str]) 
     if nodes is None or not {"x", "y", "z"} <= set(nodes.columns) or label_col not in nodes:
         return None
     return nodes.set_index(label_col)[["x", "y", "z"]].reindex(labels).to_numpy(float)
+
+
+def _input_row(loaded: dict) -> list[tuple[str, str]]:
+    details = ", ".join([f"{k} {loaded[k]}" for k in ("atlas", "space", "chromophore", "task", "session") if loaded.get(k)]
+                        + ([loaded["connectivity"]] if loaded.get("connectivity") else [])
+                        + (["Ledoit-Wolf shrinkage"] if loaded.get("shrinkage") else [])
+                        + (["Fisher z input"] if loaded.get("values") == "z" else []))
+    return [("Input", loaded["source"] + (f" ({details})" if details else ""))] if loaded.get("source") else []
+
+
+def _input_notes(loaded: dict) -> list[str]:
+    if not loaded.get("dropped"):
+        return []
+    dropped = loaded["dropped"]
+    what = ("with missing or constant time series were dropped when the data" if loaded.get("connectivity") else
+            f"with more than {100 * loaded['bad_node_threshold']:g}% missing values were dropped when the matrices")
+    return [f"{len(dropped)} nodes {what} were loaded: {', '.join(map(str, dropped[:20]))}"
+            + (" …" if len(dropped) > 20 else "") + "."]
+
+
+def _input_warnings(loaded: dict) -> list[str]:
+    """Participants left out while loading (no single matching file) or from the NBS groups (no matrix)."""
+    out = []
+    if loaded.get("skipped"):
+        out.append(_participants(len(loaded["skipped"]), "had no single matching file and {} skipped")
+                   + ": " + "; ".join(loaded["skipped"]) + ".")
+    if loaded.get("missing"):
+        out.append(_participants(len(loaded["missing"]), "in the groups table had no matrix and {} left out")
+                   + ": " + ", ".join(loaded["missing"]) + ".")
+    return out
+
+
+def _participants(n: int, text: str) -> str:
+    return f"{n} participant{'' if n == 1 else 's'} " + text.format("was" if n == 1 else "were")
 
 
 def _no_coordinates(nodes) -> str:
