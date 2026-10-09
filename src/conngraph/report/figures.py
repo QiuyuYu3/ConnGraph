@@ -259,3 +259,172 @@ def brain_edges(xyz: np.ndarray, labels: list[str], networks: list[str], edges: 
             marker=dict(size=2.5 + 1.4 * np.sqrt(degree[idx]), color=palette.get(net, "#9aa5b1"), line=dict(width=0)),
             text=[f"{labels[i]}<br>{net}<br>{degree[i]} edges" for i in idx], hovertemplate="%{text}<extra></extra>"))
     return _scene(traces, meshes, 600)
+
+
+_RING = (1.03, 1.065, 1.15)  # inner and outer radius of the network arcs, radius of the network names
+_EDGE_BINS = 10
+_NAME_PX = 0.06  # approximate width of a name character in circle radii, for spacing the names
+
+
+def circos_figure(G, labels: list[str], nets: list[str], palette: dict, colorbar_title: str,
+                  bundled: bool = False) -> go.Figure:
+    """Nodes on a circle grouped by network: chords coloured by weight, or bundled through networks in their colours."""
+    from conngraph.viz.colormap import values_to_widths
+    from conngraph.viz.network_graphs import _bundled_path, _edge_colors, _network_hubs, _sample_quadratic
+
+    xy, angles, step = _ring_positions(nets)
+    edges = sorted((e for e in G.edges(data="weight", default=1.0) if e[0] != e[1]), key=lambda e: abs(e[2]))
+    w = np.array([e[2] for e in edges], dtype=float)
+    widths = values_to_widths(np.abs(w), (0.3, 2.5)) if len(edges) else np.array([])
+    fig = go.Figure()
+    if bundled:
+        hubs = _network_hubs(xy, nets)
+        halves: dict[str, list] = {}
+        for u, v, _ in edges:
+            path = _bundled_path(xy[u], xy[v], hubs[nets[u]], hubs[nets[v]], nets[u] == nets[v], 0.85)
+            m = len(path) // 2
+            # each half takes the colour of the network at its end
+            halves.setdefault(nets[u], []).append(path[: m + 1])
+            halves.setdefault(nets[v], []).append(path[m:])
+        for net, paths in halves.items():
+            fig.add_trace(_lines(paths, palette.get(net, "#9aa5b1"), 0.9, 0.35))
+    elif len(edges):
+        paths = []
+        for u, v, _ in edges:
+            p0, p2 = xy[u], xy[v]
+            # pull the control point towards the centre, further for longer chords
+            paths.append(_sample_quadratic(np.array([p0, (p0 + p2) / 2 * (1 - np.linalg.norm(p2 - p0) / 2), p2])))
+        colors = _edge_colors(w, "weight", "RdBu_r", ((1, .25, .25), (.25, .25, 1)))
+        fig.add_traces(_binned_lines(paths, w, colors, widths, 0.6))
+        lim = float(np.abs(w).max()) or 1.0
+        fig.add_trace(go.Scatter(x=[None], y=[None], mode="markers", showlegend=False, hoverinfo="skip", marker=dict(
+            colorscale="RdBu_r", cmin=-lim, cmax=lim, color=[0], showscale=True, colorbar=dict(
+                title=dict(text=colorbar_title, side="top"), orientation="h", len=0.45, thickness=10, x=0.98,
+                xanchor="right", y=0.02, nticks=5, tickfont=dict(size=9)))))
+    traces, names = _ring_traces(G, labels, nets, palette, xy, angles, step)
+    fig.add_traces(traces)
+    fig.update_layout(annotations=names)
+    return _square(fig, 1.4, legend=False)
+
+
+def spring_figure(G, labels: list[str], nets: list[str], palette: dict, seed: int = 42) -> go.Figure:
+    """Spring layout of the graph; node size is strength, colour the network; click a network in the legend to hide it."""
+    import networkx as nx
+
+    pos = nx.spring_layout(G, seed=seed, k=0.15)
+    xy = np.array([pos[i] for i in range(len(labels))])
+    xy = xy - xy.mean(axis=0)
+    xy = xy / (np.abs(xy).max() or 1.0)
+    edges = [e for e in G.edges(data="weight", default=1.0) if e[0] != e[1]]
+    w = np.abs([e[2] for e in edges]).astype(float)
+    fig = go.Figure()
+    if len(edges):
+        widths = 0.25 + 0.75 * np.power(w / (w.max() or 1.0), 1.5)
+        fig.add_traces(_binned_lines([xy[[u, v]] for u, v, _ in edges], w, ["#9aa5b1"] * len(w), widths, 0.4, bins=4))
+    strength = _strength(G, len(labels))
+    peak = strength.max() or 1.0
+    for net in _ordered_networks(nets):
+        sel = [i for i, x in enumerate(nets) if x == net]
+        fig.add_trace(go.Scatter(
+            x=xy[sel, 0], y=xy[sel, 1], mode="markers", name=net,
+            marker=dict(color=palette.get(net, "#9aa5b1"), size=7 + 11 * strength[sel] / peak, opacity=0.9,
+                        line=dict(width=0.5, color="white")),
+            **_node_hover(labels, sel, net, G, strength)))
+    return _square(fig, 1.1, legend=True)
+
+
+def _ring_positions(nets: list[str], gap: float = 0.04) -> tuple[np.ndarray, np.ndarray, float]:
+    n = len(nets)
+    order = sorted(range(n), key=lambda i: (natural_key(nets[i]), i))
+    step = (2 * np.pi - gap * len(set(nets))) / n
+    angles, a = np.zeros(n), np.pi / 2
+    for k, i in enumerate(order):
+        if k and nets[i] != nets[order[k - 1]]:
+            a += gap
+        angles[i] = a
+        a += step
+    return np.c_[np.cos(angles), np.sin(angles)], angles, step
+
+
+def _ring_traces(G, labels, nets, palette, xy, angles, step) -> tuple[list, list[dict]]:
+    """Nodes and a filled arc per network, and the network names along the circle as annotations."""
+    from conngraph.viz.network_graphs import _spread_angles, _text_color
+
+    inner, outer, name_r = _RING
+    strength = _strength(G, len(labels))
+    traces, mids, names = [], [], []
+    for net in _ordered_networks(nets):
+        sel = [i for i, x in enumerate(nets) if x == net]
+        color = palette.get(net, "#9aa5b1")
+        a = np.sort(angles[sel])
+        arc = np.linspace(a[0] - step / 2, a[-1] + step / 2, max(8, int(200 * (a[-1] - a[0] + step) / np.pi)))
+        unit = np.c_[np.cos(arc), np.sin(arc)]
+        ring = np.round(np.r_[outer * unit, inner * unit[::-1]], 4)
+        traces.append(go.Scatter(x=ring[:, 0], y=ring[:, 1], mode="lines", fill="toself", fillcolor=color,
+                                 line=dict(width=0), hoverinfo="skip", showlegend=False))
+        traces.append(go.Scatter(x=np.round(xy[sel, 0], 4), y=np.round(xy[sel, 1], 4), mode="markers", name=net,
+                                 marker=dict(color=color, size=4), showlegend=False,
+                                 **_node_hover(labels, sel, net, G, strength)))
+        mids.append(float(np.mean(a)))
+        names.append(net)
+    order = np.argsort(mids)
+    spread = _spread_angles([mids[k] for k in order], [len(names[k]) * _NAME_PX / name_r for k in order], 0.04)
+    notes = []
+    for k, theta in zip(order, spread):
+        rotation = (np.degrees(theta) - 90 + 180) % 360 - 180
+        if abs(rotation) > 90:
+            rotation += 180
+        r, g, b = (round(255 * c) for c in _text_color(palette.get(names[k], "#9aa5b1")))
+        notes.append(dict(x=name_r * np.cos(theta), y=name_r * np.sin(theta), text=names[k], showarrow=False,
+                          textangle=-rotation, font=dict(size=10, color=f"rgb({r},{g},{b})")))
+    return traces, notes
+
+
+def _binned_lines(paths: list, values: np.ndarray, colors: list, widths: np.ndarray, opacity: float,
+                  bins: int = _EDGE_BINS) -> list:
+    """Edges grouped into a few traces of similar value, so hundreds of edges stay quick to draw."""
+    edges = np.quantile(values, np.linspace(0, 1, bins + 1))
+    which = np.clip(np.searchsorted(edges, values, side="right") - 1, 0, bins - 1)
+    traces = []
+    for b in range(bins):
+        sel = np.flatnonzero(which == b)
+        if len(sel):
+            mid = sel[np.argsort(values[sel])[len(sel) // 2]]
+            traces.append(_lines([paths[k] for k in sel], colors[mid], float(widths[mid]) * 1.2, opacity))
+    return traces
+
+
+def _lines(paths: list, color, width: float, opacity: float) -> go.Scatter:
+    xs, ys = [], []
+    for p in paths:
+        xs += np.round(p[:, 0], 4).tolist() + [None]
+        ys += np.round(p[:, 1], 4).tolist() + [None]
+    if not isinstance(color, str):
+        color = "rgb({},{},{})".format(*(round(255 * c) for c in color[:3]))
+    return go.Scatter(x=xs, y=ys, mode="lines", hoverinfo="skip", showlegend=False, opacity=opacity,
+                      line=dict(color=color, width=width))
+
+
+def _strength(G, n: int) -> np.ndarray:
+    return np.array([sum(abs(d.get("weight", 1.0)) for j, d in G.adj[i].items() if j != i) for i in range(n)])
+
+
+def _node_hover(labels, sel, net, G, strength) -> dict:
+    degree = [G.degree(i) for i in sel]
+    return dict(customdata=np.c_[[labels[i] for i in sel], degree, np.round(strength[sel], 4)].astype(object),
+                hovertemplate="<b>%{customdata[0]}</b><br>" + str(net)
+                              + "<br>%{customdata[1]} edges, strength %{customdata[2]}<extra></extra>")
+
+
+def _ordered_networks(nets: list[str]) -> list[str]:
+    return sorted(set(nets), key=lambda s: (s == "None", natural_key(s)))
+
+
+def _square(fig: go.Figure, lim: float, legend: bool) -> go.Figure:
+    axis = dict(visible=False, range=[-lim, lim])
+    fig.update_layout(template="none", font=_FONT, height=520, margin=dict(l=10, r=10, t=10, b=10),
+                      plot_bgcolor="white", paper_bgcolor="white", xaxis=axis, yaxis=dict(axis, scaleanchor="x"),
+                      showlegend=legend, legend=dict(font=dict(size=10), itemsizing="constant", orientation="h",
+                                                     x=0.5, xanchor="center", y=0, yanchor="top"),
+                      hoverlabel=dict(font_size=12))
+    return fig

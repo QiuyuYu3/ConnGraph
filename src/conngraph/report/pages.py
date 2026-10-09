@@ -188,7 +188,7 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
             G = nx.Graph()
             G.add_nodes_from(range(len(labels)))
             G.add_weighted_edges_from((int(i), int(j), diff[i, j]) for i, j in iu)
-            steps.append(_step(f"{next(letter)}. On a circle", html=_figure_row(*_circos_images(G, labels, nets, palette, f"{g1} − {g2}", figs)),
+            steps.append(_step(f"{next(letter)}. On a circle", html=_figure_row(*_circos_images(G, labels, nets, palette, f"{g1} − {g2}")),
                                desc=f"All {n_sig} significant edges with regions grouped by network: coloured by the "
                                     "group difference, then bundled through their networks and coloured by the "
                                     "networks they join."))
@@ -197,10 +197,10 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
             diff, labels, nets, float(np.abs(diff).max()) or 1.0, "G1 − G2", marks)),
             desc="Group 1 minus group 2 for every edge" + (", ordered by network" if nets else "")
                  + "; significant edges keep their colour and the others are faded."))
-        steps.append(_step(f"{next(letter)}. Group means and difference",
-                           html=_nbs_matrices(result, adj_sig, labels, nets, palette, (g1, g2), figs),
-                           desc="Mean connectivity of each group and their difference, with the significant edges "
-                                "shown at full strength."))
+        steps.append(_step(f"{next(letter)}. Group means", picker=True,
+                           html=_nbs_matrices(result, adj_sig, labels, nets, (g1, g2)),
+                           desc="Mean connectivity of each group; switch between them to compare. Significant edges "
+                                "keep their colour and the others are faded."))
         rows = []
         for i, j in iu:
             row = {"ROI A": labels[i], "ROI B": labels[j]}
@@ -302,17 +302,16 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
             desc="Group mean connectivity between all regions" + (", ordered by network" if groups else "") + "."))
     group = _group_graph(result) if networks is not None else None
     if group is not None:
-        import conngraph as bnv
-
         G, names, how = group
         nets = [networks.get(n, "None") for n in names]
-        circos = _circos_images(G, names, nets, palette, "group mean r", figs)
-        spring, _ = bnv.spring_plot(G, names, nets, net2color=palette, figsize=(11, 11), network_hulls=False)
-        steps.append(_step(f"{next(letter)}. Group network", html=_figure_row(*circos, _figure_block("Spring layout", figs.save(spring, "spring"))),
+        spring = figures.to_div(figures.spring_figure(G, names, nets, palette))
+        steps.append(_step(f"{next(letter)}. Group network",
+                           html=_figure_row(*_circos_images(G, names, nets, palette, "group mean r"),
+                                            _figure_block("Spring layout", spring)),
                            desc=f"The group mean connectivity turned into a graph the way each participant's was "
                                 f"({how}); the metrics above come from each participant's own graph. The circle "
                                 "groups regions by network; the bundled version routes edges through their networks "
-                                "and colours them by the networks they join."))
+                                "and colours them by the networks they join. Hover a region for its name."))
     return steps
 
 
@@ -344,27 +343,19 @@ def _group_graph(result):
     return nx.from_numpy_array(A), list(result.mean_matrix.index), f"{how}, {level['sign']} weights"
 
 
-def _circos_images(G, labels, nets, palette, colorbar_title, figs) -> list[str]:
-    import conngraph as bnv
-
-    (curved, _), (bundled, _) = bnv.circos_plot(G, labels, nets, net2color=palette, figsize=(11, 11),
-                                                label_fontsize=3.5, edge_colorbar_title=colorbar_title)
-    return [_figure_block("Circos", figs.save(curved, "circos")),
-            _figure_block("Circos, bundled through networks and coloured by network",
-                          figs.save(bundled, "circos_bundled"))]
+def _circos_images(G, labels, nets, palette, colorbar_title) -> list[str]:
+    return [_figure_block("Circos", figures.to_div(figures.circos_figure(G, labels, nets, palette, colorbar_title))),
+            _figure_block("Circos, bundled through networks and coloured by network", figures.to_div(
+                figures.circos_figure(G, labels, nets, palette, colorbar_title, bundled=True)))]
 
 
-def _nbs_matrices(result, adj_sig, labels, nets, palette, group_names, figs) -> str:
-    import conngraph as bnv
-
+def _nbs_matrices(result, adj_sig, labels, nets, group_names) -> str:
     off = ~np.eye(len(labels), dtype=bool)
     lim = float(max(np.abs(result.mean_g1[off]).max(), np.abs(result.mean_g2[off]).max())) or 1.0
-    layout = dict(network_labels=nets, network_palette=palette) if nets else {}
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        fig = bnv.plot_nbs_matrices(result.mean_g1, result.mean_g2, adj_sig.astype(float), labels, vmin=-lim, vmax=lim,
-                                    group_names=group_names, **layout)
-    return figs.save(fig, "group_matrices")
+    marks = [(labels[i], labels[j]) for i, j in np.argwhere(adj_sig)]
+    panes = [(f"g{k}", name, figures.to_div(figures.ordered_heatmap(M, labels, nets, lim, name, marks)))
+             for k, (name, M) in enumerate(zip(group_names, (result.mean_g1, result.mean_g2)), 1)]
+    return _picker("nbs-means", panes, "Group")
 
 
 def _figure_block(label: str, img: str) -> str:
@@ -446,14 +437,14 @@ def _step(title: str, html: str, desc: str = "", open: bool = True, picker: bool
     return dict(title=title, html=html, desc=desc, open=open, picker=picker, hint=hint)
 
 
-def _picker(group: str, panes: list[tuple[str, str, str]]) -> str:
+def _picker(group: str, panes: list[tuple[str, str, str]], label: str = "Metric") -> str:
     """A select showing one pane at a time; panes are (key, label, html)."""
     if len(panes) == 1:
         return panes[0][2]
     options = "".join(f'<option value="{k}">{html.escape(t)}</option>' for k, t, _ in panes)
     bodies = "".join(f'<div class="pane{" on" if i == 0 else ""}" data-group="{group}" data-key="{k}">{h}</div>'
                      for i, (k, _, h) in enumerate(panes))
-    return f'<label class="hint">Metric </label><select class="picker" data-group="{group}">{options}</select>{bodies}'
+    return f'<label class="hint">{label} </label><select class="picker" data-group="{group}">{options}</select>{bodies}'
 
 
 def _table(df: pd.DataFrame, sortable: bool = True) -> str:

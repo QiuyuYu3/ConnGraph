@@ -336,14 +336,14 @@ def test_heatmap_keeps_every_network_name_when_there_is_room():
 
 
 def _capture_figures(monkeypatch):
-    import conngraph as bnv
+    from conngraph.report import figures
 
     calls = []
-    for name in ("circos_plot", "spring_plot", "plot_nbs_matrices"):
-        def wrapper(*args, _original=getattr(bnv, name), _name=name, **kwargs):
+    for name in ("circos_figure", "spring_figure", "ordered_heatmap"):
+        def wrapper(*args, _original=getattr(figures, name), _name=name, **kwargs):
             calls.append((_name, args, kwargs))
             return _original(*args, **kwargs)
-        monkeypatch.setattr(bnv, name, wrapper)
+        monkeypatch.setattr(figures, name, wrapper)
     return calls
 
 
@@ -358,14 +358,16 @@ def test_nbs_report_adds_circos_and_group_matrices(dataset, tmp_path, monkeypatc
     result = run_nbs(*_two_groups_with_a_difference(dataset), thresh=3.0, k=50, seed=0, verbose=False)
     result.save_report(tmp_path / "nbs.html", nodes=dataset.nodes_df, static_brain=False)
     text = (tmp_path / "nbs.html").read_text(encoding="utf-8")
-    assert "On a circle" in text and "Group means and difference" in text
+    assert "On a circle" in text and "Group means" in text and "<img" not in text
+    assert not (tmp_path / "figures").exists()
     palette = _report_palette(dataset.nodes_df)
-    (circos,) = [(args, kw) for name, args, kw in calls if name == "circos_plot"]
+    circos = [(args, kw) for name, args, kw in calls if name == "circos_figure"]
     sig = np.isin(result.adj, np.flatnonzero(result.pval < 0.05) + 1)
-    assert circos[0][0].number_of_edges() == np.triu(sig, 1).sum()
-    assert circos[1]["net2color"] == palette and circos[1]["edge_colorbar_title"] == "Group 1 − Group 2"
-    (matrices,) = [kw for name, _, kw in calls if name == "plot_nbs_matrices"]
-    assert matrices["network_palette"] == palette
+    assert [kw.get("bundled", False) for _, kw in circos] == [False, True]
+    assert all(args[0].number_of_edges() == np.triu(sig, 1).sum() and args[3] == palette for args, _ in circos)
+    assert circos[0][0][4] == "Group 1 − Group 2"
+    means = [args for name, args, _ in calls if name == "ordered_heatmap" and args[4] in ("Group 1", "Group 2")]
+    assert [a[4] for a in means] == ["Group 1", "Group 2"] and np.allclose(means[0][0], result.mean_g1)
 
 
 def test_graph_report_draws_the_group_network_as_analysed(graph_result, dataset, tmp_path, monkeypatch):
@@ -373,13 +375,48 @@ def test_graph_report_draws_the_group_network_as_analysed(graph_result, dataset,
     graph_result.save_report(tmp_path / "graph.html", static_brain=False)
     assert "Group network" in (tmp_path / "graph.html").read_text(encoding="utf-8")
     palette = _report_palette(graph_result.nodes)
-    (circos,) = [(args, kw) for name, args, kw in calls if name == "circos_plot"]
-    (spring,) = [(args, kw) for name, args, kw in calls if name == "spring_plot"]
+    circos = [args for name, args, _ in calls if name == "circos_figure"]
+    (spring,) = [args for name, args, _ in calls if name == "spring_figure"]
     n = len(graph_result.mean_matrix)
     # the node level was built with TMFG, which keeps 3n - 6 edges
-    assert circos[0][0].number_of_edges() == spring[0][0].number_of_edges() == 3 * n - 6
-    assert circos[1]["net2color"] == spring[1]["net2color"] == palette
-    assert spring[1]["network_hulls"] is False
+    assert len(circos) == 2 and all(a[0].number_of_edges() == 3 * n - 6 for a in [*circos, spring])
+    assert all(a[3] == palette for a in [*circos, spring])
+
+
+def _ring_graph(n=60, nets=("A", "B", "C"), seed=0):
+    import networkx as nx
+
+    rng = np.random.default_rng(seed)
+    G = nx.Graph()
+    G.add_nodes_from(range(n))
+    for i, j in rng.integers(0, n, (300, 2)):
+        if i != j:
+            G.add_edge(int(i), int(j), weight=float(rng.normal()))
+    return G, [f"r{i}" for i in range(n)], [nets[i % len(nets)] for i in range(n)]
+
+
+@pytest.mark.parametrize("bundled", [False, True])
+def test_circos_figure_draws_every_edge_in_a_few_traces(bundled):
+    from conngraph.report import figures
+
+    G, labels, nets = _ring_graph()
+    fig = figures.circos_figure(G, labels, nets, {"A": "#1f77b4", "B": "#ff7f0e", "C": "#2ca02c"}, "w", bundled=bundled)
+    lines = [t for t in fig.data if t.mode == "lines" and t.fill is None]
+    breaks = sum(x is None for t in lines for x in t.x)
+    assert breaks == G.number_of_edges() * (2 if bundled else 1)
+    assert len(lines) <= 10
+    assert sorted(a.text for a in fig.layout.annotations) == ["A", "B", "C"]
+    shown = [lab for t in fig.data if t.mode == "markers" and t.customdata is not None for lab in t.customdata[:, 0]]
+    assert sorted(shown) == sorted(labels)
+
+
+def test_spring_figure_sizes_nodes_by_strength():
+    from conngraph.report import figures
+
+    G, labels, nets = _ring_graph()
+    fig = figures.spring_figure(G, labels, nets, {"A": "#1f77b4", "B": "#ff7f0e", "C": "#2ca02c"})
+    sizes = np.concatenate([t.marker.size for t in fig.data if t.mode == "markers"])
+    assert len(sizes) == len(labels) and sizes.min() >= 7 and sizes.max() == pytest.approx(18)
 
 
 def _keep_strong(W):
