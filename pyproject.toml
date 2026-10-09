@@ -3,9 +3,9 @@ requires = ["setuptools>=77.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name            = "brainnet3d"
+name            = "conngraph"
 version         = "0.2.0"
-description     = "Interactive 3-D brain network plots and graph-theory metrics for connectivity matrices"
+description     = "Graph-theory metrics, group statistics and reports for brain connectivity matrices from fMRI and fNIRS pipelines"
 readme          = "README.md"
 requires-python = ">=3.10"
 license         = "Apache-2.0"
@@ -40,8 +40,8 @@ dependencies = [
 ]
 
 [project.scripts]
-brainnet3d-graph = "brainnet3d.cli.graph:main"
-brainnet3d-nbs   = "brainnet3d.cli.nbs:main"
+conngraph-metrics = "conngraph.cli.graph:main"
+conngraph-nbs     = "conngraph.cli.nbs:main"
 
 [project.optional-dependencies]
 dev = [
@@ -53,8 +53,8 @@ dev = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-"brainnet3d" = ["config/*.json"]
-"brainnet3d.report" = ["data/*", "templates/*"]
+"conngraph" = ["config/*.json"]
+"conngraph.report" = ["data/*", "templates/*"]
 
 [tool.ruff]
 target-version = "py310"

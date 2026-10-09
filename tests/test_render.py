@@ -7,8 +7,8 @@ import networkx as nx
 import numpy as np
 import pytest
 
-import brainnet3d as bnv
-from brainnet3d.exceptions import DataValidationError
+import conngraph as bnv
+from conngraph.exceptions import DataValidationError
 
 
 def _net2color(network_labels):
@@ -243,7 +243,7 @@ def test_spring_plot_3d_default_returns_image(dataset):
 
 
 def _plot_actors(plotter, monkeypatch, **kwargs):
-    import brainnet3d.viz.views as views
+    import conngraph.viz.views as views
 
     captured = {}
     monkeypatch.setattr(views, "_finish_render", lambda vp, actors, *a, **kw: captured.update(actors=actors))
@@ -378,7 +378,7 @@ def test_show_hemisphere_hides_other_surface(dataset, surfaces, monkeypatch):
 
 
 def test_surfaces_have_vertex_normals(surfaces):
-    from brainnet3d.viz.surface import load_surface
+    from conngraph.viz.surface import load_surface
 
     # without vertex normals each triangle is shaded flat, which shows as hatching on translucent folds
     assert all(m.dataset.GetPointData().GetNormals() is not None for m in load_surface(*surfaces))

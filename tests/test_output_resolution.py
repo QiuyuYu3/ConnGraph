@@ -4,7 +4,7 @@ import pytest
 import vedo
 from PIL import Image
 
-import brainnet3d as bnv
+import conngraph as bnv
 
 
 @pytest.fixture

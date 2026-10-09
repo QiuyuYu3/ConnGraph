@@ -5,8 +5,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from brainnet3d.viz.colormap import labels_to_colors, values_to_colors
-from brainnet3d.viz.nodes import build_nodes
+from conngraph.viz.colormap import labels_to_colors, values_to_colors
+from conngraph.viz.nodes import build_nodes
 
 
 def test_categorical_default_keeps_set3_up_to_twelve():

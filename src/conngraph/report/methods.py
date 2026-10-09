@@ -23,14 +23,14 @@ def steps() -> dict:
         import tomllib
     except ImportError:
         import tomli as tomllib
-    return tomllib.loads(files("brainnet3d.report").joinpath("data/steps.toml").read_text(encoding="utf-8"))
+    return tomllib.loads(files("conngraph.report").joinpath("data/steps.toml").read_text(encoding="utf-8"))
 
 
 @cache
 def references() -> dict[str, dict]:
     import bibtexparser
 
-    lib = bibtexparser.parse_string(files("brainnet3d.report").joinpath("data/references.bib").read_text(encoding="utf-8"))
+    lib = bibtexparser.parse_string(files("conngraph.report").joinpath("data/references.bib").read_text(encoding="utf-8"))
     return {e.key: {f.key: f.value for f in e.fields} for e in lib.entries}
 
 
@@ -55,7 +55,7 @@ def graph_methods(params: dict) -> dict[str, str]:
     elif series:
         source = " computed from regional time series"
 
-    para1 = [("input", {"source": source, "ver": params["packages"]["brainnet3d"]})]
+    para1 = [("input", {"source": source, "ver": params["packages"]["conngraph"]})]
     para1 += _input_sentences(params)
     para1.append(("participants", {"n": participant_count(params)}))
     if loaded.get("split_runs"):
@@ -110,7 +110,7 @@ def nbs_methods(params: dict) -> dict[str, str]:
     """Methods text of a run_nbs run, as {"plain", "markdown", "latex", "html"}."""
     o = params["options"]
     slots = {
-        "ver": params["packages"]["brainnet3d"],
+        "ver": params["packages"]["conngraph"],
         "test": "paired t-test" if o["paired"] else "two-sample t-test",
         "n1": len(params["groups"]["g1"]), "n2": len(params["groups"]["g2"]),
         "tail": {"both": "absolute", "right": "positive", "left": "negative"}[o["tail"]],

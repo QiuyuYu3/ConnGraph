@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import brainnet3d as bnv
+import conngraph as bnv
 
 NETWORKS = {
     "Default":  dict(center=(0,  50, 20), spread=25, hemi_offset=20),
@@ -87,8 +87,8 @@ def groups(dataset):
 
 @pytest.fixture(scope="session")
 def out_dir(tmp_path_factory) -> pathlib.Path:
-    """Render output folder: $BRAINNET3D_TEST_OUTPUT if set (to inspect figures), else a pytest temp dir."""
-    target = os.environ.get("BRAINNET3D_TEST_OUTPUT")
+    """Render output folder: $CONNGRAPH_TEST_OUTPUT if set (to inspect figures), else a pytest temp dir."""
+    target = os.environ.get("CONNGRAPH_TEST_OUTPUT")
     if not target:
         return tmp_path_factory.mktemp("render_output")
     path = pathlib.Path(target)

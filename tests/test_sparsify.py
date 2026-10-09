@@ -2,7 +2,7 @@ import networkx as nx
 import numpy as np
 import pytest
 
-from brainnet3d.graph_theory.sparsify import GRAPH_METHODS, build_adjacency, inverse_distances, resolve_sign
+from conngraph.graph_theory.sparsify import GRAPH_METHODS, build_adjacency, inverse_distances, resolve_sign
 
 PARAMS = {
     "absolute": {"threshold": 0.2}, "density": {"density": 0.1}, "knn": {"k": 3}, "mst_density": {"density": 0.1},
@@ -131,7 +131,7 @@ def test_omst_matches_reference_built_with_networkx_and_bct():
 
 
 def test_omst_stops_before_scoring_every_tree(monkeypatch):
-    from brainnet3d.graph_theory import sparsify
+    from conngraph.graph_theory import sparsify
 
     W = np.abs(_corr(60, seed=3))
     remaining, n_trees = W.copy(), 0

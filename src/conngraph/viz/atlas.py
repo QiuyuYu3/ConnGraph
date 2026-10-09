@@ -21,7 +21,7 @@ def load_nifti_atlas(
     ROIs use highlight_color at a higher opacity so they stand out.
 
     After calling this, combine the returned meshes with node Spheres and
-    edge Lines from other brainnet3d functions — all are vedo actors and
+    edge Lines from other conngraph functions — all are vedo actors and
     can be passed together to vedo.Plotter.show().
 
     Parameters

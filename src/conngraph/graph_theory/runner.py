@@ -17,15 +17,15 @@ from collections.abc import Callable
 import numpy as np
 import pandas as pd
 
-from brainnet3d.graph_theory.aggregation import (
+from conngraph.graph_theory.aggregation import (
     build_net2rois,
     build_net_hemi2rois,
     compute_net_corr,
 )
-from brainnet3d.exceptions import DataValidationError
-from brainnet3d.loaders import INPUT_ATTR
-from brainnet3d.graph_theory.metrics import check_options, output_names, process_subject
-from brainnet3d.graph_theory.sparsify import requested_edges, resolve_sign
+from conngraph.exceptions import DataValidationError
+from conngraph.loaders import INPUT_ATTR
+from conngraph.graph_theory.metrics import check_options, output_names, process_subject
+from conngraph.graph_theory.sparsify import requested_edges, resolve_sign
 
 
 @dataclass
@@ -46,7 +46,7 @@ class GraphMetricsResult:
     def save_report(self, path, nodes: pd.DataFrame | None = None, surfaces: tuple[str, str] | None = None,
                     static_brain: bool = True) -> None:
         """Write an HTML report (plotly loads from its CDN); nodes overrides the atlas, e.g. to add x, y, z."""
-        from brainnet3d.report.pages import save_graph_report
+        from conngraph.report.pages import save_graph_report
 
         save_graph_report(self, path, nodes, surfaces, static_brain)
 
@@ -414,9 +414,9 @@ def _describe_level(opts: dict, metrics: list[str], n_nodes: int) -> dict:
 def _package_versions() -> dict[str, str | None]:
     from importlib.metadata import PackageNotFoundError, version
 
-    import brainnet3d
+    import conngraph
 
-    versions: dict[str, str | None] = {"brainnet3d": brainnet3d.__version__}
+    versions: dict[str, str | None] = {"conngraph": conngraph.__version__}
     for name in ("numpy", "scipy", "pandas", "networkx", "bctpy", "topcorr", "nilearn", "scikit-learn"):
         try:
             versions[name] = version(name)

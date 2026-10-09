@@ -5,10 +5,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from brainnet3d.graph_theory import compute_graph_metrics
-from brainnet3d.graph_theory.nbs import run_nbs
-from brainnet3d.report.methods import graph_methods, nbs_methods
-from brainnet3d.report.pages import _column
+from conngraph.graph_theory import compute_graph_metrics
+from conngraph.graph_theory.nbs import run_nbs
+from conngraph.report.methods import graph_methods, nbs_methods
+from conngraph.report.pages import _column
 
 pytest.importorskip("bct")
 
@@ -65,7 +65,7 @@ def test_graph_methods_follow_the_users_text_for_the_default_run(graph_result):
 
 def test_graph_methods_describe_an_xcpd_input(dataset):
     atlas = dataset.nodes_df.copy()
-    atlas.attrs["brainnet3d_input"] = {
+    atlas.attrs["conngraph_input"] = {
         "source": "XCP-D", "atlas": "Gordon", "space": "fsLR", "task": "rest", "session": "ses-01", "n_loaded": 6,
         "bad_node_threshold": 0.9, "drop_mode": "union", "dropped": [],
     }
@@ -82,7 +82,7 @@ def test_graph_methods_describe_an_xcpd_input(dataset):
 
 def _methods_with_input(dataset, record):
     atlas = dataset.nodes_df.copy()
-    atlas.attrs["brainnet3d_input"] = {"n_loaded": 6, "bad_node_threshold": 0.9, "drop_mode": "union",
+    atlas.attrs["conngraph_input"] = {"n_loaded": 6, "bad_node_threshold": 0.9, "drop_mode": "union",
                                        "dropped": [], **record}
     result = compute_graph_metrics(dataset.matrices, atlas, level="node", network_col="network", metrics=["strength"],
                                    n_jobs=1, verbose=False)
@@ -198,7 +198,7 @@ def test_graph_report_leaves_dropped_nodes_off_the_brain(dataset, tmp_path):
 
 def test_graph_report_summary_names_the_time_series_measure(dataset, tmp_path):
     atlas = dataset.nodes_df.drop(columns=["x", "y", "z"])
-    atlas.attrs["brainnet3d_input"] = {"source": "time series", "connectivity": "partial correlation", "shrinkage": True,
+    atlas.attrs["conngraph_input"] = {"source": "time series", "connectivity": "partial correlation", "shrinkage": True,
                                        "n_loaded": 6, "bad_node_threshold": 0.9, "drop_mode": "union", "dropped": ["r1"]}
     result = compute_graph_metrics(dataset.matrices, atlas, level="node", network_col="network",
                                    metrics=["strength"], n_jobs=1, verbose=False)
@@ -248,7 +248,7 @@ def _two_groups_with_a_difference(dataset, n=10, seed=0):
 def test_static_nbs_brain_names_missing_networks_none(dataset, tmp_path, monkeypatch):
     import matplotlib.pyplot as plt
 
-    from brainnet3d.viz.plotter import BrainNetPlotter
+    from conngraph.viz.plotter import BrainNetPlotter
 
     seen = {}
 
@@ -286,7 +286,7 @@ def _heatmap_input(sizes):
 
 
 def test_heatmap_marks_keep_their_colour_and_fade_the_rest():
-    from brainnet3d.report import figures
+    from conngraph.report import figures
 
     m, names, groups = _heatmap_input({"A": 30, "B": 30})
     fig = figures.ordered_heatmap(m, names, groups, 3.0, "d", [(names[0], names[40]), (names[40], names[0])])
@@ -300,7 +300,7 @@ def test_heatmap_marks_keep_their_colour_and_fade_the_rest():
 
 
 def test_heatmap_drops_crowded_network_names_keeping_the_larger():
-    from brainnet3d.report import figures
+    from conngraph.report import figures
 
     m, names, groups = _heatmap_input({"Big1": 150, "Small": 3, "Tiny": 2, "Big2": 150})
     text = list(figures.ordered_heatmap(m, names, groups, 3.0, "d").layout.xaxis.ticktext)
@@ -308,14 +308,14 @@ def test_heatmap_drops_crowded_network_names_keeping_the_larger():
 
 
 def test_heatmap_keeps_every_network_name_when_there_is_room():
-    from brainnet3d.report import figures
+    from conngraph.report import figures
 
     m, names, groups = _heatmap_input({"A": 20, "B": 20, "C": 20})
     assert list(figures.ordered_heatmap(m, names, groups, 3.0, "d").layout.yaxis.ticktext) == ["A", "B", "C"]
 
 
 def _capture_figures(monkeypatch):
-    import brainnet3d as bnv
+    import conngraph as bnv
 
     calls = []
     for name in ("circos_plot", "spring_plot", "plot_nbs_matrices"):
@@ -327,7 +327,7 @@ def _capture_figures(monkeypatch):
 
 
 def _report_palette(nodes):
-    from brainnet3d.report.pages import _palette
+    from conngraph.report.pages import _palette
 
     return _palette(_column(nodes, "label", "network"))
 

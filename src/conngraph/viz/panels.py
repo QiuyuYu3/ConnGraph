@@ -17,8 +17,8 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Circle, Patch
 from matplotlib.ticker import MaxNLocator
 
-from brainnet3d.exceptions import DataValidationError
-from brainnet3d.viz.nodes import _resolve_vminvmax
+from conngraph.exceptions import DataValidationError
+from conngraph.viz.nodes import _resolve_vminvmax
 
 VIEW_DIRECTIONS: dict[str, tuple[tuple, tuple]] = {
     "L": ((-1, 0, 0), (0, 0, 1)),

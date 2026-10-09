@@ -1,4 +1,4 @@
-# brainnet3d
+# ConnGraph
 
 Graph-theory metrics and network-based statistics for brain connectivity, with HTML reports and 3-D brain figures.
 
@@ -12,23 +12,23 @@ Clone this repository, then from its root:
 pip install .
 ```
 
-This installs two commands, `brainnet3d-graph` and `brainnet3d-nbs`.
+This installs two commands, `conngraph-metrics` and `conngraph-nbs`.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `brainnet3d-graph INPUT OUTPUT` | Graph-theory metrics for every participant, at the node level and the network level |
-| `brainnet3d-nbs INPUT OUTPUT --groups TABLE --group-column COL --contrast A B --thresh T` | Compares two groups with the network-based statistic |
+| `conngraph-metrics INPUT OUTPUT` | Graph-theory metrics for every participant, at the node level and the network level |
+| `conngraph-nbs INPUT OUTPUT --groups TABLE --group-column COL --contrast A B --thresh T` | Compares two groups with the network-based statistic |
 
 Each command writes its result tables, a `parameters.json` with every setting, a `dataset_description.json` and an HTML report. Run either command with `--help` for all options, such as the graph construction method, the metrics, or the number of permutations.
 
 Examples on XCP-D output with the Gordon atlas:
 
 ```bash
-brainnet3d-graph derivatives/xcpd results/graph --input-type xcpd --atlases Gordon
+conngraph-metrics derivatives/xcpd results/graph --input-type xcpd --atlases Gordon
 
-brainnet3d-nbs derivatives/xcpd results/nbs --input-type xcpd --atlases Gordon \
+conngraph-nbs derivatives/xcpd results/nbs --input-type xcpd --atlases Gordon \
     --groups participants.tsv --group-column group --contrast PT HC --thresh 3.5 --seed 1
 ```
 
@@ -69,12 +69,12 @@ For files that differ in other BIDS entities, such as several runs or acquisitio
 {"bold": {"acquisition": "multiband", "run": 1}}
 ```
 
-A participant with several runs left after filtering has each run analysed on its own (`01_run-1`, `01_run-2`), with a warning in the report; `brainnet3d-nbs` stops instead, since it needs one matrix per participant. XCP-D's `--combine-runs` merges runs before brainnet3d sees the data; for XCP-D output without it, `--combine-runs` together with `--connectivity` z-scores each run's time series and concatenates them in run order before computing connectivity.
+A participant with several runs left after filtering has each run analysed on its own (`01_run-1`, `01_run-2`), with a warning in the report; `conngraph-nbs` stops instead, since it needs one matrix per participant. XCP-D's `--combine-runs` merges runs before conngraph sees the data; for XCP-D output without it, `--combine-runs` together with `--connectivity` z-scores each run's time series and concatenates them in run order before computing connectivity.
 
 ## Output
 
-`brainnet3d-graph` writes one table per level and metric (`node/`, `network_hemi/`, ...) and `graph_report.html`. `brainnet3d-nbs` writes `nbs_components.tsv`, `nbs_edges.tsv`, `nbs_null.tsv` and `nbs_report.html`.
+`conngraph-metrics` writes one table per level and metric (`node/`, `network_hemi/`, ...) and `graph_report.html`. `conngraph-nbs` writes `nbs_components.tsv`, `nbs_edges.tsv`, `nbs_null.tsv` and `nbs_report.html`.
 
-For `xcpd` these go into one folder per atlas (`OUTPUT/atlas-Gordon/`), and for `fnirs-pipe` into one folder per chromophore (`OUTPUT/chromo-hbo/`, `OUTPUT/chromo-hbr/`). fNIRS channels have no networks, so `brainnet3d-graph` computes the node level only.
+For `xcpd` these go into one folder per atlas (`OUTPUT/atlas-Gordon/`), and for `fnirs-pipe` into one folder per chromophore (`OUTPUT/chromo-hbo/`, `OUTPUT/chromo-hbr/`). fNIRS channels have no networks, so `conngraph-metrics` computes the node level only.
 
 When `INPUT` has sessions, each gets its own folder above these (`OUTPUT/ses-01/atlas-Gordon/`), even if there is only one. If one session or atlas fails, the others still run, and its folder holds `error.txt`.

@@ -9,8 +9,8 @@ from collections.abc import Callable
 import numpy as np
 import pandas as pd
 
-from brainnet3d.graph_theory.randomize import randomize_signed
-from brainnet3d.graph_theory.sparsify import (
+from conngraph.graph_theory.randomize import randomize_signed
+from conngraph.graph_theory.sparsify import (
     apply_sign,
     build_adjacency,
     check_graph_method,

@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import brainnet3d as bnv
+import conngraph as bnv
 
 CHANNELS = [f"S{i}_D{i}" for i in range(1, 7)]
 
@@ -42,7 +42,7 @@ def test_load_fnirs_pipe_reads_one_chromophore_with_bare_channel_names(tmp_path)
     assert matrices["01"].columns.tolist() == keep and nodes["label"].tolist() == keep
     expected = pd.DataFrame(_fc(1), index=CHANNELS, columns=CHANNELS).loc[keep, keep]
     np.testing.assert_allclose(matrices["01"].to_numpy(), expected.to_numpy())
-    record = nodes.attrs["brainnet3d_input"]
+    record = nodes.attrs["conngraph_input"]
     assert (record["source"], record["chromophore"], record["task"], record["dropped"]) == (
         "fnirs-pipe", "hbr", "rest", ["S3_D3"])
 
@@ -84,15 +84,15 @@ def test_load_fnirs_pipe_rejects_an_unknown_chromophore(tmp_path):
 
 
 def test_xcpd_loaders_keep_their_import_paths():
-    from brainnet3d.graph_theory import load_xcpd as a
-    from brainnet3d.graph_theory.xcpd import load_xcpd as b
+    from conngraph.graph_theory import load_xcpd as a
+    from conngraph.graph_theory.xcpd import load_xcpd as b
 
     assert a is b is bnv.load_xcpd
 
 
 def test_graph_methods_describe_fnirs_input(tmp_path):
-    from brainnet3d.graph_theory import compute_graph_metrics
-    from brainnet3d.report.methods import graph_methods
+    from conngraph.graph_theory import compute_graph_metrics
+    from conngraph.report.methods import graph_methods
 
     matrices, nodes = bnv.load_fnirs_pipe(str(_fnirs_tree(tmp_path)), "hbo", verbose=False)
     result = compute_graph_metrics(matrices, nodes, level="node", metrics=["strength"], graph_method="full",
@@ -124,10 +124,10 @@ def test_load_xcpd_default_reads_data_without_sessions(tmp_path):
 
 def test_session_label_may_omit_the_prefix(tmp_path):
     matrices, atlas = bnv.load_xcpd(str(_xcpd_tree(tmp_path / "xcpd", "ses-02")), "Gordon", session="02", verbose=False)
-    assert sorted(matrices) == ["01", "02"] and atlas.attrs["brainnet3d_input"]["session"] == "ses-02"
+    assert sorted(matrices) == ["01", "02"] and atlas.attrs["conngraph_input"]["session"] == "ses-02"
     matrices, nodes = bnv.load_fnirs_pipe(str(_fnirs_tree(tmp_path / "fnirs", session="ses-02")), "hbo", session="02",
                                           verbose=False)
-    assert sorted(matrices) == ["01", "02"] and nodes.attrs["brainnet3d_input"]["session"] == "ses-02"
+    assert sorted(matrices) == ["01", "02"] and nodes.attrs["conngraph_input"]["session"] == "ses-02"
 
 
 def test_skipped_participants_are_recorded(tmp_path):
@@ -135,4 +135,4 @@ def test_skipped_participants_are_recorded(tmp_path):
     (root / "sub-03" / "ses-01" / "func").mkdir(parents=True)
     with pytest.warns(UserWarning, match="sub-03"):
         _, atlas = bnv.load_xcpd(str(root), "Gordon", verbose=False)
-    assert atlas.attrs["brainnet3d_input"]["skipped"] == ["sub-03: no file found"]
+    assert atlas.attrs["conngraph_input"]["skipped"] == ["sub-03: no file found"]

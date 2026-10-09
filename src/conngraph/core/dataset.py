@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from dataclasses import dataclass
 
-from brainnet3d.exceptions import DataValidationError
+from conngraph.exceptions import DataValidationError
 
 
 @dataclass

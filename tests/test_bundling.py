@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from brainnet3d.viz.bundling import bundle_paths
+from conngraph.viz.bundling import bundle_paths
 
 
 def _edges():

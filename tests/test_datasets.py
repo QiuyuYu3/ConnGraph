@@ -1,8 +1,8 @@
 import pandas as pd
 import pytest
 
-import brainnet3d as bnv
-from brainnet3d import datasets
+import conngraph as bnv
+from conngraph import datasets
 
 pytest.importorskip("openpyxl")
 
@@ -42,7 +42,7 @@ def test_gordon_nodes_cached_after_first_build(parcels_xlsx, tmp_path, monkeypat
         return parcels_xlsx
 
     monkeypatch.setattr(datasets, "_fetch_gordon_parcels", fake_fetch)
-    monkeypatch.setenv("BRAINNET3D_DATA", str(tmp_path / "cache"))
+    monkeypatch.setenv("CONNGRAPH_DATA", str(tmp_path / "cache"))
 
     first = datasets.gordon_nodes()
     second = datasets.gordon_nodes()

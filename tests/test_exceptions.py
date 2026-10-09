@@ -4,10 +4,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import brainnet3d as bnv
-from brainnet3d import datasets
-from brainnet3d.exceptions import BrainNet3DError, DataValidationError, DownloadError
-from brainnet3d.graph_theory import compute_graph_metrics, load_xcpd_flat
+import conngraph as bnv
+from conngraph import datasets
+from conngraph.exceptions import ConnGraphError, DataValidationError, DownloadError
+from conngraph.graph_theory import compute_graph_metrics, load_xcpd_flat
 
 LABELS = list("abcd")
 
@@ -38,7 +38,7 @@ def _nan_matrix():
 def test_data_problems_raise_data_validation_error(make):
     with pytest.raises(DataValidationError) as info:
         make()
-    assert isinstance(info.value, ValueError) and isinstance(info.value, BrainNet3DError)
+    assert isinstance(info.value, ValueError) and isinstance(info.value, ConnGraphError)
 
 
 def test_non_square_matrix_file_raises(tmp_path):

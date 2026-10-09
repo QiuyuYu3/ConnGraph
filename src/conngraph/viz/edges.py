@@ -8,12 +8,12 @@ import warnings
 
 import numpy as np
 
-from brainnet3d.viz.colormap import (
+from conngraph.viz.colormap import (
     edge_colors_from_weights,
     edge_colors_from_node_colors,
     _to_rgb,
 )
-from brainnet3d.viz.nodes import _resolve_vminvmax
+from conngraph.viz.nodes import _resolve_vminvmax
 
 
 def build_edges(
@@ -84,7 +84,7 @@ def build_edges(
 
     paths = None
     if bundling:
-        from brainnet3d.viz.bundling import bundle_paths
+        from conngraph.viz.bundling import bundle_paths
 
         positions = np.asarray(positions, dtype=float)
         paths = bundle_paths(positions[rows], positions[cols], strength=bundling)

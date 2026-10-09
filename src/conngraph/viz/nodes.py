@@ -7,7 +7,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from brainnet3d.viz.colormap import (
+from conngraph.viz.colormap import (
     values_to_colors,
     labels_to_colors,
     values_to_sizes,

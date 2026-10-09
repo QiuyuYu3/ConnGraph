@@ -10,9 +10,9 @@ from matplotlib.colors import to_rgb
 from matplotlib.patches import Circle, PathPatch, Polygon, Wedge
 from matplotlib.path import Path
 
-import brainnet3d as bnv
-from brainnet3d.viz.colormap import labels_to_colors, values_to_colors
-from brainnet3d.viz.matrix_style import matrix_order, merge_heights
+import conngraph as bnv
+from conngraph.viz.colormap import labels_to_colors, values_to_colors
+from conngraph.viz.matrix_style import matrix_order, merge_heights
 
 SIGN = ((1.0, 0.25, 0.25), (0.25, 0.25, 1.0))
 # one figure per call, as before the bundled figure became part of the default

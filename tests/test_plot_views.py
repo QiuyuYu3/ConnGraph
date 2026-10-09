@@ -3,9 +3,9 @@ import numpy as np
 import pytest
 from matplotlib.figure import Figure
 
-import brainnet3d as bnv
-from brainnet3d.exceptions import DataValidationError
-from brainnet3d.viz.colormap import labels_to_colors
+import conngraph as bnv
+from conngraph.exceptions import DataValidationError
+from conngraph.viz.colormap import labels_to_colors
 
 
 def _panels(fig):
@@ -30,7 +30,7 @@ def test_plot_views_returns_one_panel_per_view(dataset):
 
 
 def test_hemisphere_panel_keeps_only_that_hemisphere(dataset, surfaces):
-    from brainnet3d.viz.panels import panel_actors
+    from conngraph.viz.panels import panel_actors
 
     left, right = surfaces
     plotter = bnv.BrainNetPlotter(dataset, subject_id="mean")
@@ -128,7 +128,7 @@ def test_width_too_small_raises(dataset):
 
 
 def test_legend_values_are_round_numbers():
-    from brainnet3d.viz.panels import _number, _round_values
+    from conngraph.viz.panels import _number, _round_values
 
     np.testing.assert_allclose(_round_values(16.0, 1940.0), [500, 1000, 1500])
     np.testing.assert_allclose(_round_values(0.55, 0.705), [0.6, 0.65, 0.7])
@@ -136,7 +136,7 @@ def test_legend_values_are_round_numbers():
 
 
 def test_size_legend_shows_round_values(dataset):
-    from brainnet3d.viz.panels import _number, _round_values
+    from conngraph.viz.panels import _number, _round_values
 
     fig = _views(dataset, legend=["node_size"], node_size="x")
     x = dataset.nodes_df["x"].to_numpy(float)

@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import brainnet3d as bnv
-from brainnet3d.exceptions import DataValidationError
+import conngraph as bnv
+from conngraph.exceptions import DataValidationError
 
 LABELS = [f"r{i}" for i in range(6)]
 
@@ -90,7 +90,7 @@ def test_load_timeseries_from_labelled_tsv_folder(tmp_path):
     ds = bnv.load_timeseries(str(tmp_path), _nodes(), pattern="*_timeseries.tsv")
     assert sorted(ds.matrices) == ["sub-01", "sub-02"]
     np.testing.assert_allclose(ds.matrices["sub-02"].to_numpy(), np.corrcoef(_series(seed=1).to_numpy().T), atol=1e-12)
-    record = ds.nodes_df.attrs["brainnet3d_input"]
+    record = ds.nodes_df.attrs["conngraph_input"]
     assert (record["source"], record["connectivity"], record["shrinkage"]) == ("time series", "correlation", False)
     assert record["n_loaded"] == 2
 
@@ -147,7 +147,7 @@ def test_load_timeseries_drops_missing_regions_before_partial_correlation():
     keep = [lbl for lbl in LABELS if lbl != "r2"]
     assert ds.matrices["sub-b"].columns.tolist() == keep
     np.testing.assert_allclose(ds.matrices["sub-b"].to_numpy(), _partial(b[keep]), atol=1e-10)
-    assert ds.nodes_df.attrs["brainnet3d_input"]["dropped"] == ["r2"]
+    assert ds.nodes_df.attrs["conngraph_input"]["dropped"] == ["r2"]
     assert ds.nodes_df["label"].tolist() == keep
 
 

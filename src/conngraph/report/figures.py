@@ -9,7 +9,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from brainnet3d.viz.colormap import natural_key
+from conngraph.viz.colormap import natural_key
 
 INK = "#2c3e50"
 ACCENT = "#2980b9"
@@ -181,7 +181,7 @@ def surface_meshes(surfaces: tuple[str, str] | None, fraction: float = 0.06) -> 
     """Vertices and faces of the surfaces, simplified so the page stays small."""
     if surfaces is None:
         return []
-    from brainnet3d.viz.surface import load_surface
+    from conngraph.viz.surface import load_surface
 
     meshes = []
     for mesh in load_surface(*surfaces):

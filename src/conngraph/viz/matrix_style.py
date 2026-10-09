@@ -15,7 +15,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.cluster import hierarchy
 from scipy.spatial.distance import pdist, squareform
 
-from brainnet3d.viz.colormap import labels_to_colors, natural_key
+from conngraph.viz.colormap import labels_to_colors, natural_key
 
 MATRIX_OPTIONS = (
     "network_labels", "order", "network_order", "tick_labels",

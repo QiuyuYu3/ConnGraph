@@ -18,8 +18,8 @@ import warnings
 import numpy as np
 import pandas as pd
 
-from brainnet3d.core.dataset import ConnectivityDataset
-from brainnet3d.exceptions import DataValidationError
+from conngraph.core.dataset import ConnectivityDataset
+from conngraph.exceptions import DataValidationError
 
 # pandas' default missing-value strings minus "None", which atlases such as Gordon use as a network label
 _NODE_NA_VALUES = [
@@ -27,7 +27,7 @@ _NODE_NA_VALUES = [
     "<NA>", "N/A", "NA", "NULL", "NaN", "n/a", "nan", "null",
 ]
 # Key in a node or atlas table's attrs where loaders note what they read; compute_graph_metrics copies it to params
-INPUT_ATTR = "brainnet3d_input"
+INPUT_ATTR = "conngraph_input"
 
 
 def record_input(table: pd.DataFrame, before: dict, after: dict, threshold: float, mode: str, **fields) -> pd.DataFrame:
@@ -164,7 +164,7 @@ def load_timeseries(
     nodes : str | pd.DataFrame
         Same as :func:`load`.
     pattern : glob pattern used when `timeseries` is a directory.
-    kind, shrinkage : see :func:`brainnet3d.compute_connectivity`.
+    kind, shrinkage : see :func:`conngraph.compute_connectivity`.
     bad_node_threshold : below 1, regions with missing or constant time series are dropped.
     drop_mode : "union" drops a region unusable in ANY subject, "intersection" only one unusable in ALL.
     mat_key : variable to read from a .mat file holding more than one 2-D array.
@@ -174,7 +174,7 @@ def load_timeseries(
     -------
     ConnectivityDataset
     """
-    from brainnet3d.connectivity import check_kind
+    from conngraph.connectivity import check_kind
 
     check_kind(kind)
     nodes_df = _read_nodes(nodes)
@@ -193,7 +193,7 @@ def series_to_matrices(
     series: dict[str, pd.DataFrame], kind: str, shrinkage: bool, threshold: float, mode: str,
 ) -> dict[str, pd.DataFrame]:
     """Connectivity of each time series after dropping, for everyone, the regions the drop rule removes."""
-    from brainnet3d.connectivity import compute_connectivity, unusable_regions
+    from conngraph.connectivity import compute_connectivity, unusable_regions
 
     unusable = [set(unusable_regions(ts)) for ts in series.values()]
     bad = set()
@@ -492,7 +492,7 @@ def load_gordon_atlas(
                 "perino2021" → use Community_Perino2021 labels (``network_perino2021``).
     drop_none : if True, drop parcels whose network label is "None".
     parcels_xlsx : local Parcels.xlsx from the Gordon release; skips the download.
-    data_dir : cache folder; defaults to $BRAINNET3D_DATA or ~/brainnet3d_data.
+    data_dir : cache folder; defaults to $CONNGRAPH_DATA or ~/conngraph_data.
 
     Returns
     -------
@@ -502,7 +502,7 @@ def load_gordon_atlas(
         ``network`` always reflects the chosen ``community`` scheme so that
         downstream visualisation code can use it without extra wiring.
     """
-    from brainnet3d.datasets import gordon_nodes
+    from conngraph.datasets import gordon_nodes
 
     df = gordon_nodes(parcels_xlsx, data_dir)
 

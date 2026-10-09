@@ -4,16 +4,16 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from brainnet3d.graph_theory import compute_graph_metrics
-from brainnet3d.graph_theory.aggregation import build_net2rois, build_net_hemi2rois, compute_net_corr
-from brainnet3d.graph_theory.metrics import (
+from conngraph.graph_theory import compute_graph_metrics
+from conngraph.graph_theory.aggregation import build_net2rois, build_net_hemi2rois, compute_net_corr
+from conngraph.graph_theory.metrics import (
     METRIC_VARIANTS,
     check_options,
     compute_metric,
     parse_metrics,
     process_subject,
 )
-from brainnet3d.graph_theory.nbs import run_nbs
+from conngraph.graph_theory.nbs import run_nbs
 
 METRICS = ["clust_coeff", "btwn_cent", "strength", "ge_local"]
 DEFAULT_NAMES = ["clust_coeff.costantini", "btwn_cent.inv", "strength.abs", "ge_local.wang"]
@@ -135,7 +135,7 @@ def test_saved_csv_has_one_file_per_level_and_metric(tmp_path):
 
 
 def test_attach_metrics_reads_metric_level():
-    import brainnet3d as bnv
+    import conngraph as bnv
 
     matrices, atlas = _toy_inputs()
     result = compute_graph_metrics(matrices, atlas, level="node", metrics=["strength"], n_jobs=1, verbose=False)
@@ -247,7 +247,7 @@ def test_params_record_the_options_each_level_used():
     assert params["subjects"] == ["s1"]
     assert params["options"]["summary"] == "auc"
     assert params["options"]["exclude_networks"] == ["None"]
-    assert "brainnet3d" in params["packages"] and "bctpy" in params["packages"]
+    assert "conngraph" in params["packages"] and "bctpy" in params["packages"]
 
 
 def test_params_seed_reproduces_an_unseeded_run():
@@ -408,8 +408,8 @@ def test_return_curves_keeps_values_at_each_density(tmp_path):
 
 
 def test_random_normalization_divides_by_the_mean_over_random_networks():
-    from brainnet3d.graph_theory.randomize import randomize_signed
-    from brainnet3d.graph_theory.sparsify import build_adjacency
+    from conngraph.graph_theory.randomize import randomize_signed
+    from conngraph.graph_theory.sparsify import build_adjacency
 
     n = 20
     corr = _random_corr(n, 4)
@@ -731,7 +731,7 @@ def test_run_nbs_spreads_permutations_over_workers_only_when_worthwhile(monkeypa
     pytest.importorskip("bct")
     from concurrent.futures import ThreadPoolExecutor
 
-    from brainnet3d.graph_theory import nbs as nbs_module
+    from conngraph.graph_theory import nbs as nbs_module
 
     pools = []
 

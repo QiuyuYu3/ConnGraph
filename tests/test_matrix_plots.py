@@ -7,8 +7,8 @@ from matplotlib.collections import LineCollection
 from matplotlib.patches import Rectangle
 from matplotlib.transforms import Bbox
 
-import brainnet3d as bnv
-from brainnet3d.viz.matrix_style import matrix_order
+import conngraph as bnv
+from conngraph.viz.matrix_style import matrix_order
 
 
 def _blocks(sizes, within=0.6, seed=0):
@@ -149,7 +149,7 @@ def test_heatmap_strips_and_network_names_for_large_matrices():
 
 
 def test_strip_colours_do_not_depend_on_network_label_order():
-    from brainnet3d.viz.colormap import labels_to_colors
+    from conngraph.viz.colormap import labels_to_colors
 
     # a network-level matrix lists networks in its own order, unlike the node table
     names = ["Visual", "Salience", "Default"]

@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from brainnet3d.cli import graph as graph_cli
-from brainnet3d.cli import nbs as nbs_cli
+from conngraph.cli import graph as graph_cli
+from conngraph.cli import nbs as nbs_cli
 
 pytest.importorskip("bct")
 
@@ -42,11 +42,11 @@ def test_graph_command_writes_tables_parameters_description_and_report(xcpd, tmp
     assert (out / "node" / "strength.abs.csv").exists()
     assert (out / "network_hemi" / "clust_coeff.costantini.csv").exists()
     params = json.loads((out / "parameters.json").read_text(encoding="utf-8"))
-    assert params["command"].startswith("brainnet3d-graph ")
+    assert params["command"].startswith("conngraph-metrics ")
     assert params["input"]["source"] == "XCP-D" and params["input"]["atlas"] == "Toy"
     description = json.loads((out / "dataset_description.json").read_text(encoding="utf-8"))
     assert description["DatasetType"] == "derivative"
-    assert description["GeneratedBy"][0]["Name"] == "brainnet3d"
+    assert description["GeneratedBy"][0]["Name"] == "ConnGraph"
     report = (out / "graph_report.html").read_text(encoding="utf-8")
     assert "Run command" in report and "derived from XCP-D (Toy atlas; fsLR space" in report
     assert "Option 2: interactive" in report
@@ -98,7 +98,7 @@ def test_both_commands_take_a_worker_count(flag):
 
 
 def test_nbs_command_passes_the_worker_count(xcpd, tmp_path, monkeypatch):
-    from brainnet3d.graph_theory import nbs as nbs_module
+    from conngraph.graph_theory import nbs as nbs_module
 
     seen = {}
     original = nbs_module.run_nbs
@@ -295,7 +295,7 @@ def test_nbs_command_runs_each_atlas(xcpd, tmp_path):
 
 
 def test_fisher_z_is_applied_before_nbs(xcpd):
-    from brainnet3d.cli._shared import fisher_z
+    from conngraph.cli._shared import fisher_z
 
     m = pd.DataFrame([[1.0, 0.5], [0.5, 1.0]])
     z = fisher_z({"s": m})["s"]

@@ -16,8 +16,8 @@ from importlib.resources import files
 import numpy as np
 import pandas as pd
 
-from brainnet3d.report import figures
-from brainnet3d.report.methods import graph_methods, nbs_methods, participant_count
+from conngraph.report import figures
+from conngraph.report.methods import graph_methods, nbs_methods, participant_count
 
 PLOTLY_CDN = "https://cdn.plot.ly/plotly-3.5.0.min.js"
 _METRIC_TITLES = {"clust_coeff": "Clustering coefficient", "btwn_cent": "Betweenness centrality",
@@ -98,7 +98,7 @@ def save_graph_report(result, path, nodes: pd.DataFrame | None = None, surfaces:
          ("Sign rule", first["sign"]),
          ("Metrics", ", ".join(metrics))],
         [("Created", params["created"].replace("T", " ")),
-         ("brainnet3d", "v" + params["packages"]["brainnet3d"]),
+         ("ConnGraph", "v" + params["packages"]["conngraph"]),
          ("Python", params["python"]),
          ("Failed subjects", _flag(f"{failed}/{len(params['subjects'])}", failed == 0, "bad")),
          ("Warnings", _flag(len(warned), not warned, "warn"))],
@@ -225,7 +225,7 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
          ("Threshold", f"t > {o['thresh']} ({o['tail']} tail)"),
          ("Permutations", f"{k} (seed {o['seed']})")],
         [("Created", params["created"].replace("T", " ")),
-         ("brainnet3d", "v" + params["packages"]["brainnet3d"]),
+         ("ConnGraph", "v" + params["packages"]["conngraph"]),
          ("Components", len(result.pval)),
          ("Significant (p < 0.05)", _flag(len(sig), bool(sig), "")),
          ("Smallest p", _fmt_p(min(result.pval), k) if len(result.pval) else "–")],
@@ -288,7 +288,7 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
             desc="Group mean connectivity between all regions" + (", ordered by network" if groups else "") + "."))
     group = _group_graph(result) if networks is not None else None
     if group is not None:
-        import brainnet3d as bnv
+        import conngraph as bnv
 
         G, names, how = group
         nets = [networks.get(n, "None") for n in names]
@@ -306,7 +306,7 @@ def _group_graph(result):
     """The group mean matrix built into a graph with the node level's method, or None when it cannot be redone."""
     import networkx as nx
 
-    from brainnet3d.graph_theory.sparsify import GRAPH_METHODS, apply_sign, build_adjacency
+    from conngraph.graph_theory.sparsify import GRAPH_METHODS, apply_sign, build_adjacency
 
     level = result.params["levels"].get("node") or {}
     method = level.get("graph_method")
@@ -331,7 +331,7 @@ def _group_graph(result):
 
 
 def _circos_images(G, labels, nets, palette, colorbar_title) -> str:
-    import brainnet3d as bnv
+    import conngraph as bnv
 
     (curved, _), (bundled, _) = bnv.circos_plot(G, labels, nets, net2color=palette, figsize=(11, 11),
                                                 label_fontsize=3.5, edge_colorbar_title=colorbar_title)
@@ -340,7 +340,7 @@ def _circos_images(G, labels, nets, palette, colorbar_title) -> str:
 
 
 def _nbs_matrices(result, adj_sig, labels, nets, palette, group_names) -> str:
-    import brainnet3d as bnv
+    import conngraph as bnv
 
     off = ~np.eye(len(labels), dtype=bool)
     lim = float(max(np.abs(result.mean_g1[off]).max(), np.abs(result.mean_g2[off]).max())) or 1.0
@@ -357,7 +357,7 @@ def _figure_block(label: str, b64: str) -> str:
 
 
 def _static_node_brain(result, nodes, label_col, labels, values, title, surfaces) -> str:
-    import brainnet3d as bnv
+    import conngraph as bnv
 
     nd = nodes.rename(columns={label_col: "label"}).copy()
     nd[title] = nd["label"].map(dict(zip(labels, values)))
@@ -375,7 +375,7 @@ def _static_node_brain(result, nodes, label_col, labels, values, title, surfaces
 
 
 def _static_nbs_brain(nodes, label_col, network_col, labels, drawn, diff, degree, palette, surfaces) -> str:
-    import brainnet3d as bnv
+    import conngraph as bnv
 
     nd = nodes.rename(columns={label_col: "label", network_col: "network"}).copy()
     nd = nd[nd["label"].isin(labels)]
@@ -401,12 +401,12 @@ def _write(path, title, params, sections, summary, call, body, errors, notes, me
     fn, args, opts = call
     call_text = command or f"{fn}(\n    " + ",\n    ".join(args + [f"{k}={json.dumps(v)}" for k, v in opts.items()]) + ",\n)"
     page = _environment().get_template("report.html.j2").render(
-        page_title=title, heading=title, version=params["packages"]["brainnet3d"],
+        page_title=title, heading=title, version=params["packages"]["conngraph"],
         created=params["created"].replace("T", " "), chip=chip, sections=sections, summary=summary,
         call_title="Run command" if command else "Call", call=html.escape(call_text), body=body,
         errors=[html.escape(e) for e in errors], notes=notes, methods=methods,
         versions={"python": params["python"], **{k: v for k, v in params["packages"].items() if v}},
-        css=files("brainnet3d.report").joinpath("templates/report.css").read_text(encoding="utf-8"),
+        css=files("conngraph.report").joinpath("templates/report.css").read_text(encoding="utf-8"),
         plotly_src=PLOTLY_CDN,
     )
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
@@ -418,7 +418,7 @@ def _write(path, title, params, sections, summary, call, body, errors, notes, me
 def _environment():
     from jinja2 import Environment, PackageLoader
 
-    return Environment(loader=PackageLoader("brainnet3d.report", "templates"), autoescape=False)
+    return Environment(loader=PackageLoader("conngraph.report", "templates"), autoescape=False)
 
 
 def _step(title: str, html: str, desc: str = "", open: bool = True, picker: bool = False, hint: str = "") -> dict:
@@ -521,7 +521,7 @@ def _palette(networks: dict | None) -> dict:
         return {}
     import matplotlib.colors as mcolors
 
-    from brainnet3d.viz.colormap import labels_to_colors
+    from conngraph.viz.colormap import labels_to_colors
 
     names = list(networks.values())
     return {n: mcolors.to_hex(c) for n, c in zip(names, labels_to_colors(names))}
@@ -564,7 +564,7 @@ def _input_warnings(loaded: dict) -> list[str]:
     if loaded.get("split_runs"):
         split = loaded["split_runs"]
         how = ("upstream (XCP-D --combine-runs) or with --combine-runs and --connectivity" if loaded.get("source") == "XCP-D"
-               else "before running brainnet3d")
+               else "before running conngraph")
         out.append(_participants(len(split), f"had several runs, each analysed on its own; combine them {how}, or pick "
                                  "one with --bids-filter-file")
                    + ": " + "; ".join(f"sub-{s} ({', '.join(r)})" for s, r in split.items()) + ".")
@@ -587,7 +587,7 @@ def _surfaces(surfaces: tuple[str, str] | None) -> tuple[str, str] | None:
     if surfaces is not None:
         return surfaces
     try:
-        from brainnet3d.viz.surface import get_fsLR_surface
+        from conngraph.viz.surface import get_fsLR_surface
         return get_fsLR_surface()
     except Exception:
         return None

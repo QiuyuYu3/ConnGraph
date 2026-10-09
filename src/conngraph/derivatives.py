@@ -12,8 +12,8 @@ import warnings
 
 import pandas as pd
 
-from brainnet3d.exceptions import DataValidationError
-from brainnet3d.loaders import _drop_bad_nodes, record_input, series_to_matrices
+from conngraph.exceptions import DataValidationError
+from conngraph.loaders import _drop_bad_nodes, record_input, series_to_matrices
 
 _RELMAT = "_stat-pearsoncorrelation_relmat.tsv"
 _SERIES = "_stat-mean_timeseries.tsv"
@@ -92,7 +92,7 @@ def load_xcpd(
     ...     xcpd_dir="derivatives/xcpd",
     ...     atlas="Gordon",
     ... )
-    >>> from brainnet3d.graph_theory import compute_graph_metrics
+    >>> from conngraph.graph_theory import compute_graph_metrics
     >>> results = compute_graph_metrics(matrices=matrices, atlas=atlas)
     """
     xcpd_dir = os.path.abspath(xcpd_dir)
@@ -438,7 +438,7 @@ def _session_label(session: str | None) -> str | None:
 def _stem(connectivity: str | None) -> str:
     if connectivity is None:
         return _RELMAT
-    from brainnet3d.connectivity import check_kind
+    from conngraph.connectivity import check_kind
 
     check_kind(connectivity)
     return _SERIES

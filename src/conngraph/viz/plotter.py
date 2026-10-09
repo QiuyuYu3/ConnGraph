@@ -12,17 +12,17 @@ from typing import TYPE_CHECKING, NamedTuple
 import numpy as np
 import pandas as pd
 
-from brainnet3d.core.dataset import ConnectivityDataset
-from brainnet3d.exceptions import DataValidationError
+from conngraph.core.dataset import ConnectivityDataset
+from conngraph.exceptions import DataValidationError
 
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
 
-    from brainnet3d.graph_theory.runner import GraphMetricsResult
-from brainnet3d.viz.surface import load_surface
-from brainnet3d.viz.nodes   import build_nodes, _resolve_colors
-from brainnet3d.viz.edges   import build_edges, select_edges, style_edges
-from brainnet3d.viz.views   import make_axis_arrows
+    from conngraph.graph_theory.runner import GraphMetricsResult
+from conngraph.viz.surface import load_surface
+from conngraph.viz.nodes   import build_nodes, _resolve_colors
+from conngraph.viz.edges   import build_edges, select_edges, style_edges
+from conngraph.viz.views   import make_axis_arrows
 
 
 class _Scene(NamedTuple):
@@ -59,8 +59,8 @@ class BrainNetPlotter:
 
     Quick start
     -----------
-    >>> from brainnet3d.loaders import load
-    >>> from brainnet3d.viz.plotter import BrainNetPlotter
+    >>> from conngraph.loaders import load
+    >>> from conngraph.viz.plotter import BrainNetPlotter
     >>>
     >>> dataset = load("matrix.csv", "nodes.csv")
     >>> p = BrainNetPlotter(dataset)
@@ -274,7 +274,7 @@ class BrainNetPlotter:
 
         window_actors = None
         if interactive:
-            from brainnet3d.viz.window import WindowScene, add_threshold_slider
+            from conngraph.viz.window import WindowScene, add_threshold_slider
 
             key = {"absabove": np.abs, "above": np.positive, "below": np.negative}[edge_threshold_dir]
             lowest = float(edge_threshold)
@@ -312,8 +312,8 @@ class BrainNetPlotter:
 
             legend = None
             if window_controls and window.node_mesh is not None and "network" in scene.nodes_df.columns:
-                from brainnet3d.viz.colormap import labels_to_colors, natural_key
-                from brainnet3d.viz.window import NetworkLegend
+                from conngraph.viz.colormap import labels_to_colors, natural_key
+                from conngraph.viz.window import NetworkLegend
 
                 nets = scene.nodes_df["network"].astype(str).to_numpy()
                 names = sorted(set(nets), key=natural_key)
@@ -335,7 +335,7 @@ class BrainNetPlotter:
                 plt.add_callback("LeftButtonPress", _on_click)
 
             if hover_info and window.node_mesh is not None:
-                from brainnet3d.viz.window import HoverCard
+                from conngraph.viz.window import HoverCard
 
                 columns = [
                     c for c in dict.fromkeys((node_size, node_color))
@@ -351,7 +351,7 @@ class BrainNetPlotter:
 
                 plt.add_callback("MouseMove", _on_move)
 
-        from brainnet3d.viz.views import _finish_render
+        from conngraph.viz.views import _finish_render
         return _finish_render(plt, actors, interactive, screenshot=screenshot, html=html, window_actors=window_actors)
 
     def plot_views(
@@ -412,7 +412,7 @@ class BrainNetPlotter:
         the drawn spheres. With the default surface_alpha a lateral and a medial panel look
         alike; raise surface_alpha (around 0.5) so nodes behind the surface fade.
         """
-        from brainnet3d.viz.panels import parse_views, views_figure
+        from conngraph.viz.panels import parse_views, views_figure
 
         args   = self._plot_args(**kwargs)
         panels = parse_views(views)
@@ -599,7 +599,7 @@ class BrainNetPlotter:
     ) -> np.ndarray:
         import networkx as nx
 
-        from brainnet3d.viz.layouts import grouped_layout
+        from conngraph.viz.layouts import grouped_layout
 
         if layout == "network" and groups is None:
             raise ValueError("layout='network' needs a 'network' column in the nodes table.")

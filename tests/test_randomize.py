@@ -1,6 +1,6 @@
 import numpy as np
 
-from brainnet3d.graph_theory.randomize import randomize_signed
+from conngraph.graph_theory.randomize import randomize_signed
 
 
 def _signed_graph(n: int = 40, density: float = 0.3, seed: int = 0) -> np.ndarray:

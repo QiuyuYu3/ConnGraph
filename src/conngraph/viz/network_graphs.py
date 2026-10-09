@@ -15,9 +15,9 @@ from matplotlib.path import Path
 from scipy.interpolate import BSpline
 from scipy.spatial import ConvexHull
 
-from brainnet3d.viz.colormap import labels_to_colors, values_to_colors, values_to_widths
-from brainnet3d.viz.layouts import grouped_layout
-from brainnet3d.viz.nodes import _resolve_vminvmax
+from conngraph.viz.colormap import labels_to_colors, values_to_colors, values_to_widths
+from conngraph.viz.layouts import grouped_layout
+from conngraph.viz.nodes import _resolve_vminvmax
 
 _HUB_RADIUS   = 0.55
 _EDGE_SAMPLES = 40
@@ -107,7 +107,7 @@ def spring_plot_3d(
     ]
     actors = spheres + lines
 
-    from brainnet3d.viz.views import _finish_render
+    from conngraph.viz.views import _finish_render
 
     vp = VPlotter(title=title, bg="white", axes=0, offscreen=not interactive)
     return _finish_render(vp, actors, interactive, screenshot=save_path, html=html, camera=camera)
@@ -169,7 +169,7 @@ def matrix_heatmap(
     -------
     (fig, ax)
     """
-    from brainnet3d.viz.matrix_style import draw_matrix, is_contiguous, matrix_order, tick_mode
+    from conngraph.viz.matrix_style import draw_matrix, is_contiguous, matrix_order, tick_mode
 
     matrix = np.asarray(matrix, dtype=float)
     n = matrix.shape[0]
@@ -273,7 +273,7 @@ def spring_plot(
                             labels={i: roi_labels[i] for i in range(len(roi_labels))},
                             font_size=label_fontsize, font_color="black")
 
-    from brainnet3d.viz.matrix_style import natural_key
+    from conngraph.viz.matrix_style import natural_key
 
     unique_nets    = sorted(set(network_labels), key=natural_key)
     legend_handles = [mpatches.Patch(color=net2color[n], label=n) for n in unique_nets]
@@ -374,7 +374,7 @@ def circos_plot(
             figures.append(circos_plot(**{**call, "edge_style": style, "edge_color": colour, "save_path": path}))
         return tuple(figures)
 
-    from brainnet3d.viz.matrix_style import _groups, is_contiguous, matrix_order, merge_heights, natural_key
+    from conngraph.viz.matrix_style import _groups, is_contiguous, matrix_order, merge_heights, natural_key
 
     net2color   = _network_colors(network_labels, net2color)
     n           = len(roi_labels)

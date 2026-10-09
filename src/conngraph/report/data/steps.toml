@@ -9,7 +9,7 @@
 # ---- graph metrics: input ----
 
 [input]
-plain = "Functional connectivity matrices{source} were used as input for graph theory analysis, performed with brainnet3d v{ver}."
+plain = "Functional connectivity matrices{source} were used as input for graph theory analysis, performed with ConnGraph v{ver}."
 
 [participants]
 plain = "Matrices were loaded for {n} participants."
@@ -243,7 +243,7 @@ plain = "Parcels labelled {labels} ({count} parcels) were excluded from the netw
 
 # TODO: review wording
 [nbs_intro]
-plain = "Group differences in connectivity were tested with the network-based statistic {todo:the network-based statistic}, performed with brainnet3d v{ver}."
+plain = "Group differences in connectivity were tested with the network-based statistic {todo:the network-based statistic}, performed with ConnGraph v{ver}."
 
 # TODO: review wording
 [nbs_fisher]

@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-import brainnet3d as bnv
+import conngraph as bnv
 
 _ALL_EDGES = dict(edge_threshold=-1.0, edge_threshold_dir="above", edge_alpha=0.5, node_size=3.0)
 _EDGE_STYLES = {
@@ -140,7 +140,7 @@ def _states(actors) -> dict:
 
 
 def _static_actors(plotter, monkeypatch, **kwargs) -> list:
-    import brainnet3d.viz.views as views
+    import conngraph.viz.views as views
 
     captured = {}
     real = views._finish_render
@@ -286,7 +286,7 @@ def test_hover_can_be_turned_off(dataset, monkeypatch, scene_kwargs):
 
 
 def test_hover_card_image_has_rounded_transparent_corners():
-    from brainnet3d.viz.window import _card_image
+    from conngraph.viz.window import _card_image
 
     img = _card_image("L_Default_1", (0.2, 0.4, 0.8), [("Network", "Default"), ("strength", "1.5")])
     assert img.dtype == np.uint8 and img.shape[2] == 4

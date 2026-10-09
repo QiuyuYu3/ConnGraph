@@ -1,5 +1,5 @@
 """
-brainnet3d-graph: graph-theory metrics of connectivity matrices, written as tables, a parameter record and a report.
+conngraph-metrics: graph-theory metrics of connectivity matrices, written as tables, a parameter record and a report.
 """
 
 from __future__ import annotations
@@ -7,8 +7,8 @@ from __future__ import annotations
 import argparse
 import sys
 
-from brainnet3d.cli import _shared
-from brainnet3d.graph_theory.sparsify import GRAPH_METHODS, SIGNS
+from conngraph.cli import _shared
+from conngraph.graph_theory.sparsify import GRAPH_METHODS, SIGNS
 
 
 def graph_param(text: str) -> tuple[str, float | list[float]]:
@@ -25,7 +25,7 @@ def graph_param(text: str) -> tuple[str, float | list[float]]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="brainnet3d-graph",
+        prog="conngraph-metrics",
         description="Compute graph-theory metrics for every participant and write one table per level and metric, "
                     "parameters.json, dataset_description.json and graph_report.html.",
     )
@@ -60,7 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    from brainnet3d.graph_theory import compute_graph_metrics
+    from conngraph.graph_theory import compute_graph_metrics
 
     argv = sys.argv[1:] if argv is None else list(argv)
     parser = build_parser()
@@ -95,7 +95,7 @@ def _run(args, parser, variant, out, command, compute_graph_metrics, session=Non
 
     result.params["command"] = command
     _shared.write_json(out / "parameters.json", result.params)
-    _shared.write_description(out, "brainnet3d graph metrics", args.input_dir, command)
+    _shared.write_description(out, "ConnGraph graph metrics", args.input_dir, command)
     if not args.no_report:
         result.save_report(out / "graph_report.html", nodes=_shared.report_nodes(args, atlas, variant),
                            surfaces=_shared.surfaces(args), static_brain=not args.no_static_brain)

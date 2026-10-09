@@ -10,7 +10,7 @@ import zipfile
 
 import pandas as pd
 
-from brainnet3d.exceptions import DownloadError
+from conngraph.exceptions import DownloadError
 
 PathLike = str | os.PathLike
 
@@ -19,8 +19,8 @@ _XCPD_GORDON_NETWORKS = {"CinguloParietal": "MedialParietal", "RetrosplenialTemp
 
 
 def get_data_dir(data_dir: PathLike | None = None) -> pathlib.Path:
-    """Return the cache folder: data_dir, else $BRAINNET3D_DATA, else ~/brainnet3d_data."""
-    path = pathlib.Path(data_dir or os.environ.get("BRAINNET3D_DATA") or pathlib.Path.home() / "brainnet3d_data")
+    """Return the cache folder: data_dir, else $CONNGRAPH_DATA, else ~/conngraph_data."""
+    path = pathlib.Path(data_dir or os.environ.get("CONNGRAPH_DATA") or pathlib.Path.home() / "conngraph_data")
     path.mkdir(parents=True, exist_ok=True)
     return path
 

@@ -1,5 +1,5 @@
 """
-brainnet3d-nbs: network-based statistic between two groups, written as tables, a parameter record and a report.
+conngraph-nbs: network-based statistic between two groups, written as tables, a parameter record and a report.
 """
 
 from __future__ import annotations
@@ -13,13 +13,13 @@ import warnings
 import numpy as np
 import pandas as pd
 
-from brainnet3d.cli import _shared
-from brainnet3d.loaders import INPUT_ATTR
+from conngraph.cli import _shared
+from conngraph.loaders import INPUT_ATTR
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="brainnet3d-nbs",
+        prog="conngraph-nbs",
         description="Compare two groups of connectivity matrices with the network-based statistic and write "
                     "nbs_components.tsv, nbs_edges.tsv, nbs_null.tsv, parameters.json, dataset_description.json and "
                     "nbs_report.html.",
@@ -41,7 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    from brainnet3d.graph_theory.nbs import run_nbs
+    from conngraph.graph_theory.nbs import run_nbs
 
     argv = sys.argv[1:] if argv is None else list(argv)
     parser = build_parser()
@@ -66,7 +66,7 @@ def _run(args, parser, variant, out, command, run_nbs, session=None) -> None:
     several = [f"sub-{i} ({', '.join(split[i])})" for i in sorted(listed & set(split))]
     if several:
         here = "XCP-D --combine-runs, or --combine-runs with --connectivity here" if args.input_type == "xcpd" else \
-            "before running brainnet3d"
+            "before running ConnGraph"
         raise SystemExit(f"{parser.prog}: NBS needs one matrix per participant, but {len(several)} have several runs: "
                          f"{'; '.join(several)}. Combine them ({here}) or pick one with --bids-filter-file.")
     groups, missing = [], []
@@ -99,7 +99,7 @@ def _run(args, parser, variant, out, command, run_nbs, session=None) -> None:
     result.params["command"] = command
     _write_tables(result, out)
     _shared.write_json(out / "parameters.json", result.params)
-    _shared.write_description(out, "brainnet3d network-based statistic", args.input_dir, command)
+    _shared.write_description(out, "ConnGraph network-based statistic", args.input_dir, command)
     if not args.no_report:
         nodes = _shared.report_nodes(args, atlas, variant)
         result.save_report(out / "nbs_report.html", nodes=atlas if nodes is None else nodes,

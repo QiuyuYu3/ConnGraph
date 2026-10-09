@@ -6,8 +6,8 @@ import numpy as np
 import pytest
 from matplotlib.patches import Polygon
 
-import brainnet3d as bnv
-from brainnet3d.viz.layouts import grouped_layout
+import conngraph as bnv
+from conngraph.viz.layouts import grouped_layout
 
 
 def _three_groups(seed=0):
@@ -99,8 +99,8 @@ def test_plot_network_layout_groups_nodes(dataset):
 
 
 def test_spring_plot_3d_colours_by_network_without_palette(monkeypatch):
-    import brainnet3d.viz.views as views
-    from brainnet3d.viz.colormap import labels_to_colors
+    import conngraph.viz.views as views
+    from conngraph.viz.colormap import labels_to_colors
 
     captured = {}
     monkeypatch.setattr(views, "_finish_render", lambda vp, actors, *a, **kw: captured.update(actors=actors))

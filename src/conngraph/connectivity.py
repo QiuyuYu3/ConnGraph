@@ -7,7 +7,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from brainnet3d.exceptions import DataValidationError
+from conngraph.exceptions import DataValidationError
 
 KINDS = ("correlation", "partial correlation")
 

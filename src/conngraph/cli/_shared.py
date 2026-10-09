@@ -1,5 +1,5 @@
 """
-Input options, loading and output files shared by the brainnet3d command-line tools.
+Input options, loading and output files shared by the conngraph command-line tools.
 """
 
 from __future__ import annotations
@@ -15,8 +15,8 @@ import sys
 import numpy as np
 import pandas as pd
 
-import brainnet3d
-from brainnet3d.loaders import _EXTENSIONS, INPUT_ATTR, subject_id_from_path
+import conngraph
+from conngraph.loaders import _EXTENSIONS, INPUT_ATTR, subject_id_from_path
 
 NODES_FILE = "nodes.tsv"
 
@@ -25,7 +25,7 @@ def add_input_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("input_dir", help="XCP-D or fnirs-pipe derivatives folder, or a folder of matrix or time "
                                           "series files (see --input-type)")
     parser.add_argument("output_dir", help="folder for the results; created if missing")
-    parser.add_argument("--version", action="version", version=f"%(prog)s {brainnet3d.__version__}")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {conngraph.__version__}")
     parser.add_argument("--quiet", action="store_true", help="print nothing but errors")
 
     g = parser.add_argument_group("input")
@@ -106,7 +106,7 @@ def input_sessions(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
 
 def bids_filters(args: argparse.Namespace, parser: argparse.ArgumentParser) -> dict[str, list]:
     """The input type's entry of --bids-filter-file, keyed by file-name entity."""
-    from brainnet3d.derivatives import _check_filters
+    from conngraph.derivatives import _check_filters
 
     if args.bids_filter_file is None:
         return {}
@@ -181,7 +181,7 @@ def load_input(args: argparse.Namespace, parser: argparse.ArgumentParser,
     if "ses" in filters:
         filters["ses"] = [session.removeprefix("ses-") if session else None]
     if args.input_type == "fnirs-pipe":
-        return brainnet3d.load_fnirs_pipe(args.input_dir, variant.removeprefix("chromo-"), session=session,
+        return conngraph.load_fnirs_pipe(args.input_dir, variant.removeprefix("chromo-"), session=session,
                                           task=args.task_id, subject_ids=labels,
                                           bad_node_threshold=args.bad_node_threshold, drop_mode=args.drop_mode,
                                           verbose=verbose, bids_filters=filters)
@@ -203,13 +203,13 @@ def load_input(args: argparse.Namespace, parser: argparse.ArgumentParser,
             raise SystemExit(f"{parser.prog}: no files matching {pattern} in {args.input_dir}")
         common = dict(bad_node_threshold=args.bad_node_threshold, drop_mode=args.drop_mode, mat_key=args.mat_key)
         if args.input_type == "matrix":
-            ds = brainnet3d.load_group(files, nodes, values=args.values, **common)
+            ds = conngraph.load_group(files, nodes, values=args.values, **common)
         else:
-            ds = brainnet3d.load_timeseries(files, nodes, kind=kind or "correlation", shrinkage=args.shrinkage,
+            ds = conngraph.load_timeseries(files, nodes, kind=kind or "correlation", shrinkage=args.shrinkage,
                                             **common)
         ds.nodes_df.attrs[INPUT_ATTR].update(path=os.path.abspath(args.input_dir), session=session)
         return ds.matrices, ds.nodes_df
-    return brainnet3d.load_xcpd(args.input_dir, variant.removeprefix("atlas-"), session=session, task=args.task_id,
+    return conngraph.load_xcpd(args.input_dir, variant.removeprefix("atlas-"), session=session, task=args.task_id,
                                 space=args.space, subject_ids=labels, bad_node_threshold=args.bad_node_threshold,
                                 verbose=verbose, connectivity=kind, shrinkage=args.shrinkage, bids_filters=filters,
                                 combine_runs=args.combine_runs)
@@ -228,7 +228,7 @@ def report_nodes(args: argparse.Namespace, nodes: pd.DataFrame, variant: str | N
         table = pd.read_csv(args.coords, sep="\t" if args.coords.endswith((".tsv", ".txt")) else ",")
     elif (variant or "").lower() == "atlas-gordon":
         try:
-            table = brainnet3d.load_gordon_atlas()
+            table = conngraph.load_gordon_atlas()
         except Exception:
             return None
     else:
@@ -269,7 +269,7 @@ def write_description(out_dir: pathlib.Path, name: str, input_dir: str, command:
         "Name": name,
         "BIDSVersion": "1.10.0",
         "DatasetType": "derivative",
-        "GeneratedBy": [{"Name": "brainnet3d", "Version": brainnet3d.__version__, "Container": {"Type": "none"},
+        "GeneratedBy": [{"Name": "ConnGraph", "Version": conngraph.__version__, "Container": {"Type": "none"},
                          "Description": command}],
         "SourceDatasets": [{"URL": pathlib.Path(input_dir).resolve().as_uri()}],
     })

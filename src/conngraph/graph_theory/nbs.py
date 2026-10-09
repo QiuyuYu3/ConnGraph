@@ -24,7 +24,7 @@ class NBSResult:
     def save_report(self, path, nodes: pd.DataFrame | None = None, surfaces: tuple[str, str] | None = None,
                     static_brain: bool = True, label_col: str = "label", network_col: str = "network") -> None:
         """Write an HTML report (plotly loads from its CDN); nodes adds networks and, with x, y, z, brain figures."""
-        from brainnet3d.report.pages import save_nbs_report
+        from conngraph.report.pages import save_nbs_report
 
         save_nbs_report(self, path, nodes, surfaces, static_brain, label_col, network_col)
 
@@ -112,7 +112,7 @@ def run_nbs(
                               max_size, n_jobs, verbose)
 
     pval = np.array([np.count_nonzero(null >= s) / k for s in sizes])
-    from brainnet3d.graph_theory.runner import _jsonable, _package_versions
+    from conngraph.graph_theory.runner import _jsonable, _package_versions
 
     params = _jsonable({
         "created": datetime.now().isoformat(timespec="seconds"),

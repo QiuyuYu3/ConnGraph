@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.transforms import Bbox
 
-from brainnet3d.viz.matrix_style import MATRIX_OPTIONS, draw_matrix, is_contiguous, matrix_order, tick_mode
+from conngraph.viz.matrix_style import MATRIX_OPTIONS, draw_matrix, is_contiguous, matrix_order, tick_mode
 
 
 def plot_nbs_matrices(
