@@ -107,7 +107,8 @@ def run_nbs(
         draws = np.array([np.sign(0.5 - rng.rand(1, nx))[0] for _ in range(k)])
     else:
         draws = np.array([rng.permutation(nx + ny) for _ in range(k)])
-    null = _null_distribution(np.hstack((x_edges, y_edges)), draws, (nx, n, thresh, tail, paired),
+    # column-major so each permutation copies whole subject columns; the arithmetic, and so the result, is unchanged
+    null = _null_distribution(np.asfortranarray(np.hstack((x_edges, y_edges))), draws, (nx, n, thresh, tail, paired),
                               max_size, n_jobs, verbose)
 
     pval = np.array([np.count_nonzero(null >= s) / k for s in sizes])
