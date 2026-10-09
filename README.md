@@ -26,19 +26,20 @@ Each command writes its result tables, a `parameters.json` with every setting, a
 Examples on XCP-D output with the Gordon atlas:
 
 ```bash
-brainnet3d-graph derivatives/xcpd results/graph --input-format xcpd --atlas Gordon
+brainnet3d-graph derivatives/xcpd results/graph --input-type xcpd --atlases Gordon
 
-brainnet3d-nbs derivatives/xcpd results/nbs --input-format xcpd --atlas Gordon \
+brainnet3d-nbs derivatives/xcpd results/nbs --input-type xcpd --atlases Gordon \
     --groups participants.tsv --group-column group --contrast PT HC --thresh 3.5 --seed 1
 ```
 
 ## Input
 
-`--input-format` is required and says what `INPUT` holds:
+`--input-type` is required and says what `INPUT` holds:
 
-| Format | `INPUT` |
+| Type | `INPUT` |
 |---|---|
-| `xcpd` | an XCP-D derivatives folder; choose the atlas with `--atlas` |
+| `xcpd` | an XCP-D derivatives folder; name one or more atlases with `--atlases` |
+| `fnirs-pipe` | a fnirs-pipe derivatives folder; HbO and HbR are analysed separately (`--chromophore` picks one) |
 | `matrix` | a folder of connectivity matrices, laid out as below |
 | `timeseries` | a folder of regional time series, laid out as below; connectivity is computed first (`--connectivity`) |
 
@@ -52,12 +53,16 @@ INPUT/
     ...
 ```
 
-- `<ext>` is `.tsv`, `.csv`, `.txt`, `.1D`, `.npy` or `.mat`, or a CIFTI `.pconn.nii` (matrices) or `.ptseries.nii` (time series).
+- `<ext>` is `.tsv`, `.csv`, `.txt`, `.1D`, `.npy` or `.mat`, a CIFTI `.pconn.nii` (matrices) or `.ptseries.nii` (time series), or AFNI `3dNetCorr` output: `.netcc` (matrices) or `.netts` (time series, one region per row).
 - A matrix is square, one row and one column per node. A time series has one column per node and one row per time point.
 - Tables may carry the node labels as headers; without them, rows and columns follow the order of `nodes.tsv`.
 - Matrices hold Pearson correlations; add `--values z` if they hold Fisher z values.
 - `nodes.tsv` has one row per node. Without x, y, z the report leaves out the brain figures. For XCP-D input with the Gordon atlas, coordinates are added automatically.
 
+For `xcpd` and `fnirs-pipe`, `--participant-label`, `--session-id` and `--task-id` select the files, as in XCP-D. Without `--session-id`, each participant must have exactly one matching file, in any session or none.
+
 ## Output
 
 `brainnet3d-graph` writes one table per level and metric (`node/`, `network_hemi/`, ...) and `graph_report.html`. `brainnet3d-nbs` writes `nbs_components.tsv`, `nbs_edges.tsv`, `nbs_null.tsv` and `nbs_report.html`.
+
+For `xcpd` these go into one folder per atlas (`OUTPUT/atlas-Gordon/`), and for `fnirs-pipe` into one folder per chromophore (`OUTPUT/chromo-hbo/`, `OUTPUT/chromo-hbr/`). fNIRS channels have no networks, so `brainnet3d-graph` computes the node level only.
