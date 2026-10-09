@@ -93,7 +93,7 @@ def save_graph_report(result, path, nodes: pd.DataFrame | None = None, surfaces:
                 f"with more than {100 * loaded['bad_node_threshold']:g}% missing values were dropped when the matrices")
         notes.append(f"{len(dropped)} nodes {what} were loaded: {', '.join(map(str, dropped[:20]))}"
                      + (" …" if len(dropped) > 20 else "") + ".")
-    details = ", ".join([f"{k} {loaded[k]}" for k in ("atlas", "space", "task", "session") if loaded.get(k)]
+    details = ", ".join([f"{k} {loaded[k]}" for k in ("atlas", "space", "chromophore", "task", "session") if loaded.get(k)]
                         + ([loaded["connectivity"]] if loaded.get("connectivity") else [])
                         + (["Ledoit-Wolf shrinkage"] if loaded.get("shrinkage") else [])
                         + (["Fisher z input"] if loaded.get("values") == "z" else []))

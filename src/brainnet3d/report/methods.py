@@ -14,6 +14,7 @@ _METRIC_ORDER = ("clust_coeff", "strength", "btwn_cent", "ge_local")
 _SLOT = re.compile(r"\{(cite|cite_bare|todo):([^}]+)\}")
 _COUNT_WORDS = {1: "one", 2: "two", 3: "three", 4: "four"}
 _SWEEP_NAMES = {"density": "densities", "threshold": "thresholds", "alpha": "significance levels"}
+_CHROMO = {"hbo": "HbO", "hbr": "HbR"}
 
 
 @cache
@@ -43,6 +44,8 @@ def graph_methods(params: dict) -> dict[str, str]:
     if loaded.get("source") == "XCP-D":
         source = (f" computed from XCP-D regional time series ({loaded['atlas']} atlas; {loaded['space']} space)" if series
                   else f" derived from XCP-D ({loaded['atlas']} atlas; {loaded['space']} space; Pearson's r)")
+    elif loaded.get("source") == "fnirs-pipe":
+        source = f" derived from fnirs-pipe ({_CHROMO[loaded['chromophore']]}; Pearson's r)"
     elif series:
         source = " computed from regional time series"
 
@@ -76,7 +79,9 @@ def graph_methods(params: dict) -> dict[str, str]:
     fisher = opts.get("apply_fisher_z", True)
     z = {"z": "Fisher z-transformed connectivity" if fisher else "connectivity",
          "back": " and converted back to r" if fisher else ""}
-    if "node" in levels:
+    if "node" in levels and loaded.get("source") == "fnirs-pipe":
+        para4.append(("level_node_channels", {"n": levels["node"]["n_nodes"]}))
+    elif "node" in levels:
         atlas = f" of the {loaded['atlas']} atlas" if loaded.get("atlas") else ""
         para4.append(("level_node", {"n": levels["node"]["n_nodes"], "atlas": atlas}))
     if "network" in levels:

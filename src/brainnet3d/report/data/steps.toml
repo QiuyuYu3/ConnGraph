@@ -210,6 +210,10 @@ plain = "Analyses were conducted at {count}."
 [level_node]
 plain = "At the node level, metrics were computed for each of the {n} parcels{atlas}."
 
+# TODO: review wording
+[level_node_channels]
+plain = "At the node level, metrics were computed for each of the {n} channels."
+
 [level_network]
 plain = "At the network level, {z} was averaged within and between each of the {n} networks{back}, and the same graph construction and metrics were applied to the resulting {n} × {n} network matrix."
 

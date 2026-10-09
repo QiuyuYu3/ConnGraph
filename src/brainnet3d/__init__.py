@@ -4,6 +4,7 @@ brainnet3d — 3-D brain network visualisation built on vedo.
 
 from brainnet3d.loaders                  import load, load_group, load_timeseries, load_gordon_atlas
 from brainnet3d.connectivity             import compute_connectivity
+from brainnet3d.derivatives              import load_xcpd, load_xcpd_flat, load_fnirs_pipe
 from brainnet3d.core.dataset             import ConnectivityDataset
 from brainnet3d.viz.plotter              import BrainNetPlotter
 from brainnet3d.viz.network_graphs       import spring_plot, circos_plot, spring_plot_3d, matrix_heatmap
@@ -19,6 +20,7 @@ __version__ = "0.2.0"
 __all__ = [
     "load", "load_group", "load_timeseries", "load_gordon_atlas",
     "compute_connectivity",
+    "load_xcpd", "load_xcpd_flat", "load_fnirs_pipe",
     "ConnectivityDataset",
     "BrainNetPlotter",
     "spring_plot", "circos_plot", "spring_plot_3d", "matrix_heatmap",

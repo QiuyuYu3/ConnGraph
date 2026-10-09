@@ -1,6 +1,7 @@
 """
-XCP-D loader: read correlation matrices directly from an XCP-D derivatives
-directory and return them in the format expected by compute_graph_metrics.
+Loaders for BIDS derivatives that name their connectivity matrices *_relmat.tsv:
+XCP-D and fnirs-pipe. Each returns matrices and a node table in the format
+expected by compute_graph_metrics.
 """
 
 from __future__ import annotations
@@ -261,6 +262,73 @@ def load_xcpd_flat(
     record_input(atlas_df, before, matrices, bad_node_threshold, "union", source="XCP-D", path=flat_dir,
                  atlas=atlas, space=space, task=task, session=session, **_series_record(connectivity, shrinkage))
     return matrices, atlas_df
+
+
+CHROMOPHORES = ("hbo", "hbr")
+
+
+def load_fnirs_pipe(
+    deriv_dir: str,
+    chromophore: str,
+    session: str | None = None,
+    task: str = "rest",
+    subject_ids: list[str] | None = None,
+    bad_node_threshold: float = 0.9,
+    drop_mode: str = "union",
+    verbose: bool = True,
+) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
+    """
+    Load one chromophore's channel-by-channel Pearson matrices from a fnirs-pipe derivatives folder.
+
+    Parameters
+    ----------
+    deriv_dir : fnirs-pipe output folder holding ``sub-*/[ses-*/]nirs/``.
+    chromophore : "hbo" or "hbr"; the two are never mixed.
+    session : session label such as ``"ses-01"``, or None when the files carry no session.
+    task : task label in the file names.
+    subject_ids, bad_node_threshold, verbose : as in :func:`load_xcpd`.
+    drop_mode : "union" drops a channel rejected in any participant, "intersection" only one rejected in all.
+
+    Returns
+    -------
+    matrices : ``{subject_id: channel × channel DataFrame}``, channels named without the chromophore suffix.
+    nodes : table with a ``label`` column, one row per channel.
+    """
+    if chromophore not in CHROMOPHORES:
+        raise ValueError(f"chromophore must be one of {CHROMOPHORES}, got {chromophore!r}")
+    deriv_dir = os.path.abspath(deriv_dir)
+    if subject_ids is None:
+        subject_ids = _discover_subjects(deriv_dir)
+        if not subject_ids:
+            raise FileNotFoundError(f"No sub-* directories found in: {deriv_dir}")
+    session_part = f"_{session}" if session else ""
+    template = os.path.join(deriv_dir, "sub-{sub}", *([session] if session else []), "nirs",
+                            f"sub-{{sub}}{session_part}_task-{task}*_chromo-{chromophore}_stat-pearson_relmat.tsv")
+
+    matrices: dict[str, pd.DataFrame] = {}
+    skipped: list[str] = []
+    for sub in subject_ids:
+        matches = glob.glob(template.format(sub=sub))
+        if len(matches) != 1:
+            skipped.append(_skip_reason(sub, matches))
+            continue
+        df = pd.read_csv(matches[0], sep="\t", index_col=0)
+        names = [str(c).removesuffix(f" {chromophore}") for c in df.columns]
+        matrices[sub] = df.set_axis(names, axis=0).set_axis(names, axis=1)
+
+    _warn_skipped(skipped)
+    if not matrices:
+        raise DataValidationError("No matrices could be loaded. Check deriv_dir, chromophore, session, task.")
+    if verbose:
+        print(f"[load_fnirs_pipe] Loaded {len(matrices)} {chromophore} matrix/matrices")
+
+    before = matrices
+    if bad_node_threshold < 1.0:
+        matrices = _drop_bad_nodes(matrices, bad_node_threshold, drop_mode)
+    nodes = pd.DataFrame({"label": list(next(iter(matrices.values())).columns)})
+    record_input(nodes, before, matrices, bad_node_threshold, drop_mode, source="fnirs-pipe", path=deriv_dir,
+                 chromophore=chromophore, task=task, session=session)
+    return matrices, nodes
 
 
 def _stem(connectivity: str | None) -> str:
