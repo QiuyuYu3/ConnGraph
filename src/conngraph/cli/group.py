@@ -59,7 +59,7 @@ def _comparisons(args: argparse.Namespace, parser: argparse.ArgumentParser, side
 
 
 def _participant_results(args: argparse.Namespace, session: str | None, variant: str | None) -> list[pathlib.Path]:
-    pattern = "sub-*" + (f"_{session}" if session else "") + "*" + (f"_{variant}" if variant else "") + SIDECAR
+    pattern = "sub-*" + (f"_{session}*" if session else "") + (f"_{variant}" if variant else "") + SIDECAR
     paths = sorted(pathlib.Path(args.output_dir).glob(f"sub-*/{session + '/' if session else ''}{pattern}"))
     if not args.participant_label:
         return paths
