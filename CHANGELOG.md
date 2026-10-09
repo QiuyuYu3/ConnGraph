@@ -7,11 +7,12 @@
 - **The package is renamed from `brainnet3d` to `conngraph`.** Use `import conngraph`, and `CONNGRAPH_DATA` in place of `BRAINNET3D_DATA`.
 - Everything installs with the package; there are no optional extras.
 - Saved figures are 300 dpi.
+- Result tables, including those of `compute_graph_metrics(output_dir=...)`, are tab-separated `.tsv` files.
 
 ### Added
 
 - A `conngraph` command in BIDS App style: the participant level computes graph metrics per participant, the group level collects them into tables and a report and compares groups. It reads XCP-D or fnirs-pipe outputs, or a folder of matrix or time series files.
-- HTML reports for each participant, for graph metrics and for NBS, with interactive figures, static figures saved beside the report (and rotatable 3-D brain pages with `--interactive-brain`), and a Methods section written from the run's settings.
+- HTML reports for each participant, for graph metrics and for NBS, built from the result files and rebuilt with `--reports-only`, with interactive figures, static figures saved beside the report (and rotatable 3-D brain pages with `--interactive-brain`), and a Methods section written from the run's settings.
 - More input formats (unlabelled matrices, CIFTI, AFNI, nilearn), and connectivity computed from regional time series.
 - Two more ways to build the graph (the disparity filter and PMFG), and more metrics, computed by default: nodal and global efficiency, path length, closeness and eigenvector centrality, participation coefficient, within-module degree z, modularity on the atlas networks or Louvain modules, and the small-world index.
 - Hover cards, an edge threshold slider and network toggles in the interactive window; network-bundled circos plots.
