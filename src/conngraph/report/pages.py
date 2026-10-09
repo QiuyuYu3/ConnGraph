@@ -588,11 +588,13 @@ def _table(df: pd.DataFrame, sortable: bool = True) -> str:
 
 
 class _FigureFolder:
-    """Static figures saved as PNG files in figures/ beside the report, named after it, and linked from the page."""
+    """Static figures saved as PNG files (in figures/ beside the report by default), named by prefix, linked from the page."""
 
-    def __init__(self, report_path):
+    def __init__(self, report_path, folder=None, prefix: str | None = None):
         path = pathlib.Path(report_path).resolve()
-        self.folder, self.stem = path.parent / "figures", path.stem
+        self.folder = pathlib.Path(folder).resolve() if folder else path.parent / "figures"
+        self.stem = prefix or path.stem
+        self.src = os.path.relpath(self.folder, path.parent).replace(os.sep, "/")
         # figures left from an earlier report of the same name would otherwise linger
         for old in self.folder.glob(f"{self.stem}_*.png"):
             old.unlink()
@@ -604,7 +606,7 @@ class _FigureFolder:
         filename = f"{self.stem}_{name}.png"
         fig.savefig(self.folder / filename, format="png", dpi=dpi, bbox_inches="tight", facecolor="white")
         plt.close(fig)
-        return f'<img class="figure" src="figures/{html.escape(filename)}" alt="">'
+        return f'<img class="figure" src="{html.escape(self.src)}/{html.escape(filename)}" alt="">'
 
 
 def _flag(value, ok: bool, bad_class: str) -> str:

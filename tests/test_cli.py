@@ -104,7 +104,8 @@ def test_participants_run_one_at_a_time_match_a_single_run(dataset, tmp_path):
     for sid, mat in dataset.matrices.items():
         mat.to_csv(folder / f"{sid}_matrix.tsv", sep="\t")
     opts = ["--input-type", "matrix", "--level", "node", "--graph-method", "density", "--graph-param", "density=0.3",
-            "--metrics", "clust_coeff", "--n-random", "3", "--random-seed", "7", "--n-jobs", "1", "--quiet"]
+            "--metrics", "clust_coeff", "--n-random", "3", "--random-seed", "7", "--n-jobs", "1", "--no-report",
+            "--quiet"]
     together, apart = tmp_path / "together", tmp_path / "apart"
     cli.main([str(folder), str(together), "participant", *opts])
     for sid in sorted(dataset.matrices):
@@ -157,7 +158,7 @@ def test_group_level_needs_participant_results_or_a_test(xcpd, tmp_path):
     ("group", ["--graph-method", "full"]),
     ("group", ["--metrics", "strength"]),
     ("group", ["--n-random", "5"]),
-    ("participant", ["--no-static-brain"]),
+    ("participant", ["--group-column", "dx"]),
     ("participant", ["--contrast", "A", "B"]),
     ("participant", ["--nbs-thresh", "3"]),
 ])
@@ -181,7 +182,7 @@ def test_group_matrix_folder_records_graph_options_and_skips_the_report(dataset,
         mat.to_csv(folder / f"{sid}_matrix.tsv", sep="\t")
     out = tmp_path / "out"
     _both(folder, out, ["--input-type", "matrix", "--level", "node", "--graph-method", "density", "--graph-param",
-                        "density=0.2,0.3", "--metrics", "strength", "--n-jobs", "1", "--quiet"],
+                        "density=0.2,0.3", "--metrics", "strength", "--n-jobs", "1", "--no-report", "--quiet"],
           common=["--input-type", "matrix"])
     params = _params(out / "group")
     assert params["levels"]["node"]["graph_params"] == {"density": [0.2, 0.3]}
@@ -681,7 +682,7 @@ def test_group_comparisons_get_a_report(xcpd, tmp_path):
     assert "Group comparison report" in report.read_text(encoding="utf-8")
 
 
-def test_participant_level_writes_one_report_per_participant(dataset, xcpd, tmp_path):
+def test_participant_level_writes_one_report_per_participant(dataset, xcpd, surfaces, tmp_path):
     import re
 
     _, coords, _ = xcpd
@@ -689,7 +690,7 @@ def test_participant_level_writes_one_report_per_participant(dataset, xcpd, tmp_
     out = tmp_path / "out"
     cli.main([str(root), str(out), "participant", *XCPD, "--graph-method", "density", "--graph-param", "density=0.3",
               "--network-graph-method", "full", "--metrics", "strength", "eff_global", "--coords", str(coords),
-              "--n-jobs", "1", "--quiet"])
+              "--surfaces", *surfaces, "--n-jobs", "1", "--quiet"])
     assert sorted(p.name for p in out.glob("sub-*.html")) == [f"sub-{i:02d}.html" for i in range(1, 7)]
     text = (out / "sub-01.html").read_text(encoding="utf-8")
     assert re.findall(r'<h2 id="([^"]+)"', text)[:3] == ["Summary", "ses-01_atlas-Toy", "ses-02_atlas-Toy"]
@@ -698,6 +699,9 @@ def test_participant_level_writes_one_report_per_participant(dataset, xcpd, tmp_
         assert words in text, words
     leftovers = [p.name for p in out.rglob("*.json") if not p.name.endswith(("_metrics.json", "description.json"))]
     assert not leftovers
+    pngs = sorted(p.name for p in (out / "sub-01" / "figures").glob("*.png"))
+    assert pngs == [f"sub-01_{ses}_atlas-Toy_brain_strength.abs.png" for ses in ("ses-01", "ses-02")]
+    assert all(f'src="sub-01/figures/{name}"' in text for name in pngs) and "On the brain: static" in text
 
 
 def test_participant_reports_can_be_skipped(xcpd, tmp_path):
@@ -705,3 +709,11 @@ def test_participant_reports_can_be_skipped(xcpd, tmp_path):
     out = tmp_path / "out"
     cli.main([str(root), str(out), "participant", *XCPD, *FAST])
     assert not list(out.glob("*.html"))
+
+
+def test_participant_reports_can_leave_out_the_static_brain(xcpd, tmp_path):
+    root, coords, _ = xcpd
+    out = tmp_path / "out"
+    cli.main([str(root), str(out), "participant", *XCPD, *[a for a in FAST if a != "--no-report"], "--coords",
+              str(coords), "--no-static-brain"])
+    assert (out / "sub-01.html").exists() and not (out / "sub-01" / "figures").exists()

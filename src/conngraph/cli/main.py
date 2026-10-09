@@ -69,6 +69,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="parallel workers (default: all but one); results do not depend on it")
     s.add_argument("--no-report", action="store_true",
                    help="skip the HTML reports (participant: OUTPUT/sub-<label>.html; group: one per analysis)")
+    s.add_argument("--no-static-brain", action="store_true",
+                   help="leave the static brain renderings out of the reports")
     s.add_argument("--coords", help="table with label, x, y, z for the brain figures; Gordon coordinates are added "
                                     "automatically")
     s.add_argument("--surfaces", nargs="+", metavar="FILE",
@@ -105,8 +107,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add("--exclude-networks", nargs="*", default=["None"], metavar="LABEL",
           help="network labels left out of the network level (default: None); give no labels to keep all")
 
-    g = _LevelOptions(parser, "group", "group level: report")
-    g.add("--no-static-brain", action="store_true", help="leave the static brain renderings out of the reports")
     t = _LevelOptions(parser, "group", "group level: comparing two groups")
     t.add("--groups", help="table with one row per participant, e.g. participants.tsv; runs the comparisons")
     t.add("--participant-column", default="participant_id", help="participant column (default: participant_id)")
@@ -124,7 +124,7 @@ def build_parser() -> argparse.ArgumentParser:
     t.add("--n-perms", type=int, default=5000, help="permutations for the comparisons and NBS (default: 5000)")
     t.add("--nbs-thresh", type=float, help="t-statistic threshold for keeping an edge; runs NBS")
     t.add("--nbs-tail", choices=["both", "left", "right"], default="both", help="tail of the test (default: both)")
-    parser.set_defaults(_level_options=(p, g, t))
+    parser.set_defaults(_level_options=(p, t))
     return parser
 
 
