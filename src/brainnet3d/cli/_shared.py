@@ -38,6 +38,9 @@ def add_input_arguments(parser: argparse.ArgumentParser) -> None:
                    help="measure computed from time series: for timeseries input (default: correlation); for XCP-D "
                         "input, compute it from the time series files instead of reading XCP-D's matrices")
     g.add_argument("--shrinkage", action="store_true", help="with --connectivity, use Ledoit-Wolf shrinkage")
+    g.add_argument("--combine-runs", action="store_true",
+                   help="xcpd with --connectivity: z-score each run's time series and concatenate a participant's runs "
+                        "before computing connectivity, as XCP-D's --combine-runs does")
     g.add_argument("--values", choices=["r", "z"], default="r",
                    help="matrix input: correlations (r, default) or Fisher z values, converted back to r")
     g.add_argument("--mat-key", help="variable to read from .mat files holding more than one array")
@@ -132,6 +135,8 @@ def run_all(args: argparse.Namespace, parser: argparse.ArgumentParser, run) -> i
         parser.error("--connectivity and --shrinkage need timeseries or XCP-D input")
     if args.shrinkage and not kind and args.input_type != "timeseries":
         parser.error("--shrinkage needs --connectivity")
+    if args.combine_runs and (args.input_type != "xcpd" or not kind):
+        parser.error("--combine-runs needs XCP-D input with --connectivity")
     variants = input_variants(args, parser)
     runs = [(s, v) for s in input_sessions(args, parser) for v in variants]
     failed = []
@@ -206,7 +211,8 @@ def load_input(args: argparse.Namespace, parser: argparse.ArgumentParser,
         return ds.matrices, ds.nodes_df
     return brainnet3d.load_xcpd(args.input_dir, variant.removeprefix("atlas-"), session=session, task=args.task_id,
                                 space=args.space, subject_ids=labels, bad_node_threshold=args.bad_node_threshold,
-                                verbose=verbose, connectivity=kind, shrinkage=args.shrinkage, bids_filters=filters)
+                                verbose=verbose, connectivity=kind, shrinkage=args.shrinkage, bids_filters=filters,
+                                combine_runs=args.combine_runs)
 
 
 def node_columns(args: argparse.Namespace) -> tuple[str, str]:

@@ -31,6 +31,7 @@ def load_xcpd(
     connectivity: str | None = None,
     shrinkage: bool = False,
     bids_filters: dict | None = None,
+    combine_runs: bool = False,
 ) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
     """
     Load correlation matrices from an XCP-D BIDS derivatives directory.
@@ -70,6 +71,8 @@ def load_xcpd(
         XCP-D filter file, e.g. ``{"acquisition": "mb", "run": 1}``; a list
         accepts any of its values, None requires the entity to be absent.
         Values given here for task and space replace `task` and `space`.
+    combine_runs : with `connectivity`, a subject whose files differ only in run gets each run's
+        time series z-scored and concatenated in run order before connectivity is computed.
 
     Returns
     -------
@@ -112,11 +115,20 @@ def load_xcpd(
     tail = (f"task-{'*' if 'task' in filters else task}*_space-{'*' if 'space' in filters else space}"
             f"_seg-{atlas}{stem}")
 
+    if combine_runs and connectivity is None:
+        raise ValueError("combine_runs concatenates time series; give connectivity as well.")
+    combined: dict[str, int] = {}
+
     for sub in subject_ids:
         matches = _filtered(_find(xcpd_dir, sub, session, "func", tail), filters)
+        runs = _runs_only(matches) if combine_runs and len(matches) > 1 else []
 
+        if runs:
+            matrices[sub] = _concat_runs(runs)
+            combined[sub] = len(runs)
+            continue
         if len(matches) != 1:
-            skipped.append(_skip_reason(sub, matches))
+            skipped.append(_skip_reason(sub, matches, can_combine=True))
             continue
 
         matrices[sub] = _read_xcpd_file(matches[0], connectivity)
@@ -126,6 +138,8 @@ def load_xcpd(
         raise DataValidationError(
             "No matrices could be loaded. Check xcpd_dir, atlas, session, task, space." + _first_reasons(skipped)
         )
+    if verbose and combined:
+        print(f"[load_xcpd] Concatenated the runs of {len(combined)} subject(s)")
 
     if verbose:
         print(f"[load_xcpd] Loaded {len(matrices)} matrix/matrices")
@@ -153,7 +167,8 @@ def load_xcpd(
 
     record_input(atlas_df, before, matrices, bad_node_threshold, "union", source="XCP-D", path=xcpd_dir,
                  atlas=atlas, space=_label(filters, "space", space), task=_label(filters, "task", task),
-                 session=session, skipped=skipped, **_series_record(connectivity, shrinkage), **_filter_record(filters))
+                 session=session, skipped=skipped, **_series_record(connectivity, shrinkage), **_filter_record(filters),
+                 **({"combined_runs": combined} if combine_runs else {}))
     return matrices, atlas_df
 
 
@@ -448,13 +463,14 @@ def _discover_subjects_flat(
     return sorted(set(subs))
 
 
-def _skip_reason(sub: str, matches: list[str]) -> str:
+def _skip_reason(sub: str, matches: list[str], can_combine: bool = False) -> str:
     if not matches:
         return f"sub-{sub}: no file found"
     runs = _runs_only(matches)
     if runs:
-        return (f"sub-{sub}: {len(runs)} runs ({', '.join(runs)}); merge them upstream, e.g. with XCP-D's "
-                "--combine-runs, or pick one with a BIDS filter on run")
+        here = " or here (combine_runs, --combine-runs, with connectivity)" if can_combine else ""
+        return (f"sub-{sub}: {len(runs)} runs ({', '.join('run-' + _entities(p)['run'] for p in runs)}); merge them "
+                f"upstream (XCP-D --combine-runs){here}, or pick one with a BIDS filter on run")
     return f"sub-{sub}: {len(matches)} files matched, be more specific: " + ", ".join(matches)
 
 
@@ -463,13 +479,21 @@ def _first_reasons(skipped: list[str], n: int = 3) -> str:
 
 
 def _runs_only(paths: list[str]) -> list[str]:
-    """The run labels when the files differ in nothing but their run, else an empty list."""
+    """The files in run order when they differ in nothing but their run, else an empty list."""
     found = [_entities(p) for p in paths]
     if any("run" not in e for e in found):
         return []
     rest = {tuple(sorted((k, v) for k, v in e.items() if k != "run")) for e in found}
-    runs = sorted((e["run"] for e in found), key=lambda r: (not r.isdigit(), int(r) if r.isdigit() else 0, r))
-    return [f"run-{r}" for r in runs] if len(rest) == 1 else []
+    if len(rest) != 1:
+        return []
+    order = lambda r: (not r.isdigit(), int(r) if r.isdigit() else 0, r)  # noqa: E731
+    return [p for _, p in sorted(zip(found, paths), key=lambda pair: order(pair[0]["run"]))]
+
+
+def _concat_runs(paths: list[str]) -> pd.DataFrame:
+    """Each run's regional time series z-scored, then stacked in run order, as XCP-D's --combine-runs does."""
+    runs = [_read_xcpd_file(p, "series") for p in paths]
+    return pd.concat([(ts - ts.mean()) / ts.std(ddof=0) for ts in runs], ignore_index=True)
 
 
 def _warn_skipped(skipped: list[str]) -> None:

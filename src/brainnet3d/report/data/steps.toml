@@ -22,6 +22,10 @@ plain = "Nodes for which more than {pct}% of connectivity values were missing in
 plain = "Nodes whose time series had missing or constant values in {scope} were excluded across all participants."
 
 # TODO: review wording
+[combine_runs]
+plain = "For the {n} participants with more than one run, the regional time series of each run were z-scored and concatenated in run order before connectivity was estimated."
+
+# TODO: review wording
 [connectivity]
 plain = "Connectivity was estimated as {measure} with nilearn v{ver} {todo:nilearn}."
 

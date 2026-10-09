@@ -69,6 +69,8 @@ For files that differ in other BIDS entities, such as several runs or acquisitio
 {"bold": {"acquisition": "multiband", "run": 1}}
 ```
 
+A participant with several runs left after filtering is skipped, with a warning in the report, unless the runs are combined. XCP-D's `--combine-runs` does that before brainnet3d sees the data; for XCP-D output without it, `--combine-runs` together with `--connectivity` z-scores each run's time series and concatenates them in run order before computing connectivity.
+
 ## Output
 
 `brainnet3d-graph` writes one table per level and metric (`node/`, `network_hemi/`, ...) and `graph_report.html`. `brainnet3d-nbs` writes `nbs_components.tsv`, `nbs_edges.tsv`, `nbs_null.tsv` and `nbs_report.html`.

@@ -121,7 +121,8 @@ def _input_sentences(params: dict) -> list[tuple[str, dict]]:
     if loaded.get("connectivity"):
         measure = "Pearson correlation" if loaded["connectivity"] == "correlation" else loaded["connectivity"]
         key = "connectivity_shrinkage" if loaded.get("shrinkage") else "connectivity"
-        return [(key, {"measure": measure, "ver": params["packages"].get("nilearn")})]
+        combined = [("combine_runs", {"n": len(loaded["combined_runs"])})] if loaded.get("combined_runs") else []
+        return combined + [(key, {"measure": measure, "ver": params["packages"].get("nilearn")})]
     if loaded.get("values") == "z":
         return [("values_z", {})]
     return []

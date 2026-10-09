@@ -537,6 +537,8 @@ def _input_row(loaded: dict) -> list[tuple[str, str]]:
                         + ([loaded["connectivity"]] if loaded.get("connectivity") else [])
                         + (["Ledoit-Wolf shrinkage"] if loaded.get("shrinkage") else [])
                         + (["Fisher z input"] if loaded.get("values") == "z" else [])
+                        + ([f"runs concatenated for {len(loaded['combined_runs'])} participants"]
+                           if loaded.get("combined_runs") else [])
                         + [f"{k} {' or '.join('none' if v is None else str(v) for v in vals)}"
                            for k, vals in (loaded.get("bids_filters") or {}).items() if k not in ("task", "space", "ses")])
     return [("Input", loaded["source"] + (f" ({details})" if details else ""))] if loaded.get("source") else []
