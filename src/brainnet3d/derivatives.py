@@ -124,7 +124,7 @@ def load_xcpd(
     _warn_skipped(skipped)
     if not matrices:
         raise DataValidationError(
-            "No matrices could be loaded. Check xcpd_dir, atlas, session, task, space."
+            "No matrices could be loaded. Check xcpd_dir, atlas, session, task, space." + _first_reasons(skipped)
         )
 
     if verbose:
@@ -325,7 +325,8 @@ def load_fnirs_pipe(
 
     _warn_skipped(skipped)
     if not matrices:
-        raise DataValidationError("No matrices could be loaded. Check deriv_dir, chromophore, session, task.")
+        raise DataValidationError("No matrices could be loaded. Check deriv_dir, chromophore, session, task."
+                                  + _first_reasons(skipped))
     if verbose:
         print(f"[load_fnirs_pipe] Loaded {len(matrices)} {chromophore} matrix/matrices")
 
@@ -450,7 +451,25 @@ def _discover_subjects_flat(
 def _skip_reason(sub: str, matches: list[str]) -> str:
     if not matches:
         return f"sub-{sub}: no file found"
+    runs = _runs_only(matches)
+    if runs:
+        return (f"sub-{sub}: {len(runs)} runs ({', '.join(runs)}); merge them upstream, e.g. with XCP-D's "
+                "--combine-runs, or pick one with a BIDS filter on run")
     return f"sub-{sub}: {len(matches)} files matched, be more specific: " + ", ".join(matches)
+
+
+def _first_reasons(skipped: list[str], n: int = 3) -> str:
+    return "".join(f"\n  {s}" for s in skipped[:n]) + (f"\n  ... and {len(skipped) - n} more" if len(skipped) > n else "")
+
+
+def _runs_only(paths: list[str]) -> list[str]:
+    """The run labels when the files differ in nothing but their run, else an empty list."""
+    found = [_entities(p) for p in paths]
+    if any("run" not in e for e in found):
+        return []
+    rest = {tuple(sorted((k, v) for k, v in e.items() if k != "run")) for e in found}
+    runs = sorted((e["run"] for e in found), key=lambda r: (not r.isdigit(), int(r) if r.isdigit() else 0, r))
+    return [f"run-{r}" for r in runs] if len(rest) == 1 else []
 
 
 def _warn_skipped(skipped: list[str]) -> None:
