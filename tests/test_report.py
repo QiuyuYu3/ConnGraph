@@ -276,6 +276,33 @@ def test_static_brain_draws_regions_around_ones_without_a_value(dataset, surface
     assert (brain.min(axis=2) < 0.9).mean() > 0.05
 
 
+def test_graph_report_notes_a_metric_without_any_value_instead_of_its_brain(dataset, surfaces, tmp_path):
+    result = compute_graph_metrics(dataset.matrices, dataset.nodes_df, level="node", network_col="network",
+                                   metrics=["strength.abs", "strength.pos"], n_jobs=1, verbose=False)
+    kept, empty = result.node_df.columns.get_level_values(0).unique()
+    result.node_df.loc[:, result.node_df.columns.get_level_values(0) == empty] = np.nan
+    result.save_report(tmp_path / "graph.html", surfaces=surfaces, interactive_brain=True)
+    text = (tmp_path / "graph.html").read_text(encoding="utf-8")
+    assert "No region has a value for this metric." in text
+    assert {p.stem for p in (tmp_path / "figures").glob("graph_brain_*")} == {f"graph_brain_{kept}"}
+
+
+def test_participant_section_notes_a_metric_without_any_value_instead_of_its_brain(dataset, surfaces, tmp_path):
+    from conngraph.report.pages import _FigureFolder
+    from conngraph.report.participant import participant_section
+
+    result = compute_graph_metrics(dataset.matrices, dataset.nodes_df, level="node", network_col="network",
+                                   metrics=["strength.abs", "strength.pos"], n_jobs=1, verbose=False)
+    kept, empty = result.node_df.columns.get_level_values(0).unique()
+    result.node_df.loc[:, result.node_df.columns.get_level_values(0) == empty] = np.nan
+    sid = sorted(dataset.matrices)[0]
+    figs = _FigureFolder(tmp_path / "sub.html", tmp_path / "figures", "sub")
+    section = participant_section(result, sid, dataset.matrices[sid], dataset.nodes_df, result.params, "results",
+                                  "Results", [], figs, surfaces)
+    assert "No region has a value for this metric." in json.dumps(section)
+    assert {p.stem for p in (tmp_path / "figures").glob("sub_brain_*")} == {f"sub_brain_{kept}"}
+
+
 def test_graph_report_summary_names_the_time_series_measure(dataset, tmp_path):
     atlas = dataset.nodes_df.drop(columns=["x", "y", "z"])
     atlas.attrs["conngraph_input"] = {"source": "time series", "connectivity": "partial correlation", "shrinkage": True,

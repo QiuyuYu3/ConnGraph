@@ -10,6 +10,7 @@ import pandas as pd
 from conngraph.report import figures
 from conngraph.report.methods import graph_methods
 from conngraph.report.pages import (
+    NO_VALUES,
     _SWEEP_LABELS,
     _circos_images,
     _column,
@@ -76,11 +77,14 @@ def participant_section(result, sid: str, matrix: pd.DataFrame, nodes: pd.DataFr
             brains = []
             for m in metrics:
                 values = node[m].reindex(cols).to_numpy(float)
+                shown = ~np.isnan(xyz).any(axis=1) & ~np.isnan(values)
+                if not shown.any():
+                    brains.append((m, _metric_title(m), NO_VALUES))
+                    continue
                 html_ = _static_node_brain(result, nodes, opts["label_col"], cols, values, _metric_title(m), surfaces,
                                            figs, m)
                 if meshes is not None:
-                    shown = ~np.isnan(xyz).any(axis=1) & ~np.isnan(values)
-                    html_ += figs.save_html(figures.brain_values(
+                    html_ +=figs.save_html(figures.brain_values(
                         xyz[shown], [lab for lab, k in zip(labels, shown) if k],
                         [n for n, k in zip(nets or [""] * len(cols), shown) if k], values[shown], _metric_title(m),
                         meshes), f"brain_{m}")

@@ -373,11 +373,14 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
         for m in metrics:
             values = result.node_df[m].mean(axis=0).reindex(labels).to_numpy(float)
             t = _metric_title(m)
+            shown = keep & ~np.isnan(values)
+            if not shown.any():
+                panes.append((m, t, NO_VALUES))
+                continue
             html_ = ""
             if static_brain:
                 html_ += _static_node_brain(result, nodes, label_col, labels, values, t, surfaces, figs, m)
             if interactive_brain:
-                shown = keep & ~np.isnan(values)
                 html_ += figs.save_html(figures.brain_values(
                     xyz[shown], [lab for lab, k in zip(labels, shown) if k], [n for n, k in zip(nets, shown) if k],
                     values[shown], t, meshes), f"brain_{m}")
@@ -752,6 +755,9 @@ def _input_warnings(loaded: dict) -> list[str]:
 
 def _participants(n: int, text: str) -> str:
     return f"{n} participant{'' if n == 1 else 's'} " + text.format("was" if n == 1 else "were")
+
+
+NO_VALUES = "<p>No region has a value for this metric.</p>"
 
 
 def _no_coordinates(nodes) -> str:
