@@ -775,7 +775,7 @@ def test_run_nbs_spreads_permutations_over_workers_only_when_worthwhile(monkeypa
     pools = []
 
     class Recording(ThreadPoolExecutor):
-        def __init__(self, max_workers, **kwargs):
+        def __init__(self, max_workers, mp_context=None, **kwargs):
             pools.append(max_workers)
             super().__init__(max_workers=max_workers, **kwargs)
 
