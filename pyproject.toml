@@ -30,6 +30,7 @@ dependencies = [
     "plotly>=5.18",
     "jinja2>=3.1",
     "bibtexparser>=2.0",
+    "nilearn>=0.10",
     "tomli>=2.0; python_version < '3.11'",
 ]
 

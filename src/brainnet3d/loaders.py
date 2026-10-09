@@ -4,6 +4,7 @@ Loaders: read user files → ConnectivityDataset.
 Entry points:
   - load()               : single subject (one matrix file)
   - load_group()         : multiple subjects (dict or directory of matrix files)
+  - load_timeseries()    : multiple subjects' regional time series, turned into matrices
   - load_gordon_atlas()  : Gordon 333-parcel node table, fetched on first use
 """
 
@@ -142,7 +143,121 @@ def load_group(
     return ConnectivityDataset(matrices=raw, nodes_df=nodes_df)
 
 
-_EXTENSIONS = (".pconn.nii", ".ptseries.nii", ".npy", ".mat", ".csv", ".tsv", ".txt", ".1D")
+def load_timeseries(
+    timeseries: str | dict[str, str | pd.DataFrame | np.ndarray],
+    nodes: str | pd.DataFrame,
+    pattern: str = "*_timeseries.csv",
+    kind: str = "correlation",
+    shrinkage: bool = False,
+    bad_node_threshold: float = 0.9,
+    drop_mode: str = "union",
+    mat_key: str | None = None,
+) -> ConnectivityDataset:
+    """
+    Load regional time series and turn them into connectivity matrices.
+
+    Parameters
+    ----------
+    timeseries : str | dict
+        Directory path or ``{subject_id: source}``, as in :func:`load_group`.
+        Each source holds time points in rows and regions in columns: a CSV/TSV
+        whose header names the regions, an unlabelled table (.csv, .tsv, .txt,
+        .1D, .npy, .mat or an array) whose columns follow the order of `nodes`,
+        or a CIFTI .ptseries.nii, which carries its own parcel names.
+    nodes : str | pd.DataFrame
+        Same as :func:`load`.
+    pattern : glob pattern used when `timeseries` is a directory.
+    kind, shrinkage : see :func:`brainnet3d.compute_connectivity`.
+    bad_node_threshold : below 1, regions with missing or constant time series are dropped.
+    drop_mode : "union" drops a region unusable in ANY subject, "intersection" only one unusable in ALL.
+    mat_key : variable to read from a .mat file holding more than one 2-D array.
+
+    Returns
+    -------
+    ConnectivityDataset
+    """
+    from brainnet3d.connectivity import check_kind
+
+    check_kind(kind)
+    nodes_df = _read_nodes(nodes)
+    labels   = nodes_df["label"].tolist()
+    if isinstance(timeseries, str) and os.path.isdir(timeseries):
+        paths = sorted(glob.glob(os.path.join(timeseries, pattern)))
+        if not paths:
+            raise FileNotFoundError(f"No files matching '{pattern}' found in {timeseries}")
+        sources = {subject_id_from_path(p): p for p in paths}
+    elif isinstance(timeseries, dict):
+        sources = timeseries
+    else:
+        raise TypeError("`timeseries` must be a directory path (str) or a dict.")
+    series = {sid: _read_timeseries(src, labels, mat_key) for sid, src in sources.items()}
+    matrices = series_to_matrices(series, kind, shrinkage, bad_node_threshold, drop_mode)
+
+    nodes_df = _align_nodes(nodes_df, next(iter(matrices.values())))
+    record_input(nodes_df, series, matrices, bad_node_threshold, drop_mode,
+                 source="time series", connectivity=kind, shrinkage=shrinkage)
+    return ConnectivityDataset(matrices=matrices, nodes_df=nodes_df)
+
+
+def series_to_matrices(
+    series: dict[str, pd.DataFrame], kind: str, shrinkage: bool, threshold: float, mode: str,
+) -> dict[str, pd.DataFrame]:
+    """Connectivity of each time series after dropping, for everyone, the regions the drop rule removes."""
+    from brainnet3d.connectivity import compute_connectivity, unusable_regions
+
+    unusable = [set(unusable_regions(ts)) for ts in series.values()]
+    bad = set()
+    if threshold < 1 and unusable:
+        bad = set.union(*unusable) if mode == "union" else set.intersection(*unusable)
+    if bad:
+        warnings.warn(f"Dropping {len(bad)} node(s) with missing or constant time series: {sorted(bad)}", stacklevel=3)
+    return compute_connectivity({sid: ts.drop(columns=list(bad)) for sid, ts in series.items()}, kind, shrinkage)
+
+
+def _read_timeseries(src, labels: list[str], mat_key: str | None) -> pd.DataFrame:
+    if isinstance(src, pd.DataFrame):
+        return src.set_axis(src.columns.astype(str), axis=1)
+    if isinstance(src, np.ndarray):
+        return _labelled_series(src, labels, "array")
+    if src.endswith(".npy"):
+        return _labelled_series(np.load(src), labels, src)
+    if src.endswith(".mat"):
+        return _labelled_series(_read_mat(src, mat_key, square=False), labels, src)
+    if src.endswith(".ptseries.nii"):
+        import nibabel as nib
+
+        img = nib.load(src)
+        return pd.DataFrame(np.asarray(img.get_fdata()), columns=[str(n) for n in img.header.get_axis(1).name])
+
+    delimiter = {".csv": ",", ".tsv": "\t"}.get(os.path.splitext(src)[1])
+    if _first_row_is_header(src, delimiter, labels):
+        df = pd.read_csv(src, sep=delimiter or r"\s+", comment="#")
+        return df.set_axis(df.columns.astype(str), axis=1)
+    return _labelled_series(np.loadtxt(src, delimiter=delimiter, ndmin=2), labels, src)
+
+
+def _first_row_is_header(path: str, delimiter: str | None, labels: list[str]) -> bool:
+    with open(path, encoding="utf-8") as f:
+        line = next((ln for ln in f if ln.strip() and not ln.lstrip().startswith("#")), "")
+    tokens = [t.strip().strip('"') for t in line.split(delimiter)]
+    try:
+        [float(t) for t in tokens]
+    except ValueError:
+        return True
+    return set(tokens) <= set(labels) and len(set(tokens)) == len(tokens)
+
+
+def _labelled_series(arr: np.ndarray, labels: list[str], src: str) -> pd.DataFrame:
+    arr = np.asarray(arr, dtype=float)
+    if arr.ndim != 2 or arr.shape[1] != len(labels):
+        raise DataValidationError(
+            f"Time series in '{src}' has shape {arr.shape}, but the node table has {len(labels)} labels; "
+            "an unlabelled time series needs time points in rows and one column per node table row."
+        )
+    return pd.DataFrame(arr, columns=labels)
+
+
+_EXTENSIONS =(".pconn.nii", ".ptseries.nii", ".npy", ".mat", ".csv", ".tsv", ".txt", ".1D")
 
 
 def subject_id_from_path(path: str) -> str:
@@ -218,7 +333,7 @@ def _labelled(arr: np.ndarray, labels: list[str] | None, src: str) -> pd.DataFra
     return pd.DataFrame(arr, index=labels, columns=labels)
 
 
-def _read_mat(path: str, key: str | None) -> np.ndarray:
+def _read_mat(path: str, key: str | None, square: bool = True) -> np.ndarray:
     from scipy.io import loadmat
 
     try:
@@ -229,13 +344,15 @@ def _read_mat(path: str, key: str | None) -> np.ndarray:
         if key not in data:
             raise DataValidationError(f"No variable '{key}' in '{path}'; it holds {sorted(data)}.")
         return data[key]
-    square = sorted(k for k, v in data.items()
-                    if isinstance(v, np.ndarray) and v.ndim == 2 and v.shape[0] == v.shape[1] and v.shape[0] > 1)
-    if len(square) != 1:
+    found = sorted(k for k, v in data.items()
+                   if isinstance(v, np.ndarray) and v.ndim == 2 and min(v.shape) > 1
+                   and (v.shape[0] == v.shape[1] or not square))
+    if len(found) != 1:
+        kind = "square matrices" if square else "2-D arrays"
         raise DataValidationError(
-            f"'{path}' holds {len(square)} square matrices; choose one with mat_key (variables: {sorted(data)})."
+            f"'{path}' holds {len(found)} {kind}; choose one with mat_key (variables: {sorted(data)})."
         )
-    return data[square[0]]
+    return data[found[0]]
 
 
 def _read_pconn(path: str) -> pd.DataFrame:

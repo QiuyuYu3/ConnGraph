@@ -9,6 +9,7 @@
 - HTML reports for graph metrics and NBS results, with interactive figures, static and rotatable group-mean brain views, and a Methods section written from the run's settings, including where the matrices came from and which nodes the loaders dropped. plotly, jinja2 and bibtexparser are now required.
 - Command-line tools `brainnet3d-graph` and `brainnet3d-nbs` read XCP-D outputs or a folder of matrix files and write the tables, the parameter record, a dataset description and the report in one step.
 - The matrix loaders also read unlabelled matrices (text, NumPy, MATLAB files or arrays, in node table order) and CIFTI parcellated connectivity files, and accept Fisher z matrices.
+- Connectivity matrices can be computed from regional time series in the same file formats (Pearson or partial correlation, optionally with shrinkage), directly or while loading, including from XCP-D time series. nilearn is now required.
 - Hovering over a node in the interactive window shows a card with its label, network, hemisphere and the values used for node size or colour.
 - The interactive window has an edge threshold slider and a network list that hides or shows each network.
 - Legend titles of multi-view figures can be changed.

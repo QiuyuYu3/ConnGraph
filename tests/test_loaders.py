@@ -192,6 +192,68 @@ def test_fisher_z_input_is_converted_back_to_r():
         bnv.load(mat, _nodes(), values="t")
 
 
+TS_STEM = "_ses-01_task-rest_space-fsLR_seg-Gordon_stat-mean_timeseries.tsv"
+
+
+def _series(seed):
+    rng = np.random.default_rng(seed)
+    data = rng.standard_normal((60, len(LABELS))) @ rng.standard_normal((len(LABELS), len(LABELS)))
+    return pd.DataFrame(data, columns=LABELS)
+
+
+def _xcpd_with_series(folder, missing_in_02=()):
+    folder.mkdir(parents=True, exist_ok=True)
+    series = {"01": _series(0), "02": _series(1)}
+    for col in missing_in_02:
+        series["02"][col] = np.nan
+    for sub, ts in series.items():
+        ts.to_csv(folder / f"sub-{sub}{TS_STEM}", sep="\t", index=False, na_rep="n/a")
+        r = pd.DataFrame(np.corrcoef(ts.to_numpy().T), index=LABELS, columns=LABELS)
+        r.to_csv(folder / f"sub-{sub}{XCPD_STEM}", sep="\t")
+    return series
+
+
+def _xcpd_atlas(path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame({"label": LABELS, "network_label": ["a", "b"] * 3}).to_csv(path, sep="\t", index=False)
+    return str(path)
+
+
+def test_load_xcpd_flat_from_time_series_matches_relmat(tmp_path):
+    series = _xcpd_with_series(tmp_path)
+    atlas_path = _xcpd_atlas(tmp_path / "atlas" / "atlas.tsv")
+    relmat, _ = load_xcpd_flat(str(tmp_path), atlas_path, atlas="Gordon", verbose=False)
+    pearson, atlas = load_xcpd_flat(str(tmp_path), atlas_path, atlas="Gordon", verbose=False, connectivity="correlation")
+    for sub in ("01", "02"):
+        np.testing.assert_allclose(pearson[sub].to_numpy(), relmat[sub].to_numpy(), atol=1e-12)
+    assert atlas.attrs["brainnet3d_input"]["connectivity"] == "correlation"
+    partial, _ = load_xcpd_flat(str(tmp_path), atlas_path, atlas="Gordon", verbose=False,
+                                connectivity="partial correlation")
+    prec = np.linalg.inv(np.cov(series["01"].to_numpy().T))
+    d = np.sqrt(np.diag(prec))
+    off = ~np.eye(len(LABELS), dtype=bool)
+    np.testing.assert_allclose(partial["01"].to_numpy()[off], (-prec / np.outer(d, d))[off], atol=1e-10)
+
+
+def test_load_xcpd_tree_from_time_series_drops_missing_parcels(tmp_path):
+    from brainnet3d.graph_theory import load_xcpd
+
+    for sub in ("01", "02"):
+        (tmp_path / f"sub-{sub}").mkdir()
+    flat = tmp_path / "flat"
+    _xcpd_with_series(flat, missing_in_02=["r5"])
+    for f in flat.iterdir():
+        sub = f.name.split("_")[0]
+        (tmp_path / sub / "ses-01" / "func").mkdir(parents=True, exist_ok=True)
+        f.replace(tmp_path / sub / "ses-01" / "func" / f.name)
+    _xcpd_atlas(tmp_path / "atlases" / "atlas-Gordon" / "atlas-Gordon_dseg.tsv")
+    with pytest.warns(UserWarning, match=r"\['r5'\]"):
+        mats, atlas = load_xcpd(str(tmp_path), "Gordon", verbose=False, connectivity="correlation")
+    assert all(m.columns.tolist() == LABELS[:5] for m in mats.values())
+    record = atlas.attrs["brainnet3d_input"]
+    assert (record["dropped"], record["connectivity"], record["shrinkage"]) == (["r5"], "correlation", False)
+
+
 def test_load_group_subject_id_drops_the_extension(tmp_path):
     for sid in ("sub01", "sub02"):
         np.save(tmp_path / f"{sid}.npy", _matrix().to_numpy())

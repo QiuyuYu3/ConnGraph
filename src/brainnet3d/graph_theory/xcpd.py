@@ -12,7 +12,10 @@ import warnings
 import pandas as pd
 
 from brainnet3d.exceptions import DataValidationError
-from brainnet3d.loaders import _drop_bad_nodes, record_input
+from brainnet3d.loaders import _drop_bad_nodes, record_input, series_to_matrices
+
+_RELMAT = "_stat-pearsoncorrelation_relmat.tsv"
+_SERIES = "_stat-mean_timeseries.tsv"
 
 
 def load_xcpd(
@@ -24,6 +27,8 @@ def load_xcpd(
     subject_ids: list[str] | None = None,
     bad_node_threshold: float = 0.9,
     verbose: bool = True,
+    connectivity: str | None = None,
+    shrinkage: bool = False,
 ) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
     """
     Load correlation matrices from an XCP-D BIDS derivatives directory.
@@ -53,6 +58,10 @@ def load_xcpd(
         across any subject (union strategy, 0–1).
     verbose : bool
         Print how many subjects were found and loaded, and the atlas path.
+    connectivity : str | None
+        None reads XCP-D's Pearson matrices; "correlation" or "partial correlation"
+        computes them from the ``*_stat-mean_timeseries.tsv`` files instead.
+    shrinkage : with `connectivity`, estimate the covariance with Ledoit-Wolf shrinkage.
 
     Returns
     -------
@@ -75,6 +84,7 @@ def load_xcpd(
     >>> results = compute_graph_metrics(matrices=matrices, atlas=atlas)
     """
     xcpd_dir = os.path.abspath(xcpd_dir)
+    stem = _stem(connectivity)
 
     # Discover subjects
     if subject_ids is None:
@@ -94,8 +104,7 @@ def load_xcpd(
         "sub-{sub}",
         session,
         "func",
-        f"sub-{{sub}}_{session}_task-{task}*_space-{space}_seg-{atlas}"
-        f"_stat-pearsoncorrelation_relmat.tsv",
+        f"sub-{{sub}}_{session}_task-{task}*_space-{space}_seg-{atlas}{stem}",
     )
 
     for sub in subject_ids:
@@ -106,10 +115,7 @@ def load_xcpd(
             skipped.append(_skip_reason(sub, matches))
             continue
 
-        df = pd.read_csv(matches[0], sep="\t", index_col=0)
-        df.index   = df.index.astype(str)
-        df.columns = df.columns.astype(str)
-        matrices[sub] = df
+        matrices[sub] = _read_xcpd_file(matches[0], connectivity)
 
     _warn_skipped(skipped)
     if not matrices:
@@ -122,7 +128,9 @@ def load_xcpd(
 
     # Drop bad nodes (union across subjects)
     before = matrices
-    if bad_node_threshold < 1.0:
+    if connectivity is not None:
+        matrices = series_to_matrices(matrices, connectivity, shrinkage, bad_node_threshold, "union")
+    elif bad_node_threshold < 1.0:
         matrices = _drop_bad_nodes(matrices, bad_node_threshold)
 
     # Load atlas
@@ -140,7 +148,7 @@ def load_xcpd(
         print(f"[load_xcpd] Atlas: {atlas_path} ({len(atlas_df)} ROIs)")
 
     record_input(atlas_df, before, matrices, bad_node_threshold, "union", source="XCP-D", path=xcpd_dir,
-                 atlas=atlas, space=space, task=task, session=session)
+                 atlas=atlas, space=space, task=task, session=session, **_series_record(connectivity, shrinkage))
     return matrices, atlas_df
 
 
@@ -154,6 +162,8 @@ def load_xcpd_flat(
     subject_ids: list[str] | None = None,
     bad_node_threshold: float = 0.9,
     verbose: bool = True,
+    connectivity: str | None = None,
+    shrinkage: bool = False,
 ) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
     """
     Load correlation matrices from a **flat directory** produced by the XCP-D
@@ -178,6 +188,7 @@ def load_xcpd_flat(
         Drop ROIs with NaN fraction above this threshold (union strategy).
     verbose : bool
         Print how many subjects were found and loaded, and the atlas path.
+    connectivity, shrinkage : same as :func:`load_xcpd`.
 
     Returns
     -------
@@ -196,7 +207,7 @@ def load_xcpd_flat(
     flat_dir   = os.path.abspath(flat_dir)
     atlas_path = os.path.abspath(atlas_path)
 
-    stem = "_stat-pearsoncorrelation_relmat.tsv"
+    stem = _stem(connectivity)
     glob_pattern = os.path.join(
         flat_dir,
         f"sub-*_{session}_task-{task}*_space-{space}_seg-{atlas}{stem}",
@@ -226,10 +237,7 @@ def load_xcpd_flat(
             skipped.append(_skip_reason(sub, matches))
             continue
 
-        df = pd.read_csv(matches[0], sep="\t", index_col=0)
-        df.index   = df.index.astype(str)
-        df.columns = df.columns.astype(str)
-        matrices[sub] = df
+        matrices[sub] = _read_xcpd_file(matches[0], connectivity)
 
     _warn_skipped(skipped)
     if not matrices:
@@ -239,7 +247,9 @@ def load_xcpd_flat(
         print(f"[load_xcpd_flat] Loaded {len(matrices)} matrix/matrices")
 
     before = matrices
-    if bad_node_threshold < 1.0:
+    if connectivity is not None:
+        matrices = series_to_matrices(matrices, connectivity, shrinkage, bad_node_threshold, "union")
+    elif bad_node_threshold < 1.0:
         matrices = _drop_bad_nodes(matrices, bad_node_threshold)
 
     if not os.path.exists(atlas_path):
@@ -249,8 +259,28 @@ def load_xcpd_flat(
         print(f"[load_xcpd_flat] Atlas: {atlas_path} ({len(atlas_df)} ROIs)")
 
     record_input(atlas_df, before, matrices, bad_node_threshold, "union", source="XCP-D", path=flat_dir,
-                 atlas=atlas, space=space, task=task, session=session)
+                 atlas=atlas, space=space, task=task, session=session, **_series_record(connectivity, shrinkage))
     return matrices, atlas_df
+
+
+def _stem(connectivity: str | None) -> str:
+    if connectivity is None:
+        return _RELMAT
+    from brainnet3d.connectivity import check_kind
+
+    check_kind(connectivity)
+    return _SERIES
+
+
+def _read_xcpd_file(path: str, connectivity: str | None) -> pd.DataFrame:
+    df = pd.read_csv(path, sep="\t") if connectivity else pd.read_csv(path, sep="\t", index_col=0)
+    df.index   = df.index.astype(str)
+    df.columns = df.columns.astype(str)
+    return df
+
+
+def _series_record(connectivity: str | None, shrinkage: bool) -> dict:
+    return {} if connectivity is None else {"connectivity": connectivity, "shrinkage": shrinkage}
 
 
 def _discover_subjects_flat(
