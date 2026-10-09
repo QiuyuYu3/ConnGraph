@@ -69,7 +69,7 @@ For files that differ in other BIDS entities, such as several runs or acquisitio
 {"bold": {"acquisition": "multiband", "run": 1}}
 ```
 
-A participant with several runs left after filtering is skipped, with a warning in the report, unless the runs are combined. XCP-D's `--combine-runs` does that before brainnet3d sees the data; for XCP-D output without it, `--combine-runs` together with `--connectivity` z-scores each run's time series and concatenates them in run order before computing connectivity.
+A participant with several runs left after filtering has each run analysed on its own (`01_run-1`, `01_run-2`), with a warning in the report; `brainnet3d-nbs` stops instead, since it needs one matrix per participant. XCP-D's `--combine-runs` merges runs before brainnet3d sees the data; for XCP-D output without it, `--combine-runs` together with `--connectivity` z-scores each run's time series and concatenates them in run order before computing connectivity.
 
 ## Output
 

@@ -73,6 +73,7 @@ def load_xcpd(
         Values given here for task and space replace `task` and `space`.
     combine_runs : with `connectivity`, a subject whose files differ only in run gets each run's
         time series z-scored and concatenated in run order before connectivity is computed.
+        Without it, each such run is returned on its own as ``"<subject>_run-<label>"``.
 
     Returns
     -------
@@ -118,17 +119,21 @@ def load_xcpd(
     if combine_runs and connectivity is None:
         raise ValueError("combine_runs concatenates time series; give connectivity as well.")
     combined: dict[str, int] = {}
+    split: dict[str, list[str]] = {}
 
     for sub in subject_ids:
         matches = _filtered(_find(xcpd_dir, sub, session, "func", tail), filters)
-        runs = _runs_only(matches) if combine_runs and len(matches) > 1 else []
+        runs = _runs_only(matches) if len(matches) > 1 else []
 
-        if runs:
+        if runs and combine_runs:
             matrices[sub] = _concat_runs(runs)
             combined[sub] = len(runs)
             continue
+        if runs:
+            split[sub] = _add_runs(matrices, sub, runs, lambda p: _read_xcpd_file(p, connectivity))
+            continue
         if len(matches) != 1:
-            skipped.append(_skip_reason(sub, matches, can_combine=True))
+            skipped.append(_skip_reason(sub, matches))
             continue
 
         matrices[sub] = _read_xcpd_file(matches[0], connectivity)
@@ -168,7 +173,7 @@ def load_xcpd(
     record_input(atlas_df, before, matrices, bad_node_threshold, "union", source="XCP-D", path=xcpd_dir,
                  atlas=atlas, space=_label(filters, "space", space), task=_label(filters, "task", task),
                  session=session, skipped=skipped, **_series_record(connectivity, shrinkage), **_filter_record(filters),
-                 **({"combined_runs": combined} if combine_runs else {}))
+                 **({"combined_runs": combined} if combine_runs else {}), **({"split_runs": split} if split else {}))
     return matrices, atlas_df
 
 
@@ -327,16 +332,24 @@ def load_fnirs_pipe(
     filters = _check_filters(bids_filters)
     tail = f"task-{'*' if 'task' in filters else task}*_chromo-{chromophore}_stat-pearson_relmat.tsv"
 
+    def read(path):
+        df = pd.read_csv(path, sep="\t", index_col=0)
+        names = [str(c).removesuffix(f" {chromophore}") for c in df.columns]
+        return df.set_axis(names, axis=0).set_axis(names, axis=1)
+
     matrices: dict[str, pd.DataFrame] = {}
     skipped: list[str] = []
+    split: dict[str, list[str]] = {}
     for sub in subject_ids:
         matches = _filtered(_find(deriv_dir, sub, session, "nirs", tail), filters)
+        runs = _runs_only(matches) if len(matches) > 1 else []
+        if runs:
+            split[sub] = _add_runs(matrices, sub, runs, read)
+            continue
         if len(matches) != 1:
             skipped.append(_skip_reason(sub, matches))
             continue
-        df = pd.read_csv(matches[0], sep="\t", index_col=0)
-        names = [str(c).removesuffix(f" {chromophore}") for c in df.columns]
-        matrices[sub] = df.set_axis(names, axis=0).set_axis(names, axis=1)
+        matrices[sub] = read(matches[0])
 
     _warn_skipped(skipped)
     if not matrices:
@@ -351,7 +364,7 @@ def load_fnirs_pipe(
     nodes = pd.DataFrame({"label": list(next(iter(matrices.values())).columns)})
     record_input(nodes, before, matrices, bad_node_threshold, drop_mode, source="fnirs-pipe", path=deriv_dir,
                  chromophore=chromophore, task=_label(filters, "task", task), session=session, skipped=skipped,
-                 **_filter_record(filters))
+                 **_filter_record(filters), **({"split_runs": split} if split else {}))
     return matrices, nodes
 
 
@@ -463,15 +476,26 @@ def _discover_subjects_flat(
     return sorted(set(subs))
 
 
-def _skip_reason(sub: str, matches: list[str], can_combine: bool = False) -> str:
+def _skip_reason(sub: str, matches: list[str]) -> str:
     if not matches:
         return f"sub-{sub}: no file found"
     runs = _runs_only(matches)
     if runs:
-        here = " or here (combine_runs, --combine-runs, with connectivity)" if can_combine else ""
-        return (f"sub-{sub}: {len(runs)} runs ({', '.join('run-' + _entities(p)['run'] for p in runs)}); merge them "
-                f"upstream (XCP-D --combine-runs){here}, or pick one with a BIDS filter on run")
+        return (f"sub-{sub}: {len(runs)} runs ({', '.join(_run_labels(runs))}); merge them upstream "
+                "(XCP-D --combine-runs) or pick one with a BIDS filter on run")
     return f"sub-{sub}: {len(matches)} files matched, be more specific: " + ", ".join(matches)
+
+
+def _run_labels(paths: list[str]) -> list[str]:
+    return [f"run-{_entities(p)['run']}" for p in paths]
+
+
+def _add_runs(matrices: dict, sub: str, runs: list[str], read) -> list[str]:
+    """Each run as its own entry, named <subject>_run-<label>; returns the run labels."""
+    labels = _run_labels(runs)
+    for label, path in zip(labels, runs):
+        matrices[f"{sub}_{label}"] = read(path)
+    return labels
 
 
 def _first_reasons(skipped: list[str], n: int = 3) -> str:

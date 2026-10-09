@@ -60,6 +60,15 @@ def _run(args, parser, variant, out, command, run_nbs, session=None) -> None:
         if col not in table:
             raise SystemExit(f"{parser.prog}: {args.groups} has no column {col!r}")
     by_label = {str(k).removeprefix("sub-"): k for k in matrices}
+    split = atlas.attrs.get(INPUT_ATTR, {}).get("split_runs", {})
+    listed = {str(p).removeprefix("sub-") for p in table.loc[table[args.group_column].isin(args.contrast),
+                                                             args.participant_column]}
+    several = [f"sub-{i} ({', '.join(split[i])})" for i in sorted(listed & set(split))]
+    if several:
+        here = "XCP-D --combine-runs, or --combine-runs with --connectivity here" if args.input_type == "xcpd" else \
+            "before running brainnet3d"
+        raise SystemExit(f"{parser.prog}: NBS needs one matrix per participant, but {len(several)} have several runs: "
+                         f"{'; '.join(several)}. Combine them ({here}) or pick one with --bids-filter-file.")
     groups, missing = [], []
     for name in args.contrast:
         ids = [str(p).removeprefix("sub-") for p in table.loc[table[args.group_column] == name, args.participant_column]]

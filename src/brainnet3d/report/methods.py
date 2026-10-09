@@ -34,6 +34,12 @@ def references() -> dict[str, dict]:
     return {e.key: {f.key: f.value for f in e.fields} for e in lib.entries}
 
 
+def participant_count(params: dict) -> int:
+    """Participants rather than matrices: a participant whose runs were analysed separately counts once."""
+    split = (params.get("input") or {}).get("split_runs") or {}
+    return len(params["subjects"]) - sum(len(runs) - 1 for runs in split.values())
+
+
 def graph_methods(params: dict) -> dict[str, str]:
     """Methods text of a compute_graph_metrics run, as {"plain", "markdown", "latex", "html"}."""
     opts, levels = params["options"], params["levels"]
@@ -51,7 +57,9 @@ def graph_methods(params: dict) -> dict[str, str]:
 
     para1 = [("input", {"source": source, "ver": params["packages"]["brainnet3d"]})]
     para1 += _input_sentences(params)
-    para1.append(("participants", {"n": len(params["subjects"])}))
+    para1.append(("participants", {"n": participant_count(params)}))
+    if loaded.get("split_runs"):
+        para1.append(("runs_separate", {"n": len(loaded["split_runs"]), "m": len(params["subjects"])}))
     if loaded.get("bad_node_threshold", 1.0) < 1.0:
         scope = "any participant" if loaded.get("drop_mode", "union") == "union" else "every participant"
         para1.append(("bad_series" if series else "bad_nodes",

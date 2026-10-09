@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 
 from brainnet3d.report import figures
-from brainnet3d.report.methods import graph_methods, nbs_methods
+from brainnet3d.report.methods import graph_methods, nbs_methods, participant_count
 
 PLOTLY_CDN = "https://cdn.plot.ly/plotly-3.5.0.min.js"
 _METRIC_TITLES = {"clust_coeff": "Clustering coefficient", "btwn_cent": "Betweenness centrality",
@@ -91,7 +91,8 @@ def save_graph_report(result, path, nodes: pd.DataFrame | None = None, surfaces:
     notes += _input_notes(loaded)
     summary = [
         _input_row(loaded)
-        + [("Participants", len(params["subjects"])),
+        + [("Participants", f"{participant_count(params)}" + (f" ({len(params['subjects'])} matrices, runs kept apart)"
+                                                              if loaded.get("split_runs") else "")),
          ("Levels", "; ".join(f"{_level_title(n)} ({d['n_nodes']} nodes)" for n, d in levels.items())),
          ("Graph construction", _method_text(first)),
          ("Sign rule", first["sign"]),
@@ -105,7 +106,7 @@ def save_graph_report(result, path, nodes: pd.DataFrame | None = None, surfaces:
     call = ("compute_graph_metrics", ["matrices", "atlas"],
             {**opts, "graph_method": first["graph_method"], "graph_params": first["graph_params"]})
     _write(path, "Graph metrics report", params, sections, summary, call, body, errors, notes, graph_methods(params),
-           f"{len(params['subjects'])} participants")
+           f"{participant_count(params)} participants")
 
 
 def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: tuple[str, str] | None = None,
@@ -560,6 +561,13 @@ def _input_warnings(loaded: dict) -> list[str]:
     if loaded.get("skipped"):
         out.append(_participants(len(loaded["skipped"]), "had no single matching file and {} skipped")
                    + ": " + "; ".join(loaded["skipped"]) + ".")
+    if loaded.get("split_runs"):
+        split = loaded["split_runs"]
+        how = ("upstream (XCP-D --combine-runs) or with --combine-runs and --connectivity" if loaded.get("source") == "XCP-D"
+               else "before running brainnet3d")
+        out.append(_participants(len(split), f"had several runs, each analysed on its own; combine them {how}, or pick "
+                                 "one with --bids-filter-file")
+                   + ": " + "; ".join(f"sub-{s} ({', '.join(r)})" for s, r in split.items()) + ".")
     if loaded.get("missing"):
         out.append(_participants(len(loaded["missing"]), "in the groups table had no matrix and {} left out")
                    + ": " + ", ".join(loaded["missing"]) + ".")
