@@ -48,6 +48,9 @@ def add_input_arguments(parser: argparse.ArgumentParser) -> None:
     g.add_argument("--session-id", nargs="+", metavar="LABEL",
                    help="sessions to analyse, with or without ses-, each in its own result folder (default: every "
                         "session in the input)")
+    g.add_argument("--bids-filter-file", type=_read_json, metavar="FILE",
+                   help='xcpd and fnirs-pipe: JSON file of BIDS entities the files must carry, as for XCP-D; the "bold" '
+                        '(xcpd) or "nirs" (fnirs-pipe) entry is used, e.g. {"bold": {"acquisition": "mb", "run": 1}}')
     g.add_argument("--task-id", default="rest", help="xcpd and fnirs-pipe: task label in the file names (default: rest)")
     g.add_argument("--space", default="fsLR", help="xcpd: space label in the file names (default: fsLR)")
     g.add_argument("--participant-label", nargs="+", metavar="LABEL", help="participants to include, with or without sub-")
@@ -79,6 +82,11 @@ def input_variants(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
 
 def input_sessions(args: argparse.Namespace, parser: argparse.ArgumentParser) -> list[str | None]:
     """Sessions analysed one at a time: those named by --session-id, else every session in the input, else None."""
+    filters = bids_filters(args, parser)
+    if "ses" in filters:
+        if args.session_id:
+            parser.error("give sessions either with --session-id or in --bids-filter-file, not both")
+        return [f"ses-{v}" if v else None for v in dict.fromkeys(filters["ses"])]
     if args.session_id:
         return [f"ses-{s.removeprefix('ses-')}" for s in dict.fromkeys(args.session_id)]
     if args.input_type in ("matrix", "timeseries"):
@@ -91,6 +99,30 @@ def input_sessions(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
         found = {os.path.basename(os.path.dirname(p)) for lbl in labels
                  for p in glob.glob(os.path.join(args.input_dir, f"sub-{lbl}", "ses-*", datatype))}
     return sorted(s for s in found if s) or [None]
+
+
+def bids_filters(args: argparse.Namespace, parser: argparse.ArgumentParser) -> dict[str, list]:
+    """The input type's entry of --bids-filter-file, keyed by file-name entity."""
+    from brainnet3d.derivatives import _check_filters
+
+    if args.bids_filter_file is None:
+        return {}
+    if args.input_type not in ("xcpd", "fnirs-pipe"):
+        parser.error("--bids-filter-file needs xcpd or fnirs-pipe input")
+    try:
+        return _check_filters(args.bids_filter_file.get("nirs" if args.input_type == "fnirs-pipe" else "bold"))
+    except ValueError as exc:
+        parser.error(str(exc))
+
+
+def _read_json(path: str) -> dict:
+    try:
+        data = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise argparse.ArgumentTypeError(f"cannot read {path}: {exc}") from None
+    if not isinstance(data, dict):
+        raise argparse.ArgumentTypeError(f"{path} must hold a JSON object")
+    return data
 
 
 def run_all(args: argparse.Namespace, parser: argparse.ArgumentParser, run) -> int:
@@ -140,11 +172,14 @@ def load_input(args: argparse.Namespace, parser: argparse.ArgumentParser,
     labels = [s.removeprefix("sub-") for s in args.participant_label] if args.participant_label else None
     verbose = not args.quiet
     kind = args.connectivity.replace("-", " ") if args.connectivity else None
+    filters = bids_filters(args, parser)
+    if "ses" in filters:
+        filters["ses"] = [session.removeprefix("ses-") if session else None]
     if args.input_type == "fnirs-pipe":
         return brainnet3d.load_fnirs_pipe(args.input_dir, variant.removeprefix("chromo-"), session=session,
                                           task=args.task_id, subject_ids=labels,
                                           bad_node_threshold=args.bad_node_threshold, drop_mode=args.drop_mode,
-                                          verbose=verbose)
+                                          verbose=verbose, bids_filters=filters)
     if args.input_type in ("matrix", "timeseries"):
         nodes = os.path.join(args.input_dir, NODES_FILE)
         if not os.path.isfile(nodes):
@@ -171,7 +206,7 @@ def load_input(args: argparse.Namespace, parser: argparse.ArgumentParser,
         return ds.matrices, ds.nodes_df
     return brainnet3d.load_xcpd(args.input_dir, variant.removeprefix("atlas-"), session=session, task=args.task_id,
                                 space=args.space, subject_ids=labels, bad_node_threshold=args.bad_node_threshold,
-                                verbose=verbose, connectivity=kind, shrinkage=args.shrinkage)
+                                verbose=verbose, connectivity=kind, shrinkage=args.shrinkage, bids_filters=filters)
 
 
 def node_columns(args: argparse.Namespace) -> tuple[str, str]:

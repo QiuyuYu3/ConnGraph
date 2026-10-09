@@ -30,6 +30,7 @@ def load_xcpd(
     verbose: bool = True,
     connectivity: str | None = None,
     shrinkage: bool = False,
+    bids_filters: dict | None = None,
 ) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
     """
     Load correlation matrices from an XCP-D BIDS derivatives directory.
@@ -64,6 +65,11 @@ def load_xcpd(
         None reads XCP-D's Pearson matrices; "correlation" or "partial correlation"
         computes them from the ``*_stat-mean_timeseries.tsv`` files instead.
     shrinkage : with `connectivity`, estimate the covariance with Ledoit-Wolf shrinkage.
+    bids_filters : dict | None
+        BIDS entities the file names must carry, as in the "bold" entry of an
+        XCP-D filter file, e.g. ``{"acquisition": "mb", "run": 1}``; a list
+        accepts any of its values, None requires the entity to be absent.
+        Values given here for task and space replace `task` and `space`.
 
     Returns
     -------
@@ -102,10 +108,12 @@ def load_xcpd(
     # Load matrices
     matrices: dict[str, pd.DataFrame] = {}
     skipped: list[str] = []
-    tail = f"task-{task}*_space-{space}_seg-{atlas}{stem}"
+    filters = _check_filters(bids_filters)
+    tail = (f"task-{'*' if 'task' in filters else task}*_space-{'*' if 'space' in filters else space}"
+            f"_seg-{atlas}{stem}")
 
     for sub in subject_ids:
-        matches = _find(xcpd_dir, sub, session, "func", tail)
+        matches = _filtered(_find(xcpd_dir, sub, session, "func", tail), filters)
 
         if len(matches) != 1:
             skipped.append(_skip_reason(sub, matches))
@@ -144,8 +152,8 @@ def load_xcpd(
         print(f"[load_xcpd] Atlas: {atlas_path} ({len(atlas_df)} ROIs)")
 
     record_input(atlas_df, before, matrices, bad_node_threshold, "union", source="XCP-D", path=xcpd_dir,
-                 atlas=atlas, space=space, task=task, session=session, skipped=skipped,
-                 **_series_record(connectivity, shrinkage))
+                 atlas=atlas, space=_label(filters, "space", space), task=_label(filters, "task", task),
+                 session=session, skipped=skipped, **_series_record(connectivity, shrinkage), **_filter_record(filters))
     return matrices, atlas_df
 
 
@@ -273,6 +281,7 @@ def load_fnirs_pipe(
     bad_node_threshold: float = 0.9,
     drop_mode: str = "union",
     verbose: bool = True,
+    bids_filters: dict | None = None,
 ) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
     """
     Load one chromophore's channel-by-channel Pearson matrices from a fnirs-pipe derivatives folder.
@@ -285,6 +294,7 @@ def load_fnirs_pipe(
     task : task label in the file names.
     subject_ids, bad_node_threshold, verbose : as in :func:`load_xcpd`.
     drop_mode : "union" drops a channel rejected in any participant, "intersection" only one rejected in all.
+    bids_filters : as in :func:`load_xcpd`, e.g. the "nirs" entry of a filter file.
 
     Returns
     -------
@@ -299,12 +309,13 @@ def load_fnirs_pipe(
         subject_ids = _discover_subjects(deriv_dir)
         if not subject_ids:
             raise FileNotFoundError(f"No sub-* directories found in: {deriv_dir}")
-    tail = f"task-{task}*_chromo-{chromophore}_stat-pearson_relmat.tsv"
+    filters = _check_filters(bids_filters)
+    tail = f"task-{'*' if 'task' in filters else task}*_chromo-{chromophore}_stat-pearson_relmat.tsv"
 
     matrices: dict[str, pd.DataFrame] = {}
     skipped: list[str] = []
     for sub in subject_ids:
-        matches = _find(deriv_dir, sub, session, "nirs", tail)
+        matches = _filtered(_find(deriv_dir, sub, session, "nirs", tail), filters)
         if len(matches) != 1:
             skipped.append(_skip_reason(sub, matches))
             continue
@@ -323,7 +334,8 @@ def load_fnirs_pipe(
         matrices = _drop_bad_nodes(matrices, bad_node_threshold, drop_mode)
     nodes = pd.DataFrame({"label": list(next(iter(matrices.values())).columns)})
     record_input(nodes, before, matrices, bad_node_threshold, drop_mode, source="fnirs-pipe", path=deriv_dir,
-                 chromophore=chromophore, task=task, session=session, skipped=skipped)
+                 chromophore=chromophore, task=_label(filters, "task", task), session=session, skipped=skipped,
+                 **_filter_record(filters))
     return matrices, nodes
 
 
@@ -334,6 +346,55 @@ def _find(root: str, sub: str, session: str | None, datatype: str, tail: str) ->
         return glob.glob(os.path.join(folder, session, datatype, f"sub-{sub}_{session}_{tail}"))
     return (glob.glob(os.path.join(folder, datatype, f"sub-{sub}_{tail}"))
             + glob.glob(os.path.join(folder, "ses-*", datatype, f"sub-{sub}_ses-*_{tail}")))
+
+
+# BIDS entity names as pybids and XCP-D filter files spell them, and the keys they take in file names
+ENTITIES = {
+    "subject": "sub", "session": "ses", "task": "task", "acquisition": "acq", "ceagent": "ce",
+    "reconstruction": "rec", "direction": "dir", "run": "run", "echo": "echo", "part": "part", "space": "space",
+    "cohort": "cohort", "resolution": "res", "density": "den", "desc": "desc", "atlas": "atlas",
+    "segmentation": "seg", "statistic": "stat", "chromophore": "chromo",
+}
+_ABSENT = (None, "Query.NONE")
+
+
+def _check_filters(filters: dict | None) -> dict[str, list]:
+    """Filters keyed by file-name entity, each a list of accepted values (bare, without key-) or [None]."""
+    out = {}
+    for name, value in (filters or {}).items():
+        key = ENTITIES.get(name, name if name in ENTITIES.values() else None)
+        if key is None:
+            raise ValueError(f"Unknown BIDS entity {name!r} in the filters; use one of {sorted(ENTITIES)}.")
+        values = value if isinstance(value, list) else [value]
+        out[key] = [None if v in _ABSENT else str(v).removeprefix(f"{key}-") for v in values]
+    return out
+
+
+def _entities(path: str) -> dict[str, str]:
+    parts = os.path.basename(path).split(".")[0].split("_")
+    return dict(p.split("-", 1) for p in parts if "-" in p)
+
+
+def _same(key: str, a: str, b: str) -> bool:
+    if key in ("run", "echo") and a.isdigit() and b.isdigit():
+        return int(a) == int(b)
+    return a == b
+
+
+def _filtered(paths: list[str], filters: dict[str, list]) -> list[str]:
+    def keep(path):
+        found = _entities(path)
+        return all(any(found.get(k) is None if v is None else k in found and _same(k, found[k], v) for v in values)
+                   for k, values in filters.items())
+    return [p for p in paths if keep(p)]
+
+
+def _label(filters: dict[str, list], key: str, default: str) -> str:
+    return " or ".join(str(v) for v in filters[key]) if key in filters else default
+
+
+def _filter_record(filters: dict[str, list]) -> dict:
+    return {"bids_filters": filters} if filters else {}
 
 
 def _session_label(session: str | None) -> str | None:
