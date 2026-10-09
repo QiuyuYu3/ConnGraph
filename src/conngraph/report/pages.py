@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 
 from conngraph.report import figures
-from conngraph.report.methods import graph_methods, nbs_methods, participant_count
+from conngraph.report.methods import compare_methods, graph_methods, nbs_methods, participant_count
 
 PLOTLY_CDN = "https://cdn.plot.ly/plotly-3.5.0.min.js"
 _METRIC_TITLES = {"clust_coeff": "Clustering coefficient", "btwn_cent": "Betweenness centrality",
@@ -244,6 +244,122 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
     ]
     _write(path, "Network-based statistic report", params, sections, summary, ("run_nbs", ["matrices_g1", "matrices_g2"], o),
            body, _input_warnings(loaded), notes, nbs_methods(params), f"{len(params['groups']['g1'])} vs {len(params['groups']['g2'])}")
+
+
+def save_compare_report(result, path, nodes: pd.DataFrame | None = None, label_col: str = "label",
+                        network_col: str = "network") -> None:
+    """Write the HTML report of a compare_groups result; see GroupComparisonResult.save_report."""
+    params, o = result.params, result.params["options"]
+    if o.get("correction") is None:
+        raise ValueError("the report marks significant results, so compare_groups needs a correction: fdr, fwe or none")
+    networks = _column(nodes, label_col, network_col)
+    g1, g2 = params["contrast"]
+    kind = _CORRECTION_P[o["correction"]]
+    alpha = o["alpha"]
+    body, sections, counts = [], [], []
+    for section, prefix in (("Metrics", "metrics_"), ("Global", "global_"), ("Blocks", "blocks_"), ("Edges", "edges")):
+        names = [n for n in result.tables if n.startswith(prefix)]
+        if not names:
+            continue
+        steps, letter = [], iter("abcdefgh")
+        for name in names:
+            table = result.tables[name]
+            sig = table[table["significant"]].sort_values(kind)
+            counts.append((_COMPARE_TITLES[name], _flag(f"{len(sig)} of {int(table['t'].notna().sum())}", True, "")))
+            if len(sig):
+                shown = sig.head(_MAX_COMPARE_ROWS)
+                desc = (f"{len(sig)} significant at {_P_NAMES[o['correction']]} p < {alpha}, smallest p first"
+                        + (f"; the first {_MAX_COMPARE_ROWS} are shown, all are in {name}.tsv"
+                           if len(sig) > _MAX_COMPARE_ROWS else "") + ".")
+            else:
+                shown = table[table["t"].notna()].sort_values(kind).head(10)
+                desc = f"No test reached {_P_NAMES[o['correction']]} p < {alpha}; the ten smallest p-values are shown."
+            html_ = f'<div class="scroll">{_table(_compare_rows(shown, networks, g1, g2))}</div>'
+            heat = _compare_heatmap(name, table, kind, networks)
+            if heat:
+                html_ += heat
+            steps.append(_step(f"{next(letter)}. {_COMPARE_TITLES[name]}", html=html_, desc=desc))
+        body.append(dict(id=section, title=_COMPARE_SECTIONS[section], desc="", steps=steps))
+        sections.append((section, _COMPARE_SECTIONS[section]))
+
+    loaded = params.get("input") or {}
+    notes = _input_notes(loaded)
+    for name, items in (params.get("untested") or {}).items():
+        notes.append(f"{len(items)} test{'' if len(items) == 1 else 's'} in {name} had missing or constant values and "
+                     f"{'was' if len(items) == 1 else 'were'} not run: {', '.join(items[:10])}"
+                     + (" …" if len(items) > 10 else "") + ".")
+    errors = _input_warnings(loaded)
+    left = params.get("left_out") or {}
+    if left.get("no_data"):
+        errors.append(_participants(len(left["no_data"]), "had no data for every comparison and {} left out")
+                      + ": " + ", ".join(map(str, left["no_data"])) + ".")
+    if left.get("covariates"):
+        errors.append(_participants(len(left["covariates"]), "had a missing covariate and {} left out")
+                      + ": " + ", ".join(map(str, left["covariates"])) + ".")
+    covariates = ", ".join(o["covariates"]) or "none"
+    summary = [
+        _input_row(loaded)
+        + [("Group 1", f"{g1}: {len(params['groups']['g1'])} participants"),
+           ("Group 2", f"{g2}: {len(params['groups']['g2'])} participants"),
+           ("Covariates", covariates),
+           ("Significance", f"{_P_NAMES[o['correction']]} p < {alpha}"),
+           ("Permutations", f"{o['n_perms']} (seed {o['seed']})")],
+        [("Created", params["created"].replace("T", " ")),
+         ("ConnGraph", "v" + params["packages"]["conngraph"])] + counts,
+    ]
+    _write(path, "Group comparison report", params, sections, summary, ("compare_groups", ["groups", "contrast"], o),
+           body, errors, notes, compare_methods(params), f"{g1} vs {g2}")
+
+
+_CORRECTION_P = {"fdr": "p_fdr", "fwe": "p_fwe", "none": "p"}
+_P_NAMES = {"fdr": "FDR-corrected", "fwe": "family-wise corrected", "none": "uncorrected"}
+_COMPARE_SECTIONS = {"Metrics": "Graph metrics", "Global": "Whole graph", "Blocks": "Network blocks", "Edges": "Edges"}
+_COMPARE_TITLES = {"metrics_node": "Node level", "metrics_network": "Network level",
+                   "metrics_networkhemi": "Network level (hemispheres)", "global_node": "Node-level graph",
+                   "global_network": "Network-level graph", "global_networkhemi": "Network-level graph (hemispheres)",
+                   "blocks_network": "Between networks", "blocks_networkhemi": "Between networks (hemispheres)",
+                   "edges": "Every edge"}
+_MAX_COMPARE_ROWS = 500
+
+
+def _compare_rows(table: pd.DataFrame, networks: dict | None, g1: str, g2: str) -> pd.DataFrame:
+    out = pd.DataFrame(index=table.index)
+    if "metric" in table:
+        out["Metric"] = [_metric_title(m) for m in table["metric"]]
+    for col, title in (("node", "Node"), ("network", "Network"), ("network_a", "Network A"), ("network_b", "Network B"),
+                       ("roi_a", "ROI A"), ("roi_b", "ROI B")):
+        if col in table:
+            out[title] = table[col].astype(str)
+    if networks is not None and "node" in table:
+        out["Network"] = [networks.get(n, "None") for n in table["node"]]
+    if networks is not None and "roi_a" in table:
+        out["Network A"] = [networks.get(n, "None") for n in table["roi_a"]]
+        out["Network B"] = [networks.get(n, "None") for n in table["roi_b"]]
+    for col, title in (("t", "t"), ("p", "p"), ("p_fdr", "p FDR"), ("p_fwe", "p FWE"), ("mean_group1", g1),
+                       ("mean_group2", g2)):
+        out[title] = table[col].astype(float)
+    return out.reset_index(drop=True)
+
+
+def _compare_heatmap(name: str, table: pd.DataFrame, kind: str, networks: dict | None) -> str:
+    """t of every block or edge as a matrix, the significant ones at full colour."""
+    if name.startswith("blocks_"):
+        a, b, groups_of = "network_a", "network_b", (lambda n: n.partition("_")[2] if name.endswith("hemi") else n)
+    elif name == "edges":
+        a, b, groups_of = "roi_a", "roi_b", (lambda n: networks.get(n, "None")) if networks is not None else None
+    else:
+        return ""
+    names = list(dict.fromkeys([*table[a].astype(str), *table[b].astype(str)]))
+    pos = {n: k for k, n in enumerate(names)}
+    M = np.zeros((len(names), len(names)))
+    for x, y, t in zip(table[a].astype(str), table[b].astype(str), table["t"].fillna(0.0)):
+        M[pos[x], pos[y]] = M[pos[y], pos[x]] = t
+    sig = table[table["significant"]]
+    marks = [p for x, y in zip(sig[a].astype(str), sig[b].astype(str)) for p in ((x, y), (y, x))]
+    groups = [groups_of(n) for n in names] if groups_of else None
+    fig = figures.ordered_heatmap(M, names, groups, float(np.abs(M).max()) or 1.0, "t", marks or None)
+    label = "t, significant cells at full colour" if marks else "t"
+    return f'<div class="option-label">{label}</div>' + figures.to_div(fig)
 
 
 def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, static_brain, notes,

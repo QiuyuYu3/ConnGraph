@@ -170,3 +170,43 @@ def test_compare_groups_records_the_correction(dataset, graph_result):
     with pytest.raises(ValueError, match="correction"):
         compare_groups(_labels(dataset), ("A", "B"), graph_result, compare=["metrics"], verbose=False,
                        correction="bonferroni")
+
+
+def _sections(text):
+    import re
+
+    return re.findall(r'<h2 id="([^"]+)"', text)
+
+
+@pytest.mark.parametrize("correction, words", [("fdr", "false discovery rate p &lt; 0.05"),
+                                                ("fwe", "family-wise error-corrected p &lt; 0.05"),
+                                                ("none", "uncorrected p &lt; 0.05")])
+def test_comparison_report_lists_results_and_writes_the_methods(dataset, graph_result, tmp_path, correction, words):
+    result = compare_groups(_labels(dataset), ("A", "B"), graph_result, dataset.matrices,
+                            compare=("metrics", "blocks", "edges"), n_perms=20, seed=0, verbose=False,
+                            correction=correction)
+    path = tmp_path / "compare.html"
+    result.save_report(path, nodes=dataset.nodes_df, network_col="network")
+    text = path.read_text(encoding="utf-8")
+    assert _sections(text) == ["Summary", "Metrics", "Global", "Blocks", "Edges", "Errors", "Methods", "Versions"]
+    assert words in text and "Fisher z-transformed" in text and "A vs B" in text
+    assert text.count('class="plotly-graph-div"') >= 3  # t heatmaps of the blocks and the edges
+
+
+def test_comparison_report_notes_untested_values_and_left_out_participants(dataset, graph_result, tmp_path):
+    labels = dict(_labels(dataset), extra="B")
+    with pytest.warns(UserWarning):
+        result = compare_groups(labels, ("A", "B"), graph_result, compare=["metrics"], n_perms=10, seed=0,
+                                verbose=False, correction="fdr")
+    result.params["untested"] = {"metrics_node": ["strength.abs / Def_L_00"]}
+    path = tmp_path / "compare.html"
+    result.save_report(path)
+    text = path.read_text(encoding="utf-8")
+    assert "Def_L_00" in text and "extra" in text
+
+
+def test_comparison_report_needs_a_correction(dataset, graph_result, tmp_path):
+    result = compare_groups(_labels(dataset), ("A", "B"), graph_result, compare=["metrics"], n_perms=10, seed=0,
+                            verbose=False)
+    with pytest.raises(ValueError, match="correction"):
+        result.save_report(tmp_path / "compare.html")

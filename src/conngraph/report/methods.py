@@ -130,6 +130,30 @@ def nbs_methods(params: dict) -> dict[str, str]:
     return render([sentences + [("nbs", slots)]])
 
 
+def compare_methods(params: dict) -> dict[str, str]:
+    """Methods text of a compare_groups run, as {"plain", "markdown", "latex", "html"}."""
+    o = params["options"]
+    g1, g2 = params["contrast"]
+    what = {"metrics": "graph metrics at each level and of the whole graph",
+            "blocks": "mean connectivity within and between networks", "edges": "every edge"}
+    sentences = [("compare_intro", {"g1": g1, "g2": g2, "n1": len(params["groups"]["g1"]),
+                                    "n2": len(params["groups"]["g2"]), "ver": params["packages"]["conngraph"]})]
+    sentences += _input_sentences(params)
+    sentences.append(("compare_what", {"what": _join([what[c] for c in o["compare"]])}))
+    if "edges" in o["compare"] and o["apply_fisher_z"]:
+        sentences.append(("compare_fisher", {}))
+    covariates = f", with {_join(o['covariates'])} as covariates" if o["covariates"] else ""
+    if any(c not in o["covariates"] for c in params.get("covariate_columns", [])):
+        covariates += " (text covariates coded as indicator variables)"
+    sentences.append(("compare_model", {"covariates": covariates}))
+    sentences.append(("compare_correction", {"k": o["n_perms"]}))
+    kind = {"fdr": "false discovery rate", "fwe": "family-wise error-corrected", "none": "uncorrected"}
+    sentences.append(("compare_significance", {"kind": kind[o["correction"]], "alpha": o["alpha"]}))
+    if params.get("untested"):
+        sentences.append(("compare_untested", {}))
+    return render([sentences])
+
+
 def _input_sentences(params: dict) -> list[tuple[str, dict]]:
     """How the matrices were obtained, when the loader computed them from time series or read Fisher z values."""
     loaded = params.get("input") or {}

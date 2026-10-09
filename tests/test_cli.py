@@ -670,3 +670,12 @@ def test_comparisons_need_a_chosen_correction(xcpd, tmp_path):
     edges = pd.read_csv(compare / "edges.tsv", sep="\t")
     assert edges["significant"].tolist() == (edges["p_fdr"] < 0.2).tolist()
     assert _params(compare)["options"]["alpha"] == 0.2
+
+
+def test_group_comparisons_get_a_report(xcpd, tmp_path):
+    root, coords, groups = xcpd
+    out = tmp_path / "out"
+    args = [a for a in _compare_args(groups) if a != "--no-report"]
+    _both(root, out, NETWORK, [*args, "--coords", str(coords), "--no-static-brain"], common=XCPD)
+    report = out / "group" / "ses-01" / "atlas-Toy" / "compare" / "compare_report.html"
+    assert "Group comparison report" in report.read_text(encoding="utf-8")

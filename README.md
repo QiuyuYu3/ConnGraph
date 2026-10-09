@@ -96,7 +96,7 @@ OUTPUT/
         parameters.json
         graph_report.html
         figures/                      the report's static figures (300 dpi PNG); keep them beside the report
-        compare/                      metrics_node.tsv, global_node.tsv, blocks_networkhemi.tsv, edges.tsv, ...
+        compare/                      metrics_node.tsv, global_node.tsv, blocks_networkhemi.tsv, edges.tsv, ..., compare_report.html
         nbs/                          nbs_components.tsv, nbs_edges.tsv, nbs_null.tsv, nbs_report.html, figures/
 ```
 

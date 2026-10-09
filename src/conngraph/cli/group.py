@@ -212,6 +212,9 @@ def _compare(args, parser, compare, result, matrices, groups, rows, missing, atl
     for name, table in comparison.tables.items():
         table.to_csv(out / f"{name}.tsv", sep="\t", index=False)
     _shared.write_json(out / "parameters.json", params)
+    if not args.no_report:
+        label_col, network_col = _shared.node_columns(args)
+        comparison.save_report(out / "compare_report.html", nodes=atlas, label_col=label_col, network_col=network_col)
     if not args.quiet:
         print(f"[{parser.prog}] Group comparison: {out}")
 

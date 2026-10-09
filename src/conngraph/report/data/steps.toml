@@ -328,3 +328,34 @@ plain = "Connectivity values were Fisher z-transformed before testing."
 # TODO: review wording
 [nbs]
 plain = "A {test} was computed for every edge ({n1} and {n2} participants); edges whose {tail} t-statistic exceeded {thresh} were retained, and each connected component of retained edges was sized by its number of edges. Family-wise error-corrected p-values were obtained from {k} permutations of {shuffle}, by comparing each component with the null distribution of the largest component size."
+
+# ---- group comparisons ----
+
+# TODO: review wording
+[compare_intro]
+plain = "Differences between {g1} ({n1} participants) and {g2} ({n2} participants) were tested with mass-univariate general linear models {todo:permutation inference for the general linear model}, performed with ConnGraph v{ver}."
+
+# TODO: review wording
+[compare_what]
+plain = "Tests covered {what}."
+
+# TODO: review wording
+[compare_fisher]
+plain = "Edge values were Fisher z-transformed before testing."
+
+# TODO: review wording
+[compare_model]
+plain = "Each model included group and an intercept{covariates}, and gave a t-statistic and a two-sided p-value for the group difference."
+
+# TODO: review wording
+[compare_correction]
+plain = "Within each family of tests (one metric at one level, the whole-graph metrics of one level, the network blocks of one level, or all edges), p-values were corrected with the false discovery rate procedure {todo:the Benjamini-Hochberg false discovery rate} and for the family-wise error rate with the maximum t-statistic over {k} permutations {todo:max-T permutation correction}."
+
+# TODO: review wording
+[compare_significance]
+plain = "Results with {kind} p < {alpha} were considered significant."
+
+# TODO: review wording
+[compare_untested]
+plain = "Measures with missing or constant values across participants were not tested."
+

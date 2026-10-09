@@ -29,6 +29,13 @@ class GroupComparisonResult:
     tables: dict[str, pd.DataFrame] = field(default_factory=dict)
     params: dict = field(default_factory=dict)
 
+    def save_report(self, path, nodes: pd.DataFrame | None = None, label_col: str = "label",
+                    network_col: str = "network") -> None:
+        """Write an HTML report (plotly loads from its CDN); nodes adds each region's network to the tables."""
+        from conngraph.report.pages import save_compare_report
+
+        save_compare_report(self, path, nodes, label_col, network_col)
+
 
 def permuted_t_test(values: pd.DataFrame, group1: pd.Series, covariates: pd.DataFrame | None = None,
                     n_perms: int = 5000, seed: int = 0, correction: str | None = None,
