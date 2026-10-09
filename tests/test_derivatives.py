@@ -53,6 +53,31 @@ def test_load_fnirs_pipe_finds_files_in_a_session_folder(tmp_path):
     np.testing.assert_allclose(matrices["02"].to_numpy(), _fc(10))
 
 
+def test_load_fnirs_pipe_without_a_session_finds_any_session(tmp_path):
+    root = _fnirs_tree(tmp_path, session="ses-02")
+    matrices, _ = bnv.load_fnirs_pipe(str(root), "hbo", verbose=False)
+    assert sorted(matrices) == ["01", "02"]
+
+
+XCPD_TAIL = "task-rest_space-fsLR_seg-Gordon_stat-pearsoncorrelation_relmat.tsv"
+
+
+@pytest.mark.parametrize("session", ["ses-01", None])
+def test_load_xcpd_without_a_session_finds_files_with_or_without_one(tmp_path, session):
+    for k, sub in enumerate(("01", "02")):
+        folder = tmp_path / f"sub-{sub}" / (session or "") / "func"
+        folder.mkdir(parents=True)
+        name = f"sub-{sub}_" + (f"{session}_" if session else "") + XCPD_TAIL
+        pd.DataFrame(_fc(k), index=CHANNELS, columns=CHANNELS).to_csv(folder / name, sep="\t")
+    atlas = tmp_path / "atlases" / "atlas-Gordon"
+    atlas.mkdir(parents=True)
+    pd.DataFrame({"label": CHANNELS, "network_label": ["a", "b"] * 3}).to_csv(
+        atlas / "atlas-Gordon_dseg.tsv", sep="\t", index=False)
+    matrices, _ = bnv.load_xcpd(str(tmp_path), "Gordon", session=None, verbose=False)
+    assert sorted(matrices) == ["01", "02"]
+    np.testing.assert_allclose(matrices["02"].to_numpy(), _fc(1))
+
+
 def test_load_fnirs_pipe_rejects_an_unknown_chromophore(tmp_path):
     with pytest.raises(ValueError, match="hbo"):
         bnv.load_fnirs_pipe(str(_fnirs_tree(tmp_path)), "hbt")

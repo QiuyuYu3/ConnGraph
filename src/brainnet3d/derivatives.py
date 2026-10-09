@@ -45,8 +45,9 @@ def load_xcpd(
     atlas : str
         Atlas name as it appears in the filename and atlas folder, e.g.
         ``"Gordon"``.  Used to locate both the matrix files and the atlas TSV.
-    session : str
-        BIDS session label, e.g. ``"ses-01"``.
+    session : str | None
+        BIDS session label, e.g. ``"ses-01"``; None takes each subject's one
+        matching file, with or without a session.
     task : str
         BIDS task label, e.g. ``"rest"``.
     space : str
@@ -100,17 +101,10 @@ def load_xcpd(
     # Load matrices
     matrices: dict[str, pd.DataFrame] = {}
     skipped: list[str] = []
-    pattern_template = os.path.join(
-        xcpd_dir,
-        "sub-{sub}",
-        session,
-        "func",
-        f"sub-{{sub}}_{session}_task-{task}*_space-{space}_seg-{atlas}{stem}",
-    )
+    tail = f"task-{task}*_space-{space}_seg-{atlas}{stem}"
 
     for sub in subject_ids:
-        pattern = pattern_template.format(sub=sub)
-        matches = glob.glob(pattern)
+        matches = _find(xcpd_dir, sub, session, "func", tail)
 
         if len(matches) != 1:
             skipped.append(_skip_reason(sub, matches))
@@ -284,7 +278,7 @@ def load_fnirs_pipe(
     ----------
     deriv_dir : fnirs-pipe output folder holding ``sub-*/[ses-*/]nirs/``.
     chromophore : "hbo" or "hbr"; the two are never mixed.
-    session : session label such as ``"ses-01"``, or None when the files carry no session.
+    session : session label such as ``"ses-01"``; None takes each subject's one matching file, with or without a session.
     task : task label in the file names.
     subject_ids, bad_node_threshold, verbose : as in :func:`load_xcpd`.
     drop_mode : "union" drops a channel rejected in any participant, "intersection" only one rejected in all.
@@ -301,14 +295,12 @@ def load_fnirs_pipe(
         subject_ids = _discover_subjects(deriv_dir)
         if not subject_ids:
             raise FileNotFoundError(f"No sub-* directories found in: {deriv_dir}")
-    session_part = f"_{session}" if session else ""
-    template = os.path.join(deriv_dir, "sub-{sub}", *([session] if session else []), "nirs",
-                            f"sub-{{sub}}{session_part}_task-{task}*_chromo-{chromophore}_stat-pearson_relmat.tsv")
+    tail = f"task-{task}*_chromo-{chromophore}_stat-pearson_relmat.tsv"
 
     matrices: dict[str, pd.DataFrame] = {}
     skipped: list[str] = []
     for sub in subject_ids:
-        matches = glob.glob(template.format(sub=sub))
+        matches = _find(deriv_dir, sub, session, "nirs", tail)
         if len(matches) != 1:
             skipped.append(_skip_reason(sub, matches))
             continue
@@ -329,6 +321,15 @@ def load_fnirs_pipe(
     record_input(nodes, before, matrices, bad_node_threshold, drop_mode, source="fnirs-pipe", path=deriv_dir,
                  chromophore=chromophore, task=task, session=session)
     return matrices, nodes
+
+
+def _find(root: str, sub: str, session: str | None, datatype: str, tail: str) -> list[str]:
+    """A subject's files ending in tail, in the given session or, without one, in no or any session."""
+    folder = os.path.join(root, f"sub-{sub}")
+    if session:
+        return glob.glob(os.path.join(folder, session, datatype, f"sub-{sub}_{session}_{tail}"))
+    return (glob.glob(os.path.join(folder, datatype, f"sub-{sub}_{tail}"))
+            + glob.glob(os.path.join(folder, "ses-*", datatype, f"sub-{sub}_ses-*_{tail}")))
 
 
 def _stem(connectivity: str | None) -> str:
