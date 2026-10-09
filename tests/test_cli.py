@@ -779,6 +779,21 @@ def test_participant_reports_built_in_parallel_match_those_built_one_by_one(xcpd
     assert len(pages["1"]) == 6 and pages["1"] == pages["3"]
 
 
+def test_report_workers_fit_in_the_memory_limit(capsys):
+    import argparse
+
+    from conngraph.cli.participant import REPORT_MB, REPORT_MB_PER_REGION, _report_workers
+
+    parser = argparse.ArgumentParser(prog="conngraph")
+    need = REPORT_MB + REPORT_MB_PER_REGION * 100
+    args = argparse.Namespace(n_jobs=8, mem=int(2.5 * need), quiet=False)
+    assert _report_workers(args, parser, 30, 100) == 2
+    assert "Building 2 report(s) at a time instead of 8" in capsys.readouterr().out
+    assert _report_workers(argparse.Namespace(n_jobs=8, mem=100 * int(need), quiet=False), parser, 5, 100) == 5
+    assert _report_workers(argparse.Namespace(n_jobs=8, mem=1, quiet=True), parser, 30, 100) == 1
+    assert capsys.readouterr().out == ""
+
+
 def test_a_failed_participant_report_is_logged_and_the_others_are_written(xcpd, tmp_path, monkeypatch, capsys):
     from conngraph.cli import participant
 

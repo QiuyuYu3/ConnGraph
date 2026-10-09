@@ -14,8 +14,14 @@ from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 import pandas as pd
+import psutil
 
 from conngraph.cli import _shared
+
+MB = 1024 ** 2
+# Rough memory one report worker needs, with a margin; most of it is the plotting libraries and the surfaces
+REPORT_MB = 1200
+REPORT_MB_PER_REGION = 0.5
 
 # Result attribute, file label and row name of each level
 LEVEL_FILES = (("node_df", "node", "node"), ("network_df", "network", "network"),
@@ -78,11 +84,11 @@ def _sections(args, parser, ids, matrices, atlas, session, variant) -> None:
     nodes = atlas if nodes is None else nodes
     meshes = _meshes(args, nodes)
     jobs = {sid: (args, parser, sid, matrices[sid], nodes, session, variant, meshes) for sid in ids}
-    workers = max(1, (os.cpu_count() or 2) - 1) if args.n_jobs == -1 else max(1, args.n_jobs)
-    if min(workers, len(ids)) == 1:
+    workers = _report_workers(args, parser, len(ids), max(len(matrices[sid]) for sid in ids))
+    if workers == 1:
         errors = {sid: _try_section(*job) for sid, job in jobs.items()}
     else:
-        with ProcessPoolExecutor(max_workers=min(workers, len(ids))) as pool:
+        with ProcessPoolExecutor(max_workers=workers) as pool:
             futures = {sid: pool.submit(_try_section, *job) for sid, job in jobs.items()}
             errors = {}
             for sid, future in futures.items():
@@ -93,6 +99,21 @@ def _sections(args, parser, ids, matrices, atlas, session, variant) -> None:
     for sid, error in errors.items():
         if error:
             _log_failed_report(args, parser, sid, session, variant, error)
+
+
+def _report_workers(args, parser, n_reports: int, n_regions: int) -> int:
+    """--n-jobs, lowered so that the workers' estimated memory fits in --mem (default 90% of this machine's)."""
+    workers = max(1, (os.cpu_count() or 2) - 1) if args.n_jobs == -1 else max(1, args.n_jobs)
+    workers = min(workers, n_reports)
+    budget = args.mem or 0.9 * psutil.virtual_memory().total / MB
+    need = REPORT_MB + REPORT_MB_PER_REGION * n_regions
+    fits = max(1, int(budget // need))
+    if fits < workers:
+        if not args.quiet:
+            print(f"[{parser.prog}] Building {fits} report(s) at a time instead of {workers}: each needs about "
+                  f"{need / 1024:.1f} GB and {budget / 1024:.1f} GB are allowed (--mem)")
+        workers = fits
+    return workers
 
 
 def _try_section(*job) -> str | None:

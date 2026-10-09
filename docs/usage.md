@@ -87,6 +87,8 @@ Without sessions the `ses-` folders are left out; matrix and time series input h
 
 Nodes with too many missing values are dropped by looking at every participant in `INPUT`, so participants run one at a time get the same nodes as a single run. The group level checks that all participants were run with the same options. If one session or atlas fails, the others still run, and `OUTPUT/logs/` (participant) or the group folder holds `error.txt`.
 
+Participant reports are built several at a time, up to `--n-jobs`. Each one needs about 1 GB of memory, so fewer run at once when they would not fit in `--mem` (in MB; default 90% of the machine's memory). If one participant's report fails, the others are still written, the error is saved as `report-sub-<label>.err` under `OUTPUT/logs/`, and the command exits with an error.
+
 ## Group comparisons
 
 Each `compare/` table has one row per test with the t statistic (positive when the first group of `--contrast` is higher), its p-value, FDR-corrected and family-wise (max-T, `--n-perms` permutations) p-values, the group means and sizes, and whether the result is significant under the `--correction` you chose (FDR, family-wise or uncorrected; required, with `--alpha`, default 0.05). Corrections apply within a family: one metric at one level, the whole-graph metrics of one level, the network blocks of one level, or all edges. Values missing or constant across participants are not tested.

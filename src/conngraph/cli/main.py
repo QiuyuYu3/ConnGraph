@@ -70,6 +70,9 @@ def build_parser() -> argparse.ArgumentParser:
                         "seed is recorded when omitted")
     s.add_argument("--n-jobs", "--nprocs", type=int, default=-1,
                    help="parallel workers (default: all but one); results do not depend on it")
+    s.add_argument("--mem", "--mem-mb", type=int, metavar="MEMORY_MB",
+                   help="participant: memory limit in MB for the reports built in parallel, which lowers --n-jobs "
+                        "for them when needed (default: 90%% of this machine's memory)")
     s.add_argument("--no-report", action="store_true",
                    help="skip the HTML reports (participant: OUTPUT/sub-<label>.html; group: one per analysis)")
     s.add_argument("--reports-only", action="store_true",
@@ -162,6 +165,8 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, argparse.ArgumentPa
         parser.error("--surfaces takes a left and a right .surf.gii, or one brain volume")
     if args.n_perms < 1:
         parser.error("--n-perms must be at least 1")
+    if args.mem is not None and args.mem < 1:
+        parser.error("--mem must be at least 1")
     return args, parser
 
 
