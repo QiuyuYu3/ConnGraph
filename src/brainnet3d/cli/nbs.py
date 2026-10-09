@@ -45,8 +45,14 @@ def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else list(argv)
     parser = build_parser()
     args = parser.parse_args(argv)
-    out = pathlib.Path(args.output_dir)
-    matrices, atlas = _shared.load_input(args, parser)
+    command = _shared.command_line(parser.prog, argv)
+    for variant in _shared.input_variants(args, parser):
+        _run(args, parser, variant, pathlib.Path(args.output_dir) / (variant or ""), command, run_nbs)
+    return 0
+
+
+def _run(args, parser, variant, out, command, run_nbs) -> None:
+    matrices, atlas = _shared.load_input(args, parser, variant)
     label_col, network_col = _shared.node_columns(args)
 
     table = pd.read_csv(args.groups, sep="\t" if args.groups.endswith((".tsv", ".txt")) else ",", dtype=str)
@@ -73,8 +79,7 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         raise SystemExit(f"{parser.prog}: {exc}") from None
 
-    command = _shared.command_line(parser.prog, argv)
-    result.params["input"] = {**atlas.attrs.get(INPUT_ATTR, {}), "fisher_z": not args.no_fisher_z,
+    result.params["input"] ={**atlas.attrs.get(INPUT_ATTR, {}), "fisher_z": not args.no_fisher_z,
                               "groups_file": os.path.abspath(args.groups), "group_column": args.group_column,
                               "contrast": list(args.contrast)}
     result.params["command"] = command
@@ -82,13 +87,12 @@ def main(argv: list[str] | None = None) -> int:
     _shared.write_json(out / "parameters.json", result.params)
     _shared.write_description(out, "brainnet3d network-based statistic", args.input_dir, command)
     if not args.no_report:
-        nodes = _shared.report_nodes(args, atlas)
+        nodes = _shared.report_nodes(args, atlas, variant)
         result.save_report(out / "nbs_report.html", nodes=atlas if nodes is None else nodes,
                            surfaces=_shared.surfaces(args), static_brain=not args.no_static_brain,
                            label_col=label_col, network_col=network_col)
         if not args.quiet:
             print(f"[{parser.prog}] Report: {out / 'nbs_report.html'}")
-    return 0
 
 
 def _write_tables(result, out: pathlib.Path) -> None:

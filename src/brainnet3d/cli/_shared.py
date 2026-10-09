@@ -21,15 +21,16 @@ NODES_FILE = "nodes.tsv"
 
 
 def add_input_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("input_dir", help="XCP-D derivatives folder, or a folder of matrix or time series files "
-                                          "(see --input-format)")
+    parser.add_argument("input_dir", help="XCP-D or fnirs-pipe derivatives folder, or a folder of matrix or time "
+                                          "series files (see --input-type)")
     parser.add_argument("output_dir", help="folder for the results; created if missing")
     parser.add_argument("--version", action="version", version=f"%(prog)s {brainnet3d.__version__}")
     parser.add_argument("--quiet", action="store_true", help="print nothing but errors")
 
     g = parser.add_argument_group("input")
-    g.add_argument("--input-format", choices=["xcpd", "matrix", "timeseries"], required=True,
-                   help="xcpd: XCP-D derivatives tree; matrix: a folder with nodes.tsv and one "
+    g.add_argument("--input-type", choices=["xcpd", "fnirs-pipe", "matrix", "timeseries"], required=True,
+                   help="xcpd: XCP-D derivatives tree, one result folder per atlas; fnirs-pipe: fnirs-pipe "
+                        "derivatives tree, one result folder per chromophore; matrix: a folder with nodes.tsv and one "
                         "sub-<label>_matrix.<ext> per participant; timeseries: the same with "
                         "sub-<label>_timeseries.<ext>")
     g.add_argument("--connectivity", choices=["correlation", "partial-correlation"],
@@ -39,16 +40,20 @@ def add_input_arguments(parser: argparse.ArgumentParser) -> None:
     g.add_argument("--values", choices=["r", "z"], default="r",
                    help="matrix input: correlations (r, default) or Fisher z values, converted back to r")
     g.add_argument("--mat-key", help="variable to read from .mat files holding more than one array")
-    g.add_argument("--atlas", help="atlas name as in the XCP-D file names, e.g. Gordon (xcpd)")
-    g.add_argument("--session", default="ses-01", help="session label in the file names (default: ses-01)")
-    g.add_argument("--task", default="rest", help="task label in the file names (default: rest)")
-    g.add_argument("--space", default="fsLR", help="space label in the file names (default: fsLR)")
+    g.add_argument("--atlases", nargs="+", metavar="ATLAS",
+                   help="xcpd: atlas names as in the file names, e.g. Gordon; each gets its own result folder")
+    g.add_argument("--chromophore", nargs="+", choices=["hbo", "hbr"], default=["hbo", "hbr"],
+                   help="fnirs-pipe: chromophores to analyse, each in its own result folder (default: hbo hbr)")
+    g.add_argument("--session-id", help="xcpd and fnirs-pipe: session label, with or without ses- (default: each "
+                                        "participant's one file, with or without a session)")
+    g.add_argument("--task-id", default="rest", help="xcpd and fnirs-pipe: task label in the file names (default: rest)")
+    g.add_argument("--space", default="fsLR", help="xcpd: space label in the file names (default: fsLR)")
     g.add_argument("--participant-label", nargs="+", metavar="LABEL", help="participants to include, with or without sub-")
     g.add_argument("--bad-node-threshold", type=float, default=0.9,
                    help="drop nodes with more than this fraction of missing values (default: 0.9)")
     g.add_argument("--drop-mode", choices=["union", "intersection"], default="union",
-                   help="matrix and timeseries input: drop a node missing in any participant (union, default) or in "
-                        "all (intersection)")
+                   help="matrix, timeseries and fnirs-pipe input: drop a node missing in any participant (union, "
+                        "default) or in all (intersection)")
 
     r = parser.add_argument_group("report")
     r.add_argument("--no-report", action="store_true", help="skip the HTML report")
@@ -59,20 +64,38 @@ def add_input_arguments(parser: argparse.ArgumentParser) -> None:
                    help="left and right .surf.gii for the brain figures (default: fsLR 32k midthickness)")
 
 
-def load_input(args: argparse.Namespace, parser: argparse.ArgumentParser) -> tuple[dict, pd.DataFrame]:
+def input_variants(args: argparse.Namespace, parser: argparse.ArgumentParser) -> list[str | None]:
+    """One entry per separate analysis, named as its result folder: an atlas for XCP-D, a chromophore for fnirs-pipe."""
+    if args.input_type == "xcpd":
+        if not args.atlases:
+            parser.error("--atlases is required for XCP-D input")
+        return [f"atlas-{a}" for a in dict.fromkeys(args.atlases)]
+    if args.input_type == "fnirs-pipe":
+        return [f"chromo-{c}" for c in dict.fromkeys(args.chromophore)]
+    return [None]
+
+
+def load_input(args: argparse.Namespace, parser: argparse.ArgumentParser,
+               variant: str | None = None) -> tuple[dict, pd.DataFrame]:
     """Matrices and node table as the chosen loader returns them, with what it read noted on the table."""
     labels = [s.removeprefix("sub-") for s in args.participant_label] if args.participant_label else None
     verbose = not args.quiet
     kind = args.connectivity.replace("-", " ") if args.connectivity else None
-    if args.input_format == "matrix" and (kind or args.shrinkage):
+    if args.input_type in ("matrix", "fnirs-pipe") and (kind or args.shrinkage):
         parser.error("--connectivity and --shrinkage need timeseries or XCP-D input")
-    if args.shrinkage and not kind and args.input_format != "timeseries":
+    if args.shrinkage and not kind and args.input_type != "timeseries":
         parser.error("--shrinkage needs --connectivity")
-    if args.input_format in ("matrix", "timeseries"):
+    session = f"ses-{args.session_id.removeprefix('ses-')}" if args.session_id else None
+    if args.input_type == "fnirs-pipe":
+        return brainnet3d.load_fnirs_pipe(args.input_dir, variant.removeprefix("chromo-"), session=session,
+                                          task=args.task_id, subject_ids=labels,
+                                          bad_node_threshold=args.bad_node_threshold, drop_mode=args.drop_mode,
+                                          verbose=verbose)
+    if args.input_type in ("matrix", "timeseries"):
         nodes = os.path.join(args.input_dir, NODES_FILE)
         if not os.path.isfile(nodes):
             raise SystemExit(f"{parser.prog}: {args.input_dir} has no {NODES_FILE}")
-        pattern = f"sub-*_{args.input_format}.*"
+        pattern = f"sub-*_{args.input_type}.*"
         paths = sorted(p for p in glob.glob(os.path.join(args.input_dir, pattern)) if p.endswith(_EXTENSIONS))
         files: dict[str, str] = {}
         for p in paths:
@@ -85,34 +108,30 @@ def load_input(args: argparse.Namespace, parser: argparse.ArgumentParser) -> tup
         if not files:
             raise SystemExit(f"{parser.prog}: no files matching {pattern} in {args.input_dir}")
         common = dict(bad_node_threshold=args.bad_node_threshold, drop_mode=args.drop_mode, mat_key=args.mat_key)
-        if args.input_format == "matrix":
+        if args.input_type == "matrix":
             ds = brainnet3d.load_group(files, nodes, values=args.values, **common)
         else:
             ds = brainnet3d.load_timeseries(files, nodes, kind=kind or "correlation", shrinkage=args.shrinkage,
                                             **common)
         ds.nodes_df.attrs[INPUT_ATTR]["path"] = os.path.abspath(args.input_dir)
         return ds.matrices, ds.nodes_df
-    if not args.atlas:
-        parser.error("--atlas is required for XCP-D input")
-    from brainnet3d.graph_theory import load_xcpd
-
-    return load_xcpd(args.input_dir, args.atlas, session=args.session, task=args.task, space=args.space,
-                     subject_ids=labels, bad_node_threshold=args.bad_node_threshold, verbose=verbose, connectivity=kind,
-                     shrinkage=args.shrinkage)
+    return brainnet3d.load_xcpd(args.input_dir, variant.removeprefix("atlas-"), session=session, task=args.task_id,
+                                space=args.space, subject_ids=labels, bad_node_threshold=args.bad_node_threshold,
+                                verbose=verbose, connectivity=kind, shrinkage=args.shrinkage)
 
 
 def node_columns(args: argparse.Namespace) -> tuple[str, str]:
     """Label and network columns of the node table: XCP-D's dseg names the network column network_label."""
-    return "label", "network_label" if args.input_format == "xcpd" else "network"
+    return "label", "network_label" if args.input_type == "xcpd" else "network"
 
 
-def report_nodes(args: argparse.Namespace, nodes: pd.DataFrame) -> pd.DataFrame | None:
+def report_nodes(args: argparse.Namespace, nodes: pd.DataFrame, variant: str | None = None) -> pd.DataFrame | None:
     """The node table with x, y, z for the brain figures, from --coords or, for Gordon, the bundled table."""
     if {"x", "y", "z"} <= set(nodes.columns):
         return None
     if args.coords:
         table = pd.read_csv(args.coords, sep="\t" if args.coords.endswith((".tsv", ".txt")) else ",")
-    elif (args.atlas or "").lower() == "gordon":
+    elif (variant or "").lower() == "atlas-gordon":
         try:
             table = brainnet3d.load_gordon_atlas()
         except Exception:

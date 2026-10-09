@@ -36,8 +36,9 @@ def xcpd(dataset, tmp_path_factory):
 def test_graph_command_writes_tables_parameters_description_and_report(xcpd, tmp_path):
     root, coords, _ = xcpd
     out = tmp_path / "graph"
-    graph_cli.main([str(root), str(out), "--input-format", "xcpd", "--atlas", "Toy", "--coords", str(coords), "--network-graph-method", "full",
+    graph_cli.main([str(root), str(out), "--input-type", "xcpd", "--atlases", "Toy", "--coords", str(coords), "--network-graph-method", "full",
                     "--metrics", "strength", "clust_coeff", "--n-jobs", "1", "--no-static-brain", "--quiet"])
+    out = out / "atlas-Toy"
     assert (out / "node" / "strength.abs.csv").exists()
     assert (out / "network_hemi" / "clust_coeff.costantini.csv").exists()
     params = json.loads((out / "parameters.json").read_text(encoding="utf-8"))
@@ -56,7 +57,7 @@ def test_graph_command_reads_a_folder_of_matrix_files(dataset, tmp_path):
     for sid, mat in dataset.matrices.items():
         mat.to_csv(folder / f"{sid}_matrix.tsv", sep="	")
     out = tmp_path / "graph"
-    graph_cli.main([str(folder), str(out), "--input-format", "matrix", "--level", "node", "--graph-method", "density",
+    graph_cli.main([str(folder), str(out), "--input-type", "matrix", "--level", "node", "--graph-method", "density",
                     "--graph-param", "density=0.2,0.3", "--metrics", "strength", "--n-jobs", "1", "--no-report", "--quiet"])
     params = json.loads((out / "parameters.json").read_text(encoding="utf-8"))
     assert params["levels"]["node"]["graph_params"] == {"density": [0.2, 0.3]}
@@ -67,16 +68,17 @@ def test_graph_command_reads_a_folder_of_matrix_files(dataset, tmp_path):
 def test_graph_command_rejects_unknown_graph_param_syntax(xcpd, tmp_path):
     root, _, _ = xcpd
     with pytest.raises(SystemExit):
-        graph_cli.main([str(root), str(tmp_path / "out"), "--input-format", "xcpd", "--atlas", "Toy", "--graph-param", "density",
+        graph_cli.main([str(root), str(tmp_path / "out"), "--input-type", "xcpd", "--atlases", "Toy", "--graph-param", "density",
                         "--quiet"])
 
 
 def test_nbs_command_compares_two_groups_from_a_table(xcpd, tmp_path):
     root, coords, groups = xcpd
     out = tmp_path / "nbs"
-    nbs_cli.main([str(root), str(out), "--input-format", "xcpd", "--atlas", "Toy", "--groups", str(groups), "--group-column", "dx",
+    nbs_cli.main([str(root), str(out), "--input-type", "xcpd", "--atlases", "Toy", "--groups", str(groups), "--group-column", "dx",
                   "--contrast", "A", "B", "--thresh", "1.0", "--perms", "20", "--seed", "0", "--coords", str(coords),
                   "--no-static-brain", "--quiet"])
+    out = out / "atlas-Toy"
     params = json.loads((out / "parameters.json").read_text(encoding="utf-8"))
     assert params["groups"] == {"g1": ["01", "02", "03"], "g2": ["04", "05", "06"]}
     assert params["input"]["fisher_z"] is True and params["input"]["contrast"] == ["A", "B"]
@@ -89,7 +91,7 @@ def test_nbs_command_compares_two_groups_from_a_table(xcpd, tmp_path):
 
 @pytest.mark.parametrize("flag", ["--n-jobs", "--nprocs"])
 def test_both_commands_take_a_worker_count(flag):
-    common = ["in", "out", "--input-format", "xcpd", "--atlas", "Toy", flag, "3"]
+    common = ["in", "out", "--input-type", "xcpd", "--atlases", "Toy", flag, "3"]
     assert graph_cli.build_parser().parse_args(common).n_jobs == 3
     nbs_args = common + ["--groups", "g.tsv", "--group-column", "dx", "--contrast", "A", "B", "--thresh", "1"]
     assert nbs_cli.build_parser().parse_args(nbs_args).n_jobs == 3
@@ -107,7 +109,7 @@ def test_nbs_command_passes_the_worker_count(xcpd, tmp_path, monkeypatch):
 
     monkeypatch.setattr(nbs_module, "run_nbs", recording)
     root, _, groups = xcpd
-    nbs_cli.main([str(root), str(tmp_path / "nbs"), "--input-format", "xcpd", "--atlas", "Toy", "--groups", str(groups),
+    nbs_cli.main([str(root), str(tmp_path / "nbs"), "--input-type", "xcpd", "--atlases", "Toy", "--groups", str(groups),
                   "--group-column", "dx", "--contrast", "A", "B", "--thresh", "1.0", "--perms", "20", "--seed", "0",
                   "--no-report", "--quiet", "--nprocs", "2"])
     assert seen["n_jobs"] == 2
@@ -118,7 +120,7 @@ def test_nbs_command_reports_groups_missing_from_the_data(xcpd, tmp_path):
     table = tmp_path / "participants.tsv"
     pd.DataFrame({"participant_id": ["sub-01", "sub-99"], "dx": ["A", "B"]}).to_csv(table, sep="\t", index=False)
     with pytest.raises(SystemExit, match="sub-99"):
-        nbs_cli.main([str(root), str(tmp_path / "out"), "--input-format", "xcpd", "--atlas", "Toy", "--groups", str(table),
+        nbs_cli.main([str(root), str(tmp_path / "out"), "--input-type", "xcpd", "--atlases", "Toy", "--groups", str(table),
                       "--group-column", "dx", "--contrast", "A", "B", "--thresh", "1.0", "--quiet"])
 
 
@@ -137,16 +139,16 @@ def _layout(dataset, folder):
 def test_input_format_is_required(xcpd, tmp_path, capsys):
     root, _, _ = xcpd
     with pytest.raises(SystemExit):
-        graph_cli.main([str(root), str(tmp_path / "out"), "--atlas", "Toy"] + FAST)
-    assert "--input-format" in capsys.readouterr().err
+        graph_cli.main([str(root), str(tmp_path / "out"), "--atlases", "Toy"] + FAST)
+    assert "--input-type" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("option", [["--input-format", "xcpd-flat"], ["--atlas-file", "a.tsv"], ["--nodes", "n.tsv"],
+@pytest.mark.parametrize("option", [["--input-type", "xcpd-flat"], ["--input-format", "xcpd"], ["--atlas-file", "a.tsv"], ["--nodes", "n.tsv"],
                                     ["--pattern", "*.csv"], ["--label-col", "x"], ["--network-col", "x"]])
 def test_removed_input_options_are_rejected(xcpd, tmp_path, capsys, option):
     root, _, _ = xcpd
     with pytest.raises(SystemExit):
-        graph_cli.main([str(root), str(tmp_path / "out"), "--input-format", "xcpd", "--atlas", "Toy"] + FAST + option)
+        graph_cli.main([str(root), str(tmp_path / "out"), "--input-type", "xcpd", "--atlases", "Toy"] + FAST + option)
     err = capsys.readouterr().err
     assert "unrecognized arguments" in err or "invalid choice" in err
 
@@ -164,7 +166,7 @@ def test_matrix_folder_is_read_by_fixed_names(dataset, tmp_path):
             mat.to_csv(folder / f"{sid}_matrix.csv")
     (folder / "notes_matrix.txt").write_text("not a participant")
     out = tmp_path / "graph"
-    graph_cli.main([str(folder), str(out), "--input-format", "matrix"] + FAST)
+    graph_cli.main([str(folder), str(out), "--input-type", "matrix"] + FAST)
     params = json.loads((out / "parameters.json").read_text(encoding="utf-8"))
     assert params["subjects"] == sids
     assert params["input"]["source"] == "matrix files"
@@ -176,7 +178,7 @@ def test_matrix_folder_refuses_two_files_for_one_participant(dataset, tmp_path):
     mat.to_csv(folder / f"{sid}_matrix.tsv", sep="\t")
     np.save(folder / f"{sid}_matrix.npy", mat.to_numpy())
     with pytest.raises(SystemExit, match=sid):
-        graph_cli.main([str(folder), str(tmp_path / "out"), "--input-format", "matrix"] + FAST)
+        graph_cli.main([str(folder), str(tmp_path / "out"), "--input-type", "matrix"] + FAST)
 
 
 def test_matrix_folder_needs_nodes_tsv(dataset, tmp_path):
@@ -185,7 +187,7 @@ def test_matrix_folder_needs_nodes_tsv(dataset, tmp_path):
     sid, mat = next(iter(dataset.matrices.items()))
     mat.to_csv(folder / f"{sid}_matrix.tsv", sep="\t")
     with pytest.raises(SystemExit, match="nodes.tsv"):
-        graph_cli.main([str(folder), str(tmp_path / "out"), "--input-format", "matrix"] + FAST)
+        graph_cli.main([str(folder), str(tmp_path / "out"), "--input-type", "matrix"] + FAST)
 
 
 def _toy_series(dataset, seed):
@@ -199,7 +201,7 @@ def test_graph_command_reads_a_folder_of_time_series(dataset, tmp_path):
     for i in range(3):
         np.savetxt(folder / f"sub-{i:02d}_timeseries.txt", _toy_series(dataset, i).to_numpy())
     out = tmp_path / "graph"
-    graph_cli.main([str(folder), str(out), "--input-format", "timeseries", "--connectivity", "partial-correlation",
+    graph_cli.main([str(folder), str(out), "--input-type", "timeseries", "--connectivity", "partial-correlation",
                     "--shrinkage"] + FAST)
     params = json.loads((out / "parameters.json").read_text(encoding="utf-8"))
     assert params["input"]["source"] == "time series"
@@ -219,9 +221,9 @@ def test_graph_command_computes_xcpd_connectivity_from_time_series(dataset, tmp_
     pd.DataFrame({"label": nodes["label"], "network_label": nodes["network"],
                   "hemisphere": nodes["hemisphere"]}).to_csv(atlas_dir / "atlas-Toy_dseg.tsv", sep="\t", index=False)
     out = tmp_path / "graph"
-    graph_cli.main([str(tmp_path / "xcpd"), str(out), "--input-format", "xcpd", "--atlas", "Toy", "--connectivity",
+    graph_cli.main([str(tmp_path / "xcpd"), str(out), "--input-type", "xcpd", "--atlases", "Toy", "--connectivity",
                     "correlation"] + FAST)
-    params = json.loads((out / "parameters.json").read_text(encoding="utf-8"))
+    params = json.loads((out / "atlas-Toy" / "parameters.json").read_text(encoding="utf-8"))
     assert (params["input"]["source"], params["input"]["connectivity"]) == ("XCP-D", "correlation")
 
 
@@ -231,7 +233,7 @@ def test_graph_command_reads_unlabelled_fisher_z_matrices(dataset, tmp_path):
         z = np.arctanh(np.clip(mat.to_numpy(float), -0.999, 0.999))
         np.save(folder / f"{sid}_matrix.npy", z)
     out = tmp_path / "graph"
-    graph_cli.main([str(folder), str(out), "--input-format", "matrix", "--values", "z"] + FAST)
+    graph_cli.main([str(folder), str(out), "--input-type", "matrix", "--values", "z"] + FAST)
     params = json.loads((out / "parameters.json").read_text(encoding="utf-8"))
     assert params["input"]["values"] == "z"
     assert params["subjects"] == sorted(dataset.matrices)
@@ -240,8 +242,45 @@ def test_graph_command_reads_unlabelled_fisher_z_matrices(dataset, tmp_path):
 def test_connectivity_options_need_time_series(dataset, tmp_path):
     folder = _layout(dataset, tmp_path / "in")
     with pytest.raises(SystemExit):
-        graph_cli.main([str(folder), str(tmp_path / "out"), "--input-format", "matrix", "--connectivity",
+        graph_cli.main([str(folder), str(tmp_path / "out"), "--input-type", "matrix", "--connectivity",
                         "correlation"] + FAST)
+
+
+def _fnirs_pipe_tree(dataset, root):
+    """fnirs-pipe output for the toy participants: one matrix per chromophore, channels named after the toy nodes."""
+    for sid, mat in dataset.matrices.items():
+        folder = root / sid / "ses-01" / "nirs"
+        folder.mkdir(parents=True)
+        for chromo, sign in (("hbo", 1.0), ("hbr", -1.0)):
+            names = [f"{c} {chromo}" for c in mat.columns]
+            pd.DataFrame(sign * mat.to_numpy(), index=names, columns=names).to_csv(
+                folder / f"{sid}_ses-01_task-rest_chromo-{chromo}_stat-pearson_relmat.tsv", sep="\t",
+                index_label="channel")
+    return root
+
+
+def test_fnirs_pipe_input_writes_each_chromophore_on_its_own(dataset, tmp_path):
+    root = _fnirs_pipe_tree(dataset, tmp_path / "fnirs")
+    out = tmp_path / "graph"
+    graph_cli.main([str(root), str(out), "--input-type", "fnirs-pipe", "--graph-method", "full",
+                    "--metrics", "strength", "--n-jobs", "1", "--no-report", "--quiet"])
+    for chromo in ("hbo", "hbr"):
+        params = json.loads((out / f"chromo-{chromo}" / "parameters.json").read_text(encoding="utf-8"))
+        assert (params["input"]["source"], params["input"]["chromophore"]) == ("fnirs-pipe", chromo)
+        assert list(params["levels"]) == ["node"]
+    only = tmp_path / "hbr_only"
+    graph_cli.main([str(root), str(only), "--input-type", "fnirs-pipe", "--chromophore", "hbr", "--session-id", "01",
+                    "--graph-method", "full", "--metrics", "strength", "--n-jobs", "1", "--no-report", "--quiet"])
+    assert sorted(p.name for p in only.iterdir()) == ["chromo-hbr"]
+
+
+def test_nbs_command_runs_each_atlas(xcpd, tmp_path):
+    root, _, groups = xcpd
+    out = tmp_path / "nbs"
+    nbs_cli.main([str(root), str(out), "--input-type", "xcpd", "--atlases", "Toy", "--session-id", "ses-01",
+                  "--groups", str(groups), "--group-column", "dx", "--contrast", "A", "B", "--thresh", "1.0",
+                  "--perms", "20", "--seed", "0", "--no-report", "--quiet"])
+    assert (out / "atlas-Toy" / "nbs_components.tsv").exists()
 
 
 def test_fisher_z_is_applied_before_nbs(xcpd):

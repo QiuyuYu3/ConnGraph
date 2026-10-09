@@ -32,7 +32,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _shared.add_input_arguments(parser)
     g = parser.add_argument_group("graph metrics")
-    g.add_argument("--level", choices=["node", "network", "both"], default="both", help="levels to compute (default: both)")
+    g.add_argument("--level", choices=["node", "network", "both"],
+                   help="levels to compute (default: both; node for fnirs-pipe, which has no networks)")
     g.add_argument("--hemi-split", choices=["true", "false", "both"], default="true",
                    help="network level: one node per network and hemisphere (true, default), per network (false), or both")
     g.add_argument("--metrics", nargs="+", metavar="NAME",
@@ -65,16 +66,24 @@ def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else list(argv)
     parser = build_parser()
     args = parser.parse_args(argv)
-    out = pathlib.Path(args.output_dir)
-    matrices, atlas = _shared.load_input(args, parser)
+    command = _shared.command_line(parser.prog, argv)
+    for variant in _shared.input_variants(args, parser):
+        out = pathlib.Path(args.output_dir) / (variant or "")
+        _run(args, parser, variant, out, command, compute_graph_metrics)
+    return 0
+
+
+def _run(args, parser, variant, out, command, compute_graph_metrics) -> None:
+    matrices, atlas = _shared.load_input(args, parser, variant)
     label_col, network_col = _shared.node_columns(args)
+    level = args.level or ("node" if args.input_type == "fnirs-pipe" else "both")
 
     metrics = None
     if args.metrics:
         metrics = "all" if args.metrics == ["all"] else args.metrics
     try:
         result = compute_graph_metrics(
-            matrices, atlas, level=args.level, hemi_split={"true": True, "false": False, "both": "both"}[args.hemi_split],
+            matrices, atlas, level=level, hemi_split={"true": True, "false": False, "both": "both"}[args.hemi_split],
             metrics=metrics, label_col=label_col, network_col=network_col, hemi_col=args.hemi_col,
             apply_fisher_z=not args.no_fisher_z, graph_method=args.graph_method,
             graph_params=dict(args.graph_param) if args.graph_param else None, sign=args.sign,
@@ -87,16 +96,14 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         raise SystemExit(f"{parser.prog}: {exc}") from None
 
-    command = _shared.command_line(parser.prog, argv)
     result.params["command"] = command
     _shared.write_json(out / "parameters.json", result.params)
     _shared.write_description(out, "brainnet3d graph metrics", args.input_dir, command)
     if not args.no_report:
-        result.save_report(out / "graph_report.html", nodes=_shared.report_nodes(args, atlas),
+        result.save_report(out / "graph_report.html", nodes=_shared.report_nodes(args, atlas, variant),
                            surfaces=_shared.surfaces(args), static_brain=not args.no_static_brain)
         if not args.quiet:
             print(f"[{parser.prog}] Report: {out / 'graph_report.html'}")
-    return 0
 
 
 if __name__ == "__main__":
