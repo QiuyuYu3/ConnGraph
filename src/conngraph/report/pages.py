@@ -188,7 +188,7 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
             G = nx.Graph()
             G.add_nodes_from(range(len(labels)))
             G.add_weighted_edges_from((int(i), int(j), diff[i, j]) for i, j in iu)
-            steps.append(_step(f"{next(letter)}. On a circle", html=_circos_images(G, labels, nets, palette, f"{g1} − {g2}", figs),
+            steps.append(_step(f"{next(letter)}. On a circle", html=_figure_row(*_circos_images(G, labels, nets, palette, f"{g1} − {g2}", figs)),
                                desc=f"All {n_sig} significant edges with regions grouped by network: coloured by the "
                                     "group difference, then bundled through their networks and coloured by the "
                                     "networks they join."))
@@ -308,7 +308,7 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
         nets = [networks.get(n, "None") for n in names]
         circos = _circos_images(G, names, nets, palette, "group mean r", figs)
         spring, _ = bnv.spring_plot(G, names, nets, net2color=palette, figsize=(11, 11), network_hulls=False)
-        steps.append(_step(f"{next(letter)}. Group network", html=circos + _figure_block("Spring layout", figs.save(spring, "spring")),
+        steps.append(_step(f"{next(letter)}. Group network", html=_figure_row(*circos, _figure_block("Spring layout", figs.save(spring, "spring"))),
                            desc=f"The group mean connectivity turned into a graph the way each participant's was "
                                 f"({how}); the metrics above come from each participant's own graph. The circle "
                                 "groups regions by network; the bundled version routes edges through their networks "
@@ -344,14 +344,14 @@ def _group_graph(result):
     return nx.from_numpy_array(A), list(result.mean_matrix.index), f"{how}, {level['sign']} weights"
 
 
-def _circos_images(G, labels, nets, palette, colorbar_title, figs) -> str:
+def _circos_images(G, labels, nets, palette, colorbar_title, figs) -> list[str]:
     import conngraph as bnv
 
     (curved, _), (bundled, _) = bnv.circos_plot(G, labels, nets, net2color=palette, figsize=(11, 11),
                                                 label_fontsize=3.5, edge_colorbar_title=colorbar_title)
-    return (_figure_block("Circos", figs.save(curved, "circos"))
-            + _figure_block("Circos, bundled through networks and coloured by network",
-                            figs.save(bundled, "circos_bundled")))
+    return [_figure_block("Circos", figs.save(curved, "circos")),
+            _figure_block("Circos, bundled through networks and coloured by network",
+                          figs.save(bundled, "circos_bundled"))]
 
 
 def _nbs_matrices(result, adj_sig, labels, nets, palette, group_names, figs) -> str:
@@ -371,6 +371,11 @@ def _figure_block(label: str, img: str) -> str:
     return f'<div class="option-label">{html.escape(label)}</div>' + img
 
 
+def _figure_row(*blocks: str) -> str:
+    """Figures side by side, wrapping onto more rows as the window narrows."""
+    return '<div class="figure-row">' + "".join(f"<div>{b}</div>" for b in blocks) + "</div>"
+
+
 def _static_node_brain(result, nodes, label_col, labels, values, title, surfaces, figs, metric) -> str:
     import conngraph as bnv
 
@@ -385,7 +390,7 @@ def _static_node_brain(result, nodes, label_col, labels, values, title, surfaces
         fig = bnv.BrainNetPlotter(ds).plot_views(
             views=[{"view": "L"}, {"view": "S"}, {"view": "R"}], node_color=title, node_size=title, node_cmap="viridis",
             node_size_range=(1.5, 6.0), edge_threshold=2.0, surface_L=left, surface_R=right, surface_alpha=0.12,
-            legend=["node_color"], width=10.5, panel_size=500)
+            legend=["node_color"], width=10.5)
     # rendered panels already sit at their own resolution; resampling them adds bytes, not detail
     return figs.save(fig, f"brain_{metric}", dpi="figure")
 
@@ -408,7 +413,7 @@ def _static_nbs_brain(nodes, label_col, network_col, labels, drawn, diff, degree
             views=[{"view": "L"}, {"view": "S"}, {"view": "R"}], node_color="network", node_size="Significant edges",
             node_size_range=(0.8, 6.0), edge_threshold=1e-12, edge_color="weight", surface_L=left, surface_R=right,
             surface_alpha=0.12, legend=["node_color", "edge_color"], legend_titles={"edge_color": "Group 1 − Group 2"},
-            node_palette=palette or None, width=10.5, panel_size=500)
+            node_palette=palette or None, width=10.5)
     return figs.save(fig, "brain_edges", dpi="figure")
 
 
