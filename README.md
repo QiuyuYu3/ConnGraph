@@ -26,35 +26,37 @@ Each command writes its result tables, a `parameters.json` with every setting, a
 Examples on XCP-D output with the Gordon atlas:
 
 ```bash
-brainnet3d-graph derivatives/xcpd results/graph --atlas Gordon
+brainnet3d-graph derivatives/xcpd results/graph --input-format xcpd --atlas Gordon
 
-brainnet3d-nbs derivatives/xcpd results/nbs --atlas Gordon \
+brainnet3d-nbs derivatives/xcpd results/nbs --input-format xcpd --atlas Gordon \
     --groups participants.tsv --group-column group --contrast PT HC --thresh 3.5 --seed 1
 ```
 
 ## Input
 
-`--input-format` says what `INPUT` holds:
+`--input-format` is required and says what `INPUT` holds:
 
 | Format | `INPUT` |
 |---|---|
-| `xcpd` (default) | an XCP-D derivatives folder; choose the atlas with `--atlas` |
+| `xcpd` | an XCP-D derivatives folder; choose the atlas with `--atlas` |
 | `matrix` | a folder of connectivity matrices, laid out as below |
 | `timeseries` | a folder of regional time series, laid out as below; connectivity is computed first (`--connectivity`) |
 
-A `matrix` or `timeseries` folder holds one file per participant and a node table, all tab-separated:
+A `matrix` or `timeseries` folder holds one file per participant and a node table with fixed names:
 
 ```
 INPUT/
-    nodes.tsv              label, network; optionally hemisphere, x, y, z
-    sub-01_matrix.tsv      or sub-01_timeseries.tsv
-    sub-02_matrix.tsv
+    nodes.tsv                  label, network; optionally hemisphere, x, y, z
+    sub-01_matrix.<ext>        or sub-01_timeseries.<ext>
+    sub-02_matrix.<ext>
     ...
 ```
 
-- `sub-<label>_matrix.tsv`: a square matrix of Pearson correlations, with the node labels as the first row and the first column.
-- `sub-<label>_timeseries.tsv`: one column per node, headed by its label, and one row per time point.
-- `nodes.tsv`: one row per node. Without x, y, z the report leaves out the brain figures. For XCP-D input with the Gordon atlas, coordinates are added automatically.
+- `<ext>` is `.tsv`, `.csv`, `.txt`, `.1D`, `.npy` or `.mat`, or a CIFTI `.pconn.nii` (matrices) or `.ptseries.nii` (time series).
+- A matrix is square, one row and one column per node. A time series has one column per node and one row per time point.
+- Tables may carry the node labels as headers; without them, rows and columns follow the order of `nodes.tsv`.
+- Matrices hold Pearson correlations; add `--values z` if they hold Fisher z values.
+- `nodes.tsv` has one row per node. Without x, y, z the report leaves out the brain figures. For XCP-D input with the Gordon atlas, coordinates are added automatically.
 
 ## Output
 
