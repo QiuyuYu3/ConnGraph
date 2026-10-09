@@ -131,15 +131,17 @@ def test_spring_communities(dataset, out_dir):
 def test_circos_plot(dataset, out_dir):
     G = bnv.threshold_graph(dataset.mean_matrix().values, threshold=0.4)
     network_labels = dataset.nodes_df["network"].tolist()
-    fig, _ = bnv.circos_plot(G, dataset.nodes_df["label"].tolist(), network_labels, _net2color(network_labels))
-    _save_fig(fig, out_dir / "circos.png")
+    (curved, _), (bundled, _) = bnv.circos_plot(G, dataset.nodes_df["label"].tolist(), network_labels,
+                                                _net2color(network_labels))
+    _save_fig(curved, out_dir / "circos_curved.png")
+    _save_fig(bundled, out_dir / "circos_bundled.png")
 
 
 def test_circos_labels_face_outward(dataset):
     G = bnv.threshold_graph(dataset.mean_matrix().values, threshold=0.4)
     network_labels = dataset.nodes_df["network"].tolist()
     roi_labels = dataset.nodes_df["label"].tolist()
-    fig, ax = bnv.circos_plot(G, roi_labels, network_labels, _net2color(network_labels))
+    fig, ax = bnv.circos_plot(G, roi_labels, network_labels, _net2color(network_labels), edge_style="curved")
     checked = 0
     for text in ax.texts:
         x, _ = text.get_position()

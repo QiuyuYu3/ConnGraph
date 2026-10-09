@@ -1,3 +1,4 @@
+import functools
 import itertools
 
 import matplotlib.pyplot as plt
@@ -14,6 +15,8 @@ from brainnet3d.viz.colormap import labels_to_colors, values_to_colors
 from brainnet3d.viz.matrix_style import matrix_order, merge_heights
 
 SIGN = ((1.0, 0.25, 0.25), (0.25, 0.25, 1.0))
+# one figure per call, as before the bundled figure became part of the default
+circos = functools.partial(bnv.circos_plot, edge_style="curved")
 
 
 @pytest.fixture
@@ -31,7 +34,7 @@ def _chords(ax):
 
 def test_circos_default_draws_curved_chords_coloured_by_weight(signed_graph):
     G, labels, nets = signed_graph
-    fig, ax = bnv.circos_plot(G, labels, nets)
+    fig, ax = circos(G, labels, nets)
     chords = _chords(ax)
     assert len(chords) == G.number_of_edges()
     assert all(Path.CURVE3 in p.get_path().codes for p in chords)
@@ -44,7 +47,7 @@ def test_circos_default_draws_curved_chords_coloured_by_weight(signed_graph):
 
 def test_circos_straight_and_sign_colours(signed_graph):
     G, labels, nets = signed_graph
-    fig, ax = bnv.circos_plot(G, labels, nets, edge_style="straight", edge_color="sign")
+    fig, ax = circos(G, labels, nets, edge_style="straight", edge_color="sign")
     chords = _chords(ax)
     assert all(Path.CURVE3 not in p.get_path().codes for p in chords)
     assert {tuple(np.round(p.get_edgecolor()[:3], 6)) for p in chords} == {SIGN[0], SIGN[1]}
@@ -53,7 +56,7 @@ def test_circos_straight_and_sign_colours(signed_graph):
 
 def test_circos_plain_colour_and_width(signed_graph):
     G, labels, nets = signed_graph
-    fig, ax = bnv.circos_plot(G, labels, nets, edge_color="grey", edge_width=0.5)
+    fig, ax = circos(G, labels, nets, edge_color="grey", edge_width=0.5)
     chords = _chords(ax)
     assert {tuple(p.get_edgecolor()[:3]) for p in chords} == {to_rgb("grey")}
     assert {p.get_linewidth() for p in chords} == {0.5}
@@ -62,13 +65,13 @@ def test_circos_plain_colour_and_width(signed_graph):
 
 def test_circos_ring_replaces_legend(signed_graph):
     G, labels, nets = signed_graph
-    fig, ax = bnv.circos_plot(G, labels, nets)
+    fig, ax = circos(G, labels, nets)
     assert len([p for p in ax.patches if isinstance(p, Wedge)]) == len(set(nets))
     assert set(nets) <= {t.get_text() for t in ax.texts}
     assert ax.get_legend() is None
     plt.close(fig)
 
-    fig, ax = bnv.circos_plot(G, labels, nets, network_ring=False)
+    fig, ax = circos(G, labels, nets, network_ring=False)
     assert not [p for p in ax.patches if isinstance(p, Wedge)]
     assert ax.get_legend() is not None
     plt.close(fig)
@@ -76,7 +79,7 @@ def test_circos_ring_replaces_legend(signed_graph):
 
 def test_circos_default_colours_match_3d_plot(signed_graph):
     G, labels, nets = signed_graph
-    fig, ax = bnv.circos_plot(G, labels, nets)
+    fig, ax = circos(G, labels, nets)
     expected = dict(zip(nets, labels_to_colors(nets)))
     wedges = [p for p in ax.patches if isinstance(p, Wedge)]
     assert {tuple(np.round(w.get_facecolor()[:3], 6)) for w in wedges} == {
@@ -87,7 +90,7 @@ def test_circos_default_colours_match_3d_plot(signed_graph):
 
 def test_circos_keeps_input_order_within_network():
     labels, nets = ["b_10", "a_2", "b_1", "a_11"], ["B", "A", "B", "A"]
-    fig, ax = bnv.circos_plot(nx.empty_graph(4), labels, nets)
+    fig, ax = circos(nx.empty_graph(4), labels, nets)
     texts = [t for t in ax.texts if t.get_text() in labels]
     angles = [(np.arctan2(*t.get_position()[::-1]) - np.pi / 2) % (2 * np.pi) for t in texts]
     assert [texts[k].get_text() for k in np.argsort(angles)] == ["a_2", "a_11", "b_10", "b_1"]
@@ -116,14 +119,14 @@ def _gradient_graph(spread=0.4, seed=0):
 @pytest.mark.parametrize("order", ["network_chain", "network_cluster", "cluster"])
 def test_circos_orders_match_heatmap(order):
     G, labels, nets, m = _gradient_graph()
-    fig, ax = bnv.circos_plot(G, labels, nets, order=order, order_matrix=m)
+    fig, ax = circos(G, labels, nets, order=order, order_matrix=m)
     assert _ring_order(ax, labels) == [labels[i] for i in matrix_order(m, nets, order)]
     plt.close(fig)
 
 
 def test_circos_orders_by_graph_weights_without_matrix():
     G, labels, nets, _ = _gradient_graph()
-    fig, ax = bnv.circos_plot(G, labels, nets, order="network_chain")
+    fig, ax = circos(G, labels, nets, order="network_chain")
     adjacency = nx.to_numpy_array(G, nodelist=range(len(labels)))
     assert _ring_order(ax, labels) == [labels[i] for i in matrix_order(adjacency, nets, "network_chain")]
     plt.close(fig)
@@ -131,7 +134,7 @@ def test_circos_orders_by_graph_weights_without_matrix():
 
 def test_circos_cluster_gaps_sit_at_the_largest_splits():
     G, labels, nets, m = _gradient_graph(spread=0.9)
-    fig, ax = bnv.circos_plot(G, labels, nets, order="cluster", order_matrix=m)
+    fig, ax = circos(G, labels, nets, order="cluster", order_matrix=m)
     centres = np.array([p.center for p in ax.patches if isinstance(p, Circle)])
     steps = np.diff(np.unwrap(np.arctan2(centres[:, 1], centres[:, 0])))
     heights = merge_heights(m, matrix_order(m, nets, "cluster"))
@@ -145,7 +148,7 @@ def test_circos_split_networks_use_a_legend():
     ordered = [nets[i] for i in matrix_order(m, nets, "cluster")]
     runs = [s for k, s in enumerate(ordered) if k == 0 or s != ordered[k - 1]]
     assert len(runs) > len(set(nets))
-    fig, ax = bnv.circos_plot(G, labels, nets, order="cluster", order_matrix=m)
+    fig, ax = circos(G, labels, nets, order="cluster", order_matrix=m)
     assert ax.get_legend() is not None
     assert not set(nets) & {t.get_text() for t in ax.texts}
     assert len([p for p in ax.patches if isinstance(p, Wedge)]) == len(runs)
@@ -155,7 +158,7 @@ def test_circos_split_networks_use_a_legend():
 def test_circos_labels_use_darker_network_colours():
     labels, nets = ["r0", "r1", "r2"], ["A", "A", "B"]
     net2color = {"A": (0.6, 0.9, 0.5), "B": (0.7, 0.8, 0.95)}
-    fig, ax = bnv.circos_plot(nx.empty_graph(3), labels, nets, net2color=net2color)
+    fig, ax = circos(nx.empty_graph(3), labels, nets, net2color=net2color)
     assert len(ax.texts) == len(labels) + len(net2color)
     for t in ax.texts:
         net = t.get_text() if t.get_text() in net2color else nets[labels.index(t.get_text())]
@@ -167,7 +170,7 @@ def test_circos_labels_use_darker_network_colours():
 def test_circos_nodes_do_not_overlap():
     n = 300
     G = nx.empty_graph(n)
-    fig, ax = bnv.circos_plot(G, [f"r{i}" for i in range(n)], ["a"] * n)
+    fig, ax = circos(G, [f"r{i}" for i in range(n)], ["a"] * n)
     nodes = [p for p in ax.patches if isinstance(p, Circle)]
     spacing = 2 * np.pi / n
     assert nodes and max(c.get_radius() for c in nodes) <= 0.5 * spacing
@@ -178,7 +181,7 @@ def test_circos_network_names_do_not_overlap():
     sizes = {"Alpha": 40, "Bb": 1, "Cc": 1, "Dd": 1, "Epsilon": 40}
     nets = [name for name, k in sizes.items() for _ in range(k)]
     G = nx.empty_graph(len(nets))
-    fig, ax = bnv.circos_plot(G, [f"r{i}" for i in range(len(nets))], nets)
+    fig, ax = circos(G, [f"r{i}" for i in range(len(nets))], nets)
     fig.canvas.draw()
     boxes = [t.get_window_extent() for t in ax.texts if t.get_text() in sizes]
     assert len(boxes) == len(sizes)
@@ -190,7 +193,7 @@ def test_circos_first_and_last_network_names_do_not_overlap():
     # the first and last groups meet at the top of the circle
     sizes = {"Alpha_network": 1, "Middle": 60, "Zulu_network": 1}
     nets = [name for name, k in sizes.items() for _ in range(k)]
-    fig, ax = bnv.circos_plot(nx.empty_graph(len(nets)), [f"r{i}" for i in range(len(nets))], nets)
+    fig, ax = circos(nx.empty_graph(len(nets)), [f"r{i}" for i in range(len(nets))], nets)
     fig.canvas.draw()
     boxes = [t.get_window_extent() for t in ax.texts if t.get_text() in sizes]
     assert len(boxes) == len(sizes)
@@ -200,7 +203,7 @@ def test_circos_first_and_last_network_names_do_not_overlap():
 
 def test_circos_sorts_network_names_with_numbers_by_value():
     labels, nets = ["a", "b", "c", "d"], ["net10", "net2", "net10", "net2"]
-    fig, ax = bnv.circos_plot(nx.empty_graph(4), labels, nets)
+    fig, ax = circos(nx.empty_graph(4), labels, nets)
     assert _ring_order(ax, labels) == ["b", "d", "a", "c"]
     plt.close(fig)
 
@@ -242,7 +245,7 @@ def _colour_bars(ax):
 @pytest.mark.parametrize("vminvmax", ["absmax", "minmax", (0.0, 0.1)])
 def test_circos_edge_colour_range_and_colour_bar(signed_graph, vminvmax):
     G, labels, nets = signed_graph
-    fig, ax = bnv.circos_plot(G, labels, nets, edge_colorvminvmax=vminvmax)
+    fig, ax = circos(G, labels, nets, edge_colorvminvmax=vminvmax)
     w = np.array(sorted((w for _, _, w in G.edges(data="weight")), key=abs))
     peak = np.abs(w).max()
     lo, hi = {"absmax": (-peak, peak), "minmax": (w.min(), w.max())}.get(vminvmax, vminvmax)
@@ -256,6 +259,87 @@ def test_circos_edge_colour_range_and_colour_bar(signed_graph, vminvmax):
 @pytest.mark.parametrize("kwargs", [dict(edge_colorbar=False), dict(edge_color="sign"), dict(edge_color="grey")])
 def test_circos_colour_bar_only_for_weight_colours(signed_graph, kwargs):
     G, labels, nets = signed_graph
-    fig, ax = bnv.circos_plot(G, labels, nets, **kwargs)
+    fig, ax = circos(G, labels, nets, **kwargs)
     assert not _colour_bars(ax)
+    plt.close(fig)
+
+
+def _edge_lines(ax):
+    return [c for c in ax.collections if isinstance(c, LineCollection)]
+
+
+def test_circos_default_draws_curved_and_bundled_figures(signed_graph):
+    G, labels, nets = signed_graph
+    (fig1, ax1), (fig2, ax2) = bnv.circos_plot(G, labels, nets)
+    assert len(_chords(ax1)) == G.number_of_edges() and len(_colour_bars(ax1)) == 1
+    assert not _chords(ax2) and not _colour_bars(ax2)
+    assert len(_edge_lines(ax2)) == 1
+    plt.close(fig1)
+    plt.close(fig2)
+
+
+def test_circos_default_saves_two_files(signed_graph, tmp_path):
+    G, labels, nets = signed_graph
+    figs = bnv.circos_plot(G, labels, nets, save_path=str(tmp_path / "circos.png"))
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["circos_bundled.png", "circos_curved.png"]
+    for fig, _ in figs:
+        plt.close(fig)
+
+
+def _bundled_paths(G, labels, nets, **kwargs):
+    fig, ax = bnv.circos_plot(G, labels, nets, edge_style="bundled", edge_color="grey", **kwargs)
+    (lines,) = _edge_lines(ax)
+    plt.close(fig)
+    return [np.asarray(p) for p in lines.get_segments()]
+
+
+def _two_network_graph():
+    nets = ["A"] * 6 + ["B"] * 6
+    G = nx.Graph()
+    G.add_nodes_from(range(12))
+    G.add_weighted_edges_from([(0, 8, 0.5), (3, 11, 0.6), (1, 4, 0.7)])
+    return G, [f"r{i}" for i in range(12)], nets
+
+
+def test_circos_bundled_edges_between_the_same_networks_converge():
+    G, labels, nets = _two_network_graph()
+    straight = _bundled_paths(G, labels, nets, bundle_tension=0.0)
+    bundled = _bundled_paths(G, labels, nets)
+    # the two A-B edges are drawn first (weakest), the A-A edge last
+    gap = [np.linalg.norm(p[0][len(p[0]) // 2] - p[1][len(p[1]) // 2]) for p in (straight, bundled)]
+    assert gap[1] < 0.5 * gap[0]
+    for path in straight:
+        d, r = path[-1] - path[0], path - path[0]
+        assert np.abs(d[0] * r[:, 1] - d[1] * r[:, 0]).max() < 1e-9
+
+
+def test_circos_bundle_tension_must_be_between_0_and_1(signed_graph):
+    G, labels, nets = signed_graph
+    with pytest.raises(ValueError, match="bundle_tension"):
+        bnv.circos_plot(G, labels, nets, edge_style="bundled", bundle_tension=1.5)
+
+
+@pytest.mark.parametrize("edge_style", ["curved", "bundled"])
+def test_circos_network_colours_fade_from_one_end_to_the_other(edge_style):
+    G = nx.Graph()
+    G.add_nodes_from(range(4))
+    G.add_edge(0, 3, weight=0.5)
+    net2color = {"A": (1.0, 0.0, 0.0), "B": (0.0, 0.0, 1.0)}
+    fig, ax = bnv.circos_plot(G, ["r0", "r1", "r2", "r3"], ["A", "A", "B", "B"], net2color=net2color,
+                              edge_style=edge_style, edge_color="network")
+    (lines,) = _edge_lines(ax)
+    colours = lines.get_colors()[:, :3]
+    assert len(colours) > 10
+    assert {tuple(np.round(colours[0], 2)), tuple(np.round(colours[-1], 2))} == {(1.0, 0.0, 0.0), (0.0, 0.0, 1.0)}
+    assert not _chords(ax)
+    plt.close(fig)
+
+
+def test_circos_bundled_falls_back_to_curves_when_networks_are_split():
+    G, labels, nets, m = _gradient_graph(spread=0.9)
+    with pytest.warns(UserWarning, match="split"):
+        fig, ax = bnv.circos_plot(G, labels, nets, order="cluster", order_matrix=m, edge_style="bundled")
+    chords = _chords(ax)
+    assert len(chords) == G.number_of_edges()
+    assert all(Path.CURVE3 in p.get_path().codes for p in chords)
     plt.close(fig)

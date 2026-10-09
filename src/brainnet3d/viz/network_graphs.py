@@ -1,18 +1,26 @@
 from __future__ import annotations
 
+import os
+import warnings
+
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import networkx as nx
 from matplotlib.cm import ScalarMappable
+from matplotlib.collections import LineCollection
 from matplotlib.colors import Normalize, to_rgb
 from matplotlib.patches import PathPatch, Polygon, Wedge
 from matplotlib.path import Path
+from scipy.interpolate import BSpline
 from scipy.spatial import ConvexHull
 
 from brainnet3d.viz.colormap import labels_to_colors, values_to_colors, values_to_widths
 from brainnet3d.viz.layouts import grouped_layout
 from brainnet3d.viz.nodes import _resolve_vminvmax
+
+_HUB_RADIUS   = 0.55
+_EDGE_SAMPLES = 40
 
 
 def spring_plot_3d(
@@ -292,7 +300,7 @@ def circos_plot(
     label_fontsize: float = 5,
     gap_between_groups: float = 0.04,
     save_path: str | None = None,
-    edge_style: str = "curved",
+    edge_style: str = "both",
     edge_width: float | str = "weight",
     edge_width_range: tuple[float, float] = (0.3, 2.5),
     edge_cmap: str = "RdBu_r",
@@ -303,11 +311,14 @@ def circos_plot(
     order_matrix: np.ndarray | None = None,
     edge_colorvminvmax: str | tuple | None = "absmax",
     edge_colorbar: bool = True,
-) -> tuple[plt.Figure, plt.Axes]:
+    bundle_tension: float = 0.85,
+) -> tuple[plt.Figure, plt.Axes] | tuple[tuple[plt.Figure, plt.Axes], tuple[plt.Figure, plt.Axes]]:
     """
     Circos-style plot: nodes arranged in a circle grouped by subnetwork.
 
-    By default nodes in the same network are placed adjacently in input order; a small angular
+    By default two figures are returned as ((fig, ax), (fig, ax)): curved chords coloured by
+    edge_color, then edges bundled through their networks and coloured by network.
+    Nodes in the same network are placed adjacently in input order; a small angular
     gap separates consecutive network groups. Stronger edges are drawn on top.
     Labels use a darker shade of the network colour.
 
@@ -319,12 +330,17 @@ def circos_plot(
     net2color : {network_name: colour}. None → the 3-D plot's default network colours.
     edge_alpha : edge transparency.
     edge_color : "weight" (default) → edge_cmap centred on 0. "sign" → edge_sign_colors
-                 (positive, negative). Colour name or RGB tuple → uniform.
+                 (positive, negative). "network" → fades from one end's network colour to the
+                 other's. Colour name or RGB tuple → uniform.
     node_radius : node circle radius (circle radius is 1). None → fitted to the node spacing, at most 0.03.
     gap_between_groups : angular gap (radians) between network groups.
-    save_path : if given, save figure to this path at 150 dpi.
-    edge_style : "curved" (default) → chords bend towards the centre, more for distant nodes.
-                 "straight" → straight chords.
+    save_path : if given, save figure to this path at 300 dpi. With edge_style="both" the two
+                figures go to <name>_curved and <name>_bundled.
+    edge_style : "both" (default) → one "curved" figure and one "bundled" figure with
+                 edge_color="network". "curved" → chords bend towards the centre, more for
+                 distant nodes. "straight" → straight chords. "bundled" → each edge runs through
+                 its networks' hubs, so edges between the same two networks merge into a bundle;
+                 falls back to "curved" with a warning when the order splits networks.
     edge_width : "weight" (default) → |weight| scaled to edge_width_range. Number → uniform.
     network_ring : draw a coloured arc and the network name outside each group instead of a legend.
                    When the order splits networks, arcs follow each run and names go to a legend.
@@ -339,7 +355,23 @@ def circos_plot(
                          → ±max(|weight|), 0 at the colormap centre. "minmax" → data min to max.
                          (vmin, vmax) tuple → explicit limits.
     edge_colorbar : with edge_color="weight", draw a small edge colour bar in the lower right corner.
+    bundle_tension : 0 to 1, how tightly bundled edges follow their networks; 0 → straight chords.
     """
+    call = dict(locals())
+    if edge_style not in ("both", "curved", "straight", "bundled"):
+        raise ValueError(f"edge_style='{edge_style}' not recognised. Choose: 'both', 'curved', 'straight', 'bundled'.")
+    if not 0.0 <= bundle_tension <= 1.0:
+        raise ValueError(f"bundle_tension must be between 0 and 1, got {bundle_tension}.")
+    if edge_style == "both":
+        figures = []
+        for style, colour in (("curved", edge_color), ("bundled", "network")):
+            path = None
+            if save_path is not None:
+                root, ext = os.path.splitext(save_path)
+                path = f"{root}_{style}{ext}"
+            figures.append(circos_plot(**{**call, "edge_style": style, "edge_color": colour, "save_path": path}))
+        return tuple(figures)
+
     from brainnet3d.viz.matrix_style import _groups, is_contiguous, matrix_order, merge_heights, natural_key
 
     net2color   = _network_colors(network_labels, net2color)
@@ -360,6 +392,9 @@ def circos_plot(
     sorted_nets   = [network_labels[i]  for i in order]
     old2new       = {old: new for new, old in enumerate(order)}
     contiguous    = values is None or is_contiguous(network_labels, np.asarray(order))
+    if edge_style == "bundled" and not contiguous:
+        warnings.warn("The node order splits networks, so edges are drawn curved instead of bundled.", stacklevel=2)
+        edge_style = "curved"
 
     total_gap      = gap_between_groups * len(unique_nets)
     angle_per_node = (2 * np.pi - total_gap) / n
@@ -393,25 +428,41 @@ def circos_plot(
     ax.set_xlim(-1.5, 1.5)
     ax.set_ylim(-1.5, 1.5)
 
-    if edge_style not in ("curved", "straight"):
-        raise ValueError(f"edge_style='{edge_style}' not recognised. Choose: 'curved', 'straight'.")
     edges   = sorted((e for e in G.edges(data="weight", default=1.0) if e[0] != e[1]), key=lambda e: abs(e[2]))
     weights = np.array([w for _, _, w in edges], dtype=float)
-    colors  = _edge_colors(weights, edge_color, edge_cmap, edge_sign_colors, edge_colorvminvmax)
+    by_network = isinstance(edge_color, str) and edge_color == "network"
+    colors  = [None] * len(edges) if by_network else _edge_colors(weights, edge_color, edge_cmap, edge_sign_colors,
+                                                                    edge_colorvminvmax)
     if isinstance(edge_width, (int, float)):
         widths = np.full(len(edges), float(edge_width))
     else:
         widths = values_to_widths(np.abs(weights), edge_width_range) if len(edges) else []
+    xy = np.array([[xs[old2new[i]], ys[old2new[i]]] for i in range(n)])
+    hubs = _network_hubs(xy, network_labels) if edge_style == "bundled" else {}
+    polylines = []
     for (u, v, _), c, lw in zip(edges, colors, widths):
-        p0 = np.array([xs[old2new[u]], ys[old2new[u]]])
-        p2 = np.array([xs[old2new[v]], ys[old2new[v]]])
+        p0, p2 = xy[u], xy[v]
+        if edge_style == "bundled":
+            polylines.append(_bundled_path(p0, p2, hubs[network_labels[u]], hubs[network_labels[v]],
+                                           network_labels[u] == network_labels[v], bundle_tension))
+            continue
         if edge_style == "curved":
             # pull the control point towards the centre, further for longer chords
             ctrl = (p0 + p2) / 2 * (1 - np.linalg.norm(p2 - p0) / (2 * R))
             path = Path([p0, ctrl, p2], [Path.MOVETO, Path.CURVE3, Path.CURVE3])
         else:
             path = Path([p0, p2], [Path.MOVETO, Path.LINETO])
-        ax.add_patch(PathPatch(path, fill=False, edgecolor=c, linewidth=lw, alpha=edge_alpha, zorder=1))
+        if by_network:
+            polylines.append(path.interpolated(_EDGE_SAMPLES).vertices if edge_style == "straight"
+                             else _sample_quadratic(path.vertices))
+        else:
+            ax.add_patch(PathPatch(path, fill=False, edgecolor=c, linewidth=lw, alpha=edge_alpha, zorder=1))
+    if polylines and by_network:
+        ends = [(net2color[network_labels[u]], net2color[network_labels[v]]) for u, v, _ in edges]
+        ax.add_collection(_gradient_lines(polylines, ends, widths, edge_alpha))
+    elif polylines:
+        ax.add_collection(LineCollection(polylines, colors=[(*to_rgb(c), edge_alpha) for c in colors],
+                                         linewidths=widths, capstyle="butt", joinstyle="round", zorder=1))
 
     for i in range(n):
         ax.add_patch(plt.Circle((xs[i], ys[i]), node_radius,
@@ -456,9 +507,45 @@ def circos_plot(
         cax.set_title("edge weight", fontsize=9)
 
     if save_path:
-        fig.savefig(save_path, dpi=150, bbox_inches="tight")
+        fig.savefig(save_path, dpi=300, bbox_inches="tight")
 
     return fig, ax
+
+
+def _network_hubs(xy: np.ndarray, network_labels: list) -> dict:
+    nets = np.asarray(network_labels, dtype=object)
+    hubs = {}
+    for net in dict.fromkeys(network_labels):
+        mean = xy[nets == net].mean(axis=0)
+        norm = np.linalg.norm(mean)
+        hubs[net] = mean / norm * _HUB_RADIUS if norm > 1e-9 else np.zeros(2)
+    return hubs
+
+
+def _bundled_path(p0, p1, hub0, hub1, same_network: bool, tension: float) -> np.ndarray:
+    ctrl = np.array([p0, hub0, p1] if same_network else [p0, hub0, np.zeros(2), hub1, p1])
+    # straighten the control polygon towards the chord; tension 0 gives the chord itself
+    chord = p0 + np.linspace(0, 1, len(ctrl))[:, None] * (p1 - p0)
+    ctrl = tension * ctrl + (1 - tension) * chord
+    k = min(3, len(ctrl) - 1)
+    knots = np.concatenate([np.zeros(k), np.linspace(0, 1, len(ctrl) - k + 1), np.ones(k)])
+    return BSpline(knots, ctrl, k)(np.linspace(0, 1, _EDGE_SAMPLES))
+
+
+def _sample_quadratic(ctrl: np.ndarray) -> np.ndarray:
+    t = np.linspace(0, 1, _EDGE_SAMPLES)[:, None]
+    return (1 - t) ** 2 * ctrl[0] + 2 * (1 - t) * t * ctrl[1] + t ** 2 * ctrl[2]
+
+
+def _gradient_lines(polylines: list, ends: list, widths, alpha: float) -> LineCollection:
+    segments, colors, lws = [], [], []
+    for pts, (c0, c1), lw in zip(polylines, ends, widths):
+        t = np.linspace(0, 1, len(pts) - 1)[:, None]
+        segments.extend(np.stack([pts[:-1], pts[1:]], axis=1))
+        # network colours are saturated, so they are drawn lighter than weight colours
+        colors.extend((*c, alpha * 0.6) for c in (1 - t) * np.array(to_rgb(c0)) + t * np.array(to_rgb(c1)))
+        lws.extend([lw] * (len(pts) - 1))
+    return LineCollection(segments, colors=colors, linewidths=lws, capstyle="butt", zorder=1)
 
 
 def _ring_names(ax, nets: list, sorted_nets: list, angles: list, roi_texts: list, label_r: float, net2color: dict) -> None:
