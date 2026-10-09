@@ -312,3 +312,62 @@ def test_heatmap_keeps_every_network_name_when_there_is_room():
 
     m, names, groups = _heatmap_input({"A": 20, "B": 20, "C": 20})
     assert list(figures.ordered_heatmap(m, names, groups, 3.0, "d").layout.yaxis.ticktext) == ["A", "B", "C"]
+
+
+def _capture_figures(monkeypatch):
+    import brainnet3d as bnv
+
+    calls = []
+    for name in ("circos_plot", "spring_plot", "plot_nbs_matrices"):
+        def wrapper(*args, _original=getattr(bnv, name), _name=name, **kwargs):
+            calls.append((_name, args, kwargs))
+            return _original(*args, **kwargs)
+        monkeypatch.setattr(bnv, name, wrapper)
+    return calls
+
+
+def _report_palette(nodes):
+    from brainnet3d.report.pages import _palette
+
+    return _palette(_column(nodes, "label", "network"))
+
+
+def test_nbs_report_adds_circos_and_group_matrices(dataset, tmp_path, monkeypatch):
+    calls = _capture_figures(monkeypatch)
+    result = run_nbs(*_two_groups_with_a_difference(dataset), thresh=3.0, k=50, seed=0, verbose=False)
+    result.save_report(tmp_path / "nbs.html", nodes=dataset.nodes_df, static_brain=False)
+    text = (tmp_path / "nbs.html").read_text(encoding="utf-8")
+    assert "On a circle" in text and "Group means and difference" in text
+    palette = _report_palette(dataset.nodes_df)
+    (circos,) = [(args, kw) for name, args, kw in calls if name == "circos_plot"]
+    sig = np.isin(result.adj, np.flatnonzero(result.pval < 0.05) + 1)
+    assert circos[0][0].number_of_edges() == np.triu(sig, 1).sum()
+    assert circos[1]["net2color"] == palette and circos[1]["edge_colorbar_title"] == "Group 1 − Group 2"
+    (matrices,) = [kw for name, _, kw in calls if name == "plot_nbs_matrices"]
+    assert matrices["network_palette"] == palette
+
+
+def test_graph_report_draws_the_group_network_as_analysed(graph_result, dataset, tmp_path, monkeypatch):
+    calls = _capture_figures(monkeypatch)
+    graph_result.save_report(tmp_path / "graph.html", static_brain=False)
+    assert "Group network" in (tmp_path / "graph.html").read_text(encoding="utf-8")
+    palette = _report_palette(graph_result.nodes)
+    (circos,) = [(args, kw) for name, args, kw in calls if name == "circos_plot"]
+    (spring,) = [(args, kw) for name, args, kw in calls if name == "spring_plot"]
+    n = len(graph_result.mean_matrix)
+    # the node level was built with TMFG, which keeps 3n - 6 edges
+    assert circos[0][0].number_of_edges() == spring[0][0].number_of_edges() == 3 * n - 6
+    assert circos[1]["net2color"] == spring[1]["net2color"] == palette
+    assert spring[1]["network_hulls"] is False
+
+
+def _keep_strong(W):
+    return np.abs(W) * (np.abs(W) > 0.3)
+
+
+def test_graph_report_skips_the_group_network_for_a_custom_method(dataset, tmp_path):
+    result = compute_graph_metrics(dataset.matrices, dataset.nodes_df, level="node", network_col="network",
+                                   graph_method=_keep_strong, metrics=["strength"], n_jobs=1, verbose=False)
+    assert not result.failed.get("node")
+    result.save_report(tmp_path / "graph.html", static_brain=False)
+    assert "Group network" not in (tmp_path / "graph.html").read_text(encoding="utf-8")

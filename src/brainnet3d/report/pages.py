@@ -147,8 +147,11 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
     ])]
     sections = [("Components", "Components")]
 
+    contrast = (params.get("input") or {}).get("contrast") or ["", ""]
+    g1, g2 = contrast if contrast[0] else ("Group 1", "Group 2")
     if sig:
         steps = []
+        letter = iter("abcdefgh")
         iu = [tuple(e) for e in np.argwhere(np.triu(adj_sig, 1))]
         n_sig = len(iu)
         if n_sig > _MAX_BRAIN_EDGES:
@@ -169,16 +172,30 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
             parts.append('<div class="option-label">Option 2: interactive</div>' + figures.to_div(figures.brain_edges(
                 xyz, labels, nets or ["None"] * len(labels), drawn, np.array([diff[i, j] for i, j in drawn]), degree,
                 palette, meshes, ("Group 1 > Group 2", "Group 1 < Group 2"))))
-            steps.append(_step("a. On the brain", hint="(static and interactive)", html="".join(parts),
+            steps.append(_step(f"{next(letter)}. On the brain", hint="(static and interactive)", html="".join(parts),
                                desc=f"Showing {what}, coloured by the sign of the group difference (group 1 − group 2); "
                                     "node size is the number of significant edges at each region."))
         else:
             notes.append(_no_coordinates(nodes))
+        if nets:
+            import networkx as nx
+
+            G = nx.Graph()
+            G.add_nodes_from(range(len(labels)))
+            G.add_weighted_edges_from((int(i), int(j), diff[i, j]) for i, j in iu)
+            steps.append(_step(f"{next(letter)}. On a circle", html=_circos_images(G, labels, nets, palette, f"{g1} − {g2}"),
+                               desc=f"All {n_sig} significant edges with regions grouped by network: coloured by the "
+                                    "group difference, then bundled through their networks and coloured by the "
+                                    "networks they join."))
         marks = [(labels[i], labels[j]) for i, j in iu] + [(labels[j], labels[i]) for i, j in iu]
-        steps.append(_step("b. Group difference", html=figures.to_div(figures.ordered_heatmap(
+        steps.append(_step(f"{next(letter)}. Group difference", html=figures.to_div(figures.ordered_heatmap(
             diff, labels, nets, float(np.abs(diff).max()) or 1.0, "G1 − G2", marks)),
             desc="Group 1 minus group 2 for every edge" + (", ordered by network" if nets else "")
                  + "; significant edges keep their colour and the others are faded."))
+        steps.append(_step(f"{next(letter)}. Group means and difference",
+                           html=_img(_nbs_matrices(result, adj_sig, labels, nets, palette, (g1, g2))),
+                           desc="Mean connectivity of each group and their difference, with the significant edges "
+                                "shown at full strength."))
         rows = []
         for i, j in iu:
             row = {"ROI A": labels[i], "ROI B": labels[j]}
@@ -196,9 +213,9 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
                 if nets[i] != nets[j]:
                     counts.loc[nets[j], nets[i]] += 1
             keep = [n for n in names if counts.loc[n].sum() > 0]
-            steps.append(_step("c. By network pair", html=figures.to_div(figures.count_heatmap(counts.loc[keep, keep])),
+            steps.append(_step(f"{next(letter)}. By network pair", html=figures.to_div(figures.count_heatmap(counts.loc[keep, keep])),
                                desc="Number of significant edges within and between networks."))
-        steps.append(_step("d. Edge list" if nets else "c. Edge list", open=False,
+        steps.append(_step(f"{next(letter)}. Edge list", open=False,
                            html=f'<div class="scroll">{_table(edges)}</div>',
                            desc=f"All {n_sig} significant edges, largest difference first; click a column to sort."))
         body.append(dict(id="Edges", title="Significant edges", desc="", steps=steps))
@@ -273,7 +290,74 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
         steps.append(_step(f"{next(letter)}. Connectivity", open=False, html=figures.to_div(figures.ordered_heatmap(
             M.to_numpy(float), names, groups, 1.0, "r")),
             desc="Group mean connectivity between all regions" + (", ordered by network" if groups else "") + "."))
+    group = _group_graph(result) if networks is not None else None
+    if group is not None:
+        import brainnet3d as bnv
+
+        G, names, how = group
+        nets = [networks.get(n, "None") for n in names]
+        circos = _circos_images(G, names, nets, palette, "group mean r")
+        spring, _ = bnv.spring_plot(G, names, nets, net2color=palette, figsize=(11, 11), network_hulls=False)
+        steps.append(_step(f"{next(letter)}. Group network", html=circos + _figure_block("Spring layout", _png(spring)),
+                           desc=f"The group mean connectivity turned into a graph the way each participant's was "
+                                f"({how}); the metrics above come from each participant's own graph. The circle "
+                                "groups regions by network; the bundled version routes edges through their networks "
+                                "and colours them by the networks they join."))
     return steps
+
+
+def _group_graph(result):
+    """The group mean matrix built into a graph with the node level's method, or None when it cannot be redone."""
+    import networkx as nx
+
+    from brainnet3d.graph_theory.sparsify import GRAPH_METHODS, apply_sign, build_adjacency
+
+    level = result.params["levels"].get("node") or {}
+    method = level.get("graph_method")
+    # a custom function cannot be rebuilt from its name, and PMFG takes minutes on a full atlas
+    if result.mean_matrix is None or method not in GRAPH_METHODS or method == "pmfg":
+        return None
+    params, how = dict(level.get("graph_params") or {}), _method_text(level)
+    for key, value in params.items():
+        if isinstance(value, list):
+            params[key] = value[len(value) // 2]
+            how = f"{level['graph_method']}, {key} {params[key]} from the middle of the range"
+    opts = result.params["options"]
+    M = np.nan_to_num(result.mean_matrix.to_numpy(float))
+    if opts.get("apply_fisher_z", True):
+        M = np.tanh(M)
+    np.fill_diagonal(M, 0)
+    M = apply_sign(M, level["sign"])
+    if opts.get("normalize_weights") and np.abs(M).max() > 0:
+        M = M / np.abs(M).max()
+    A = build_adjacency(M, method, params, level["sign"] == "signed")
+    return nx.from_numpy_array(A), list(result.mean_matrix.index), f"{how}, {level['sign']} weights"
+
+
+def _circos_images(G, labels, nets, palette, colorbar_title) -> str:
+    import brainnet3d as bnv
+
+    (curved, _), (bundled, _) = bnv.circos_plot(G, labels, nets, net2color=palette, figsize=(11, 11),
+                                                label_fontsize=3.5, edge_colorbar_title=colorbar_title)
+    return (_figure_block("Circos", _png(curved))
+            + _figure_block("Circos, bundled through networks and coloured by network", _png(bundled)))
+
+
+def _nbs_matrices(result, adj_sig, labels, nets, palette, group_names) -> str:
+    import brainnet3d as bnv
+
+    off = ~np.eye(len(labels), dtype=bool)
+    lim = float(max(np.abs(result.mean_g1[off]).max(), np.abs(result.mean_g2[off]).max())) or 1.0
+    layout = dict(network_labels=nets, network_palette=palette) if nets else {}
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        fig = bnv.plot_nbs_matrices(result.mean_g1, result.mean_g2, adj_sig.astype(float), labels, vmin=-lim, vmax=lim,
+                                    group_names=group_names, **layout)
+    return _png(fig)
+
+
+def _figure_block(label: str, b64: str) -> str:
+    return f'<div class="option-label">{html.escape(label)}</div>' + _img(b64)
 
 
 def _static_node_brain(result, nodes, label_col, labels, values, title, surfaces) -> str:

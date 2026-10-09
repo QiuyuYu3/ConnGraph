@@ -312,6 +312,7 @@ def circos_plot(
     edge_colorvminvmax: str | tuple | None = "absmax",
     edge_colorbar: bool = True,
     bundle_tension: float = 0.85,
+    edge_colorbar_title: str = "edge weight",
 ) -> tuple[plt.Figure, plt.Axes] | tuple[tuple[plt.Figure, plt.Axes], tuple[plt.Figure, plt.Axes]]:
     """
     Circos-style plot: nodes arranged in a circle grouped by subnetwork.
@@ -356,6 +357,7 @@ def circos_plot(
                          (vmin, vmax) tuple → explicit limits.
     edge_colorbar : with edge_color="weight", draw a small edge colour bar in the lower right corner.
     bundle_tension : 0 to 1, how tightly bundled edges follow their networks; 0 → straight chords.
+    edge_colorbar_title : title of the edge colour bar.
     """
     call = dict(locals())
     if edge_style not in ("both", "curved", "straight", "bundled"):
@@ -504,7 +506,7 @@ def circos_plot(
         bar = fig.colorbar(ScalarMappable(Normalize(vmin, vmax), edge_cmap), cax=cax, orientation="horizontal",
                            alpha=edge_alpha)
         bar.ax.tick_params(labelsize=8)
-        cax.set_title("edge weight", fontsize=9)
+        cax.set_title(edge_colorbar_title, fontsize=9)
 
     if save_path:
         fig.savefig(save_path, dpi=300, bbox_inches="tight")

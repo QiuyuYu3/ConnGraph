@@ -264,6 +264,17 @@ def test_circos_colour_bar_only_for_weight_colours(signed_graph, kwargs):
     plt.close(fig)
 
 
+def test_circos_colour_bar_title_can_be_set(signed_graph):
+    G, labels, nets = signed_graph
+    fig, ax = circos(G, labels, nets, edge_colorbar_title="PT − HC")
+    (bar,) = _colour_bars(ax)
+    assert bar.get_title() == "PT − HC"
+    plt.close(fig)
+    fig, ax = circos(G, labels, nets)
+    assert _colour_bars(ax)[0].get_title() == "edge weight"
+    plt.close(fig)
+
+
 def _edge_lines(ax):
     return [c for c in ax.collections if isinstance(c, LineCollection)]
 
