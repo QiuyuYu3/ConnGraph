@@ -34,6 +34,8 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--tail", choices=["both", "left", "right"], default="both", help="tail of the test (default: both)")
     g.add_argument("--seed", type=int, help="random seed; a drawn seed is recorded when omitted")
     g.add_argument("--no-fisher-z", action="store_true", help="test raw r instead of Fisher z-transformed values")
+    g.add_argument("--n-jobs", "--nprocs", type=int, default=-1,
+                   help="parallel workers for the permutations (default: all but one); results do not depend on it")
     return parser
 
 
@@ -66,7 +68,8 @@ def main(argv: list[str] | None = None) -> int:
         matrices = _shared.fisher_z(matrices)
     g1, g2 = ({i: matrices[by_label[i]] for i in ids} for ids in groups)
     try:
-        result = run_nbs(g1, g2, thresh=args.thresh, k=args.perms, tail=args.tail, seed=args.seed, verbose=not args.quiet)
+        result = run_nbs(g1, g2, thresh=args.thresh, k=args.perms, tail=args.tail, seed=args.seed, verbose=not args.quiet,
+                         n_jobs=args.n_jobs)
     except Exception as exc:
         raise SystemExit(f"{parser.prog}: {exc}") from None
 

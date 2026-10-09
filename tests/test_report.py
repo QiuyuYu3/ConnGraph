@@ -228,6 +228,49 @@ def test_reports_read_missing_network_labels_as_none(nbs_result, graph_result, d
     graph_result.save_report(tmp_path / "graph.html", nodes=nodes, static_brain=False)
 
 
+def _two_groups_with_a_difference(dataset, n=10, seed=0):
+    rng = np.random.default_rng(seed)
+    base = dataset.mean_matrix()
+    inside = (dataset.nodes_df["network"] == "Default").to_numpy()
+    block = np.outer(inside, inside) * 0.3
+    out = []
+    for shift in (0.0, block):
+        group = {}
+        for k in range(n):
+            noise = rng.normal(0, 0.05, base.shape)
+            m = np.clip(base.to_numpy() + shift + (noise + noise.T) / 2, -0.99, 0.99)
+            np.fill_diagonal(m, 1.0)
+            group[f"s{len(out)}{k:02d}"] = pd.DataFrame(m, index=base.index, columns=base.columns)
+        out.append(group)
+    return out
+
+
+def test_static_nbs_brain_names_missing_networks_none(dataset, tmp_path, monkeypatch):
+    import matplotlib.pyplot as plt
+
+    from brainnet3d.viz.plotter import BrainNetPlotter
+
+    seen = {}
+
+    def capture(self, **kwargs):
+        seen["networks"] = list(self.dataset.nodes_df["network"])
+        seen["palette"] = kwargs.get("node_palette") or {}
+        return plt.figure(figsize=(1, 1))
+
+    monkeypatch.setattr(BrainNetPlotter, "plot_views", capture)
+    nodes = dataset.nodes_df.copy()
+    nodes["network"] = nodes["network"].astype("string")
+    nodes.loc[[0, 5], "network"] = pd.NA
+    # enough permutations for a significant component, which is what the static brain shows
+    result = run_nbs(*_two_groups_with_a_difference(dataset), thresh=3.0, k=50, seed=0, verbose=False)
+    assert min(result.pval) < 0.05
+    result.save_report(tmp_path / "nbs.html", nodes=nodes, static_brain=True)
+    networks = pd.Series(seen["networks"], dtype=object)
+    assert not networks.isna().any()
+    assert "None" in set(networks) and set(networks) <= set(seen["palette"])
+    plt.close("all")
+
+
 def test_nbs_report_works_without_a_node_table(nbs_result, tmp_path):
     path = tmp_path / "nbs.html"
     nbs_result.save_report(path)

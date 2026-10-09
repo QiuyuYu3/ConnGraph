@@ -54,7 +54,8 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--random-seed", type=int, help="seed for the random networks")
     g.add_argument("--exclude-networks", nargs="*", default=["None"], metavar="LABEL",
                    help='network labels left out of the network level (default: None); give no labels to keep all')
-    g.add_argument("--n-jobs", type=int, default=-1, help="parallel workers for the node level (default: all but one)")
+    g.add_argument("--n-jobs", "--nprocs", type=int, default=-1,
+                   help="parallel workers for the node level (default: all but one)")
     return parser
 
 

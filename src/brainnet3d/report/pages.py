@@ -299,6 +299,7 @@ def _static_nbs_brain(nodes, label_col, network_col, labels, drawn, diff, degree
 
     nd = nodes.rename(columns={label_col: "label", network_col: "network"}).copy()
     nd = nd[nd["label"].isin(labels)]
+    nd["network"] = nd["label"].map(_column(nd, "label", "network"))
     nd["Significant edges"] = nd["label"].map(dict(zip(labels, degree)))
     M = np.zeros_like(diff)
     for i, j in drawn:

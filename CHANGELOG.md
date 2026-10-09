@@ -21,6 +21,7 @@
 - Saved figures are 300 dpi: 2-D plots, multi-view figures by default, and 3-D screenshots, which are now rendered at twice the window size.
 - 3-D edges drawn as tubes are thicker, so they read as tubes rather than lines.
 - Everything installs with the package: graph metrics, atlas and surface templates, and HTML export are no longer optional extras.
+- NBS permutations run in several processes by default (`n_jobs`); a given seed gives the same result whatever the number of processes.
 
 ### Fixed
 

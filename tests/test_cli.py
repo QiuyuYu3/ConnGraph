@@ -87,6 +87,32 @@ def test_nbs_command_compares_two_groups_from_a_table(xcpd, tmp_path):
     assert "Fisher z-transformed before testing" in report and "Run command" in report
 
 
+@pytest.mark.parametrize("flag", ["--n-jobs", "--nprocs"])
+def test_both_commands_take_a_worker_count(flag):
+    common = ["in", "out", "--input-format", "xcpd", "--atlas", "Toy", flag, "3"]
+    assert graph_cli.build_parser().parse_args(common).n_jobs == 3
+    nbs_args = common + ["--groups", "g.tsv", "--group-column", "dx", "--contrast", "A", "B", "--thresh", "1"]
+    assert nbs_cli.build_parser().parse_args(nbs_args).n_jobs == 3
+
+
+def test_nbs_command_passes_the_worker_count(xcpd, tmp_path, monkeypatch):
+    from brainnet3d.graph_theory import nbs as nbs_module
+
+    seen = {}
+    original = nbs_module.run_nbs
+
+    def recording(*args, **kwargs):
+        seen.update(kwargs)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(nbs_module, "run_nbs", recording)
+    root, _, groups = xcpd
+    nbs_cli.main([str(root), str(tmp_path / "nbs"), "--input-format", "xcpd", "--atlas", "Toy", "--groups", str(groups),
+                  "--group-column", "dx", "--contrast", "A", "B", "--thresh", "1.0", "--perms", "20", "--seed", "0",
+                  "--no-report", "--quiet", "--nprocs", "2"])
+    assert seen["n_jobs"] == 2
+
+
 def test_nbs_command_reports_groups_missing_from_the_data(xcpd, tmp_path):
     root, _, _ = xcpd
     table = tmp_path / "participants.tsv"
