@@ -63,14 +63,6 @@ def add_input_arguments(parser: argparse.ArgumentParser) -> None:
                    help="matrix, timeseries and fnirs-pipe input: drop a node missing in any participant (union, "
                         "default) or in all (intersection)")
 
-    r = parser.add_argument_group("report")
-    r.add_argument("--no-report", action="store_true", help="skip the HTML report")
-    r.add_argument("--no-static-brain", action="store_true", help="leave the static brain renderings out of the report")
-    r.add_argument("--coords", help="table with label, x, y, z for the brain figures; Gordon coordinates are added "
-                                    "automatically")
-    r.add_argument("--surfaces", nargs=2, metavar=("LEFT", "RIGHT"),
-                   help="left and right .surf.gii for the brain figures (default: fsLR 32k midthickness)")
-
 
 def input_variants(args: argparse.Namespace, parser: argparse.ArgumentParser) -> list[str | None]:
     """One entry per separate analysis, named as its result folder: an atlas for XCP-D, a chromophore for fnirs-pipe."""
@@ -128,8 +120,8 @@ def _read_json(path: str) -> dict:
     return data
 
 
-def run_all(args: argparse.Namespace, parser: argparse.ArgumentParser, run) -> int:
-    """Call run(session, variant, out) for each session and variant; with several, a failure is noted and the rest run."""
+def run_all(args: argparse.Namespace, parser: argparse.ArgumentParser, run, error_folder: str) -> int:
+    """Call run(session, variant) for each session and variant; with several, a failure is noted and the rest run."""
     kind = args.connectivity
     if args.input_type in ("matrix", "fnirs-pipe") and (kind or args.shrinkage):
         parser.error("--connectivity and --shrinkage need timeseries or XCP-D input")
@@ -141,17 +133,17 @@ def run_all(args: argparse.Namespace, parser: argparse.ArgumentParser, run) -> i
     runs = [(s, v) for s in input_sessions(args, parser) for v in variants]
     failed = []
     for session, variant in runs:
-        out = pathlib.Path(args.output_dir) / (session or "") / (variant or "")
         name = " ".join(x for x in (session, variant) if x)
         if len(runs) == 1:
-            run(session, variant, out)
+            run(session, variant)
             break
         if not args.quiet:
             print(f"[{parser.prog}] {name}")
         try:
-            run(session, variant, out)
+            run(session, variant)
         except (Exception, SystemExit) as exc:
             message = str(exc).removeprefix(f"{parser.prog}: ") or type(exc).__name__
+            out = run_folder(args.output_dir, error_folder, session, variant)
             out.mkdir(parents=True, exist_ok=True)
             (out / "error.txt").write_text(message + "\n", encoding="utf-8")
             print(f"{parser.prog}: {name} failed: {message}", file=sys.stderr)
@@ -160,6 +152,24 @@ def run_all(args: argparse.Namespace, parser: argparse.ArgumentParser, run) -> i
         print(f"{parser.prog}: {len(failed)} of {len(runs)} runs failed: {', '.join(failed)}", file=sys.stderr)
         return 1
     return 0
+
+
+def run_folder(output_dir: str, folder: str, session: str | None, variant: str | None) -> pathlib.Path:
+    return pathlib.Path(output_dir, folder, session or "", variant or "")
+
+
+def participant_parts(sid: str) -> tuple[str, str | None]:
+    """The participant label without sub-, and the run entity of a run analysed on its own."""
+    label, _, run = str(sid).removeprefix("sub-").partition("_")
+    return label, run or None
+
+
+def chosen(matrices: dict, args: argparse.Namespace) -> list[str]:
+    """Matrix keys of the participants named by --participant-label, or all of them."""
+    if not args.participant_label:
+        return list(matrices)
+    labels = {s.removeprefix("sub-") for s in args.participant_label}
+    return [sid for sid in matrices if participant_parts(sid)[0] in labels]
 
 
 def _input_files(folder: str, pattern: str) -> list[str]:
@@ -173,8 +183,7 @@ def _file_session(path: str) -> str | None:
 
 def load_input(args: argparse.Namespace, parser: argparse.ArgumentParser,
                variant: str | None = None, session: str | None = None) -> tuple[dict, pd.DataFrame]:
-    """Matrices and node table as the chosen loader returns them, with what it read noted on the table."""
-    labels = [s.removeprefix("sub-") for s in args.participant_label] if args.participant_label else None
+    """Every participant's matrix and the node table, so nodes are dropped the same way whoever is analysed."""
     verbose = not args.quiet
     kind = args.connectivity.replace("-", " ") if args.connectivity else None
     filters = bids_filters(args, parser)
@@ -182,7 +191,7 @@ def load_input(args: argparse.Namespace, parser: argparse.ArgumentParser,
         filters["ses"] = [session.removeprefix("ses-") if session else None]
     if args.input_type == "fnirs-pipe":
         return conngraph.load_fnirs_pipe(args.input_dir, variant.removeprefix("chromo-"), session=session,
-                                          task=args.task_id, subject_ids=labels,
+                                          task=args.task_id,
                                           bad_node_threshold=args.bad_node_threshold, drop_mode=args.drop_mode,
                                           verbose=verbose, bids_filters=filters)
     if args.input_type in ("matrix", "timeseries"):
@@ -197,8 +206,6 @@ def load_input(args: argparse.Namespace, parser: argparse.ArgumentParser,
             if sid in files:
                 raise SystemExit(f"{parser.prog}: two files for {sid}: {files[sid]} and {p}")
             files[sid] = p
-        if labels is not None:
-            files = {k: p for k, p in files.items() if k.removeprefix("sub-") in labels}
         if not files:
             raise SystemExit(f"{parser.prog}: no files matching {pattern} in {args.input_dir}")
         common = dict(bad_node_threshold=args.bad_node_threshold, drop_mode=args.drop_mode, mat_key=args.mat_key)
@@ -210,7 +217,7 @@ def load_input(args: argparse.Namespace, parser: argparse.ArgumentParser,
         ds.nodes_df.attrs[INPUT_ATTR].update(path=os.path.abspath(args.input_dir), session=session)
         return ds.matrices, ds.nodes_df
     return conngraph.load_xcpd(args.input_dir, variant.removeprefix("atlas-"), session=session, task=args.task_id,
-                                space=args.space, subject_ids=labels, bad_node_threshold=args.bad_node_threshold,
+                                space=args.space, bad_node_threshold=args.bad_node_threshold,
                                 verbose=verbose, connectivity=kind, shrinkage=args.shrinkage, bids_filters=filters,
                                 combine_runs=args.combine_runs)
 
@@ -263,10 +270,10 @@ def write_json(path: pathlib.Path, data: dict) -> None:
         json.dump(data, f, indent=2)
 
 
-def write_description(out_dir: pathlib.Path, name: str, input_dir: str, command: str) -> None:
-    """dataset_description.json marking the folder as derived data and naming the tool, version and command."""
-    write_json(out_dir / "dataset_description.json", {
-        "Name": name,
+def write_description(output_dir: str, input_dir: str, command: str) -> None:
+    """dataset_description.json marking the output folder as derived data and naming the tool, version and command."""
+    write_json(pathlib.Path(output_dir) / "dataset_description.json", {
+        "Name": "ConnGraph",
         "BIDSVersion": "1.10.0",
         "DatasetType": "derivative",
         "GeneratedBy": [{"Name": "ConnGraph", "Version": conngraph.__version__, "Container": {"Type": "none"},

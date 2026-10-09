@@ -12,24 +12,31 @@ Clone this repository, then from its root:
 pip install .
 ```
 
-This installs two commands, `conngraph-metrics` and `conngraph-nbs`.
+This installs the `conngraph` command.
 
-## Commands
+## Usage
 
-| Command | What it does |
+`conngraph` works like a BIDS App, in two steps:
+
+```
+conngraph INPUT OUTPUT participant [options]
+conngraph INPUT OUTPUT group [options]
+```
+
+| Level | What it does |
 |---|---|
-| `conngraph-metrics INPUT OUTPUT` | Graph-theory metrics for every participant, at the node level and the network level |
-| `conngraph-nbs INPUT OUTPUT --groups TABLE --group-column COL --contrast A B --thresh T` | Compares two groups with the network-based statistic |
+| `participant` | Computes graph-theory metrics, at the node level and the network level, and writes one set of files per participant. `--participant-label` limits it to some participants, so a cluster can run one job per participant. |
+| `group` | Collects the participant results into tables and an HTML report. With a groups table and `--nbs-thresh`, it also compares two groups with the network-based statistic. |
 
-Each command writes its result tables, a `parameters.json` with every setting, a `dataset_description.json` and an HTML report. Run either command with `--help` for all options, such as the graph construction method, the metrics, or the number of permutations.
+Graph options (method, metrics, random networks) belong to the participant level; report and group comparison options belong to the group level. Input options are given at both. Run `conngraph --help` for all options.
 
-Examples on XCP-D output with the Gordon atlas:
+Example on XCP-D output with the Gordon atlas:
 
 ```bash
-conngraph-metrics derivatives/xcpd results/graph --input-type xcpd --atlases Gordon
+conngraph derivatives/xcpd results participant --input-type xcpd --atlases Gordon
 
-conngraph-nbs derivatives/xcpd results/nbs --input-type xcpd --atlases Gordon \
-    --groups participants.tsv --group-column group --contrast PT HC --thresh 3.5 --seed 1
+conngraph derivatives/xcpd results group --input-type xcpd --atlases Gordon \
+    --groups participants.tsv --group-column group --contrast PT HC --nbs-thresh 3.5 --random-seed 1
 ```
 
 ## Input
@@ -69,12 +76,27 @@ For files that differ in other BIDS entities, such as several runs or acquisitio
 {"bold": {"acquisition": "multiband", "run": 1}}
 ```
 
-A participant with several runs left after filtering has each run analysed on its own (`01_run-1`, `01_run-2`), with a warning in the report; `conngraph-nbs` stops instead, since it needs one matrix per participant. XCP-D's `--combine-runs` merges runs before conngraph sees the data; for XCP-D output without it, `--combine-runs` together with `--connectivity` z-scores each run's time series and concatenates them in run order before computing connectivity.
+A participant with several runs left after filtering has each run analysed on its own (`01_run-1`, `01_run-2`), with a warning in the report; the network-based statistic stops instead, since it needs one matrix per participant. XCP-D's `--combine-runs` merges runs before conngraph sees the data; for XCP-D output without it, `--combine-runs` together with `--connectivity` z-scores each run's time series and concatenates them in run order before computing connectivity.
 
 ## Output
 
-`conngraph-metrics` writes one table per level and metric (`node/`, `network_hemi/`, ...) and `graph_report.html`. `conngraph-nbs` writes `nbs_components.tsv`, `nbs_edges.tsv`, `nbs_null.tsv` and `nbs_report.html`.
+The participant level writes, for each participant, session and atlas or chromophore, one table per level with a row per node or network and a column per metric, the network-level connectivity, and a `_metrics.json` with every setting:
 
-For `xcpd` these go into one folder per atlas (`OUTPUT/atlas-Gordon/`), and for `fnirs-pipe` into one folder per chromophore (`OUTPUT/chromo-hbo/`, `OUTPUT/chromo-hbr/`). fNIRS channels have no networks, so `conngraph-metrics` computes the node level only.
+```
+OUTPUT/
+    dataset_description.json
+    sub-01/ses-01/
+        sub-01_ses-01_atlas-Gordon_level-node_metrics.tsv
+        sub-01_ses-01_atlas-Gordon_level-networkhemi_metrics.tsv
+        sub-01_ses-01_atlas-Gordon_level-networkhemi_connectivity.tsv
+        sub-01_ses-01_atlas-Gordon_metrics.json
+    group/ses-01/atlas-Gordon/
+        node/, network_hemi/, ...     one table per metric, a row per participant
+        parameters.json
+        graph_report.html
+        nbs/                          nbs_components.tsv, nbs_edges.tsv, nbs_null.tsv, nbs_report.html
+```
 
-When `INPUT` has sessions, each gets its own folder above these (`OUTPUT/ses-01/atlas-Gordon/`), even if there is only one. If one session or atlas fails, the others still run, and its folder holds `error.txt`.
+Without sessions the `ses-` folders are left out; matrix and time series input has no atlas folder. fNIRS channels have no networks, so only the node level is computed.
+
+Nodes with too many missing values are dropped by looking at every participant in `INPUT`, so participants run one at a time get the same nodes as a single run. The group level checks that all participants were run with the same options. If one session or atlas fails, the others still run, and `OUTPUT/logs/` (participant) or the group folder holds `error.txt`.

@@ -1,3 +1,3 @@
 """
-Command-line tools: conngraph-metrics and conngraph-nbs.
+Command-line tool: conngraph INPUT OUTPUT participant|group.
 """

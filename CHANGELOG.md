@@ -10,7 +10,7 @@
 
 ### Added
 
-- Command-line tools that run graph metrics or NBS straight from XCP-D or fnirs-pipe outputs, or from a folder of matrix or time series files.
+- A `conngraph` command in BIDS App style: the participant level computes graph metrics per participant, the group level collects them into tables and a report and runs NBS. It reads XCP-D or fnirs-pipe outputs, or a folder of matrix or time series files.
 - HTML reports for graph metrics and NBS, with interactive figures and a Methods section written from the run's settings.
 - More input formats (unlabelled matrices, CIFTI, AFNI, nilearn), and connectivity computed from regional time series.
 - Two more ways to build the graph: the disparity filter and PMFG.

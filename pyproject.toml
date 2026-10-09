@@ -40,8 +40,7 @@ dependencies = [
 ]
 
 [project.scripts]
-conngraph-metrics = "conngraph.cli.graph:main"
-conngraph-nbs     = "conngraph.cli.nbs:main"
+conngraph = "conngraph.cli.main:main"
 
 [project.optional-dependencies]
 dev = [

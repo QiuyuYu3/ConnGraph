@@ -202,11 +202,11 @@ def compute_graph_metrics(
         result.mean_matrix = _mean_matrix(matrices, apply_fisher_z)
     curves: list[pd.DataFrame] = []
     shortfalls: list[str] = []
-    # One seed per level and subject, so results do not depend on worker scheduling
+    # Seeds follow the subject ID, so a subject's random networks do not depend on the other subjects or workers
     root_seed = np.random.SeedSequence(random_seed)
     seeds = {
-        lvl: dict(zip(subject_ids, ss.spawn(len(subject_ids))))
-        for lvl, ss in zip(("network", "node", "network_hemi"), root_seed.spawn(3))
+        lvl: {sid: np.random.SeedSequence([root_seed.entropy, k, *str(sid).encode()]) for sid in subject_ids}
+        for k, lvl in enumerate(("network", "node", "network_hemi"))
     }
 
     if want_network:

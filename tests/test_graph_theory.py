@@ -262,6 +262,18 @@ def test_params_seed_reproduces_an_unseeded_run():
     assert again.params["options"]["random_seed"] == seed
 
 
+def test_random_networks_of_a_subject_do_not_depend_on_the_other_subjects():
+    one, atlas = _toy_inputs()
+    matrices = {"s0": one["s1"] * 0.9, "s1": one["s1"]}
+    kwargs = dict(level="both", hemi_split=False, metrics=["clust_coeff.onnela"], graph_method="density",
+                  graph_params={"density": 0.5}, network_graph_method="full", n_random=2, random_seed=3, n_jobs=1,
+                  verbose=False)
+    both = compute_graph_metrics(matrices, atlas, **kwargs)
+    alone = compute_graph_metrics({"s1": matrices["s1"]}, atlas, **kwargs)
+    pd.testing.assert_series_equal(both.node_df.loc["s1"], alone.node_df.loc["s1"])
+    pd.testing.assert_series_equal(both.network_df.loc["s1"], alone.network_df.loc["s1"])
+
+
 def test_params_are_saved_as_json_and_name_a_callable_method(tmp_path):
     import json
 
