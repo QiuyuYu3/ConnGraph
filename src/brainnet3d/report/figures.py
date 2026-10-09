@@ -16,6 +16,10 @@ ACCENT = "#2980b9"
 _FONT = dict(family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif", size=12, color=INK)
 _AXIS = dict(showline=True, linecolor="#b8c2cc", gridcolor="#eef0f3", zeroline=False, ticks="outside", tickcolor="#b8c2cc")
 _LEVEL_NAMES = {"node": "Node level", "network": "Network level", "network_hemi": "Network level (hemispheres)"}
+_FADED = 0.25
+# plot height of ordered_heatmap and the spacing its network names need
+_HEATMAP_PLOT_PX = 500
+_TICK_GAP_PX = 13
 
 
 def style(fig: go.Figure, height: int, **layout) -> go.Figure:
@@ -79,12 +83,21 @@ def node_boxplot(values: pd.Series, networks: pd.Series, palette: dict, title: s
 
 def ordered_heatmap(M: np.ndarray, names: list[str], groups: list[str] | None, zmax: float, value: str,
                     marks: list[tuple[str, str]] | None = None) -> go.Figure:
-    """Matrix ordered by group with lines at group boundaries; marks are (row, column) labels drawn as dots."""
+    """Matrix ordered by group with lines at group boundaries; marks are (row, column) labels kept at full colour."""
     order = network_order(names, groups)
     labels = [names[i] for i in order]
+    z = np.round(M[np.ix_(order, order)], 4)
+    scale = dict(colorscale="RdBu_r", zmid=0, zmin=-zmax, zmax=zmax)
     fig = go.Figure(go.Heatmap(
-        z=np.round(M[np.ix_(order, order)], 4), x=labels, y=labels, colorscale="RdBu_r", zmid=0, zmin=-zmax, zmax=zmax,
+        z=z, x=labels, y=labels, **scale, opacity=_FADED if marks else None,
         colorbar=dict(title=value, thickness=12), hovertemplate="%{y}<br>%{x}<br>" + value + " = %{z}<extra></extra>"))
+    if marks:
+        # unmarked cells stay faded underneath; marked ones are drawn again at full strength
+        pos = {lab: k for k, lab in enumerate(labels)}
+        kept = np.full(z.shape, np.nan)
+        for r, c in marks:
+            kept[pos[r], pos[c]] = z[pos[r], pos[c]]
+        fig.add_trace(go.Heatmap(z=kept, x=labels, y=labels, **scale, showscale=False, hoverinfo="skip"))
     ticks, text = labels, labels
     shapes = []
     if groups is not None:
@@ -96,15 +109,26 @@ def ordered_heatmap(M: np.ndarray, names: list[str], groups: list[str] | None, z
                   + [dict(type="line", y0=b - 0.5, y1=b - 0.5, x0=-0.5, x1=n - 0.5, line=line) for b in bounds])
         if n > 40:
             starts, ends = [0] + bounds, bounds + [n]
-            ticks = [labels[(s + e - 1) // 2] for s, e in zip(starts, ends)]
-            text = [ordered[s] for s in starts]
-    if marks:
-        fig.add_trace(go.Scattergl(x=[c for _, c in marks], y=[r for r, _ in marks], mode="markers",
-                                   marker=dict(size=2.5, color="black"), hoverinfo="skip", showlegend=False))
+            ticks, text = _spaced_group_ticks(labels, ordered, starts, ends, _HEATMAP_PLOT_PX)
     style(fig, 640, shapes=shapes, width=740, margin=dict(l=120, r=20, t=20, b=120))
     fig.update_xaxes(tickvals=ticks, ticktext=text, tickangle=-45, showgrid=False, showline=False)
     fig.update_yaxes(tickvals=ticks, ticktext=text, autorange="reversed", showgrid=False, showline=False)
     return fig
+
+
+def _spaced_group_ticks(labels: list[str], ordered: list[str], starts: list[int], ends: list[int],
+                        plot_px: float) -> tuple[list[str], list[str]]:
+    """One tick per group at its middle; when two names would overlap, only the larger group keeps its name."""
+    gap = _TICK_GAP_PX * len(labels) / plot_px
+    kept: list[tuple[float, int, int]] = []
+    for s, e in zip(starts, ends):
+        centre = (s + e - 1) / 2
+        if kept and centre - kept[-1][0] < gap:
+            if e - s > kept[-1][1]:
+                kept[-1] = (centre, e - s, s)
+            continue
+        kept.append((centre, e - s, s))
+    return [labels[int(c)] for c, _, _ in kept], [ordered[s] for _, _, s in kept]
 
 
 def count_heatmap(counts: pd.DataFrame) -> go.Figure:

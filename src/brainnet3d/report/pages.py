@@ -178,7 +178,7 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
         steps.append(_step("b. Group difference", html=figures.to_div(figures.ordered_heatmap(
             diff, labels, nets, float(np.abs(diff).max()) or 1.0, "G1 − G2", marks)),
             desc="Group 1 minus group 2 for every edge" + (", ordered by network" if nets else "")
-                 + "; black dots mark significant edges."))
+                 + "; significant edges keep their colour and the others are faded."))
         rows = []
         for i, j in iu:
             row = {"ROI A": labels[i], "ROI B": labels[j]}

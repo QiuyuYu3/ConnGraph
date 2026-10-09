@@ -275,3 +275,40 @@ def test_nbs_report_works_without_a_node_table(nbs_result, tmp_path):
     path = tmp_path / "nbs.html"
     nbs_result.save_report(path)
     assert "Components" in path.read_text(encoding="utf-8")
+
+
+def _heatmap_input(sizes):
+    groups = [name for name, k in sizes.items() for _ in range(k)]
+    names = [f"{g}_{i}" for i, g in enumerate(groups)]
+    rng = np.random.default_rng(0)
+    m = rng.normal(size=(len(names), len(names)))
+    return (m + m.T) / 2, names, groups
+
+
+def test_heatmap_marks_keep_their_colour_and_fade_the_rest():
+    from brainnet3d.report import figures
+
+    m, names, groups = _heatmap_input({"A": 30, "B": 30})
+    fig = figures.ordered_heatmap(m, names, groups, 3.0, "d", [(names[0], names[40]), (names[40], names[0])])
+    assert [t.type for t in fig.data] == ["heatmap", "heatmap"]
+    base, marked = fig.data
+    assert base.opacity < 1 and marked.opacity in (None, 1)
+    z = np.asarray(marked.z, dtype=float)
+    kept = {(marked.y[i], marked.x[j]) for i, j in zip(*np.where(~np.isnan(z)))}
+    assert kept == {(names[0], names[40]), (names[40], names[0])}
+    assert z[list(marked.y).index(names[0]), list(marked.x).index(names[40])] == pytest.approx(round(m[0, 40], 4))
+
+
+def test_heatmap_drops_crowded_network_names_keeping_the_larger():
+    from brainnet3d.report import figures
+
+    m, names, groups = _heatmap_input({"Big1": 150, "Small": 3, "Tiny": 2, "Big2": 150})
+    text = list(figures.ordered_heatmap(m, names, groups, 3.0, "d").layout.xaxis.ticktext)
+    assert text == ["Big1", "Big2", "Small"]
+
+
+def test_heatmap_keeps_every_network_name_when_there_is_room():
+    from brainnet3d.report import figures
+
+    m, names, groups = _heatmap_input({"A": 20, "B": 20, "C": 20})
+    assert list(figures.ordered_heatmap(m, names, groups, 3.0, "d").layout.yaxis.ticktext) == ["A", "B", "C"]
