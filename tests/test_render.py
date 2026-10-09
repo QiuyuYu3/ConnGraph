@@ -1,3 +1,4 @@
+import os
 import re
 import warnings
 
@@ -330,7 +331,7 @@ def test_no_edges_warning_points_at_caller(dataset):
     for call in (lambda: plotter.plot(edge_threshold=2.0), lambda: plotter.plot_views(edge_threshold=2.0, panel_size=200)):
         with pytest.warns(UserWarning, match="No edges") as record:
             call()
-        assert {w.filename for w in record if "No edges" in str(w.message)} == {__file__}
+        assert {os.path.normcase(w.filename) for w in record if "No edges" in str(w.message)} == {os.path.normcase(__file__)}
     plt.close("all")
 
 

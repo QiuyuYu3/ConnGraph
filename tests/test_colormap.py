@@ -1,3 +1,5 @@
+import os
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -38,7 +40,7 @@ def test_too_few_colours_warning_points_at_caller():
                           "network": [f"net{i}" for i in range(13)]})
     with pytest.warns(UserWarning, match="13 categories") as record:
         build_nodes(nodes, node_color="network", node_cmap="Set3")
-    assert {w.filename for w in record} == {__file__}
+    assert {os.path.normcase(w.filename) for w in record} == {os.path.normcase(__file__)}
 
 
 def test_category_colours_follow_sorted_names_not_input_order():
