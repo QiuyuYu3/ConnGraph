@@ -60,7 +60,7 @@ def run_nbs(
         from bct import BCTParamError, get_components
         from bct.utils import get_rng
     except ImportError:
-        raise ImportError("run_nbs needs bctpy: pip install 'brainnet3d[graph]'") from None
+        raise ImportError("run_nbs needs bctpy: pip install bctpy") from None
 
     if tail not in ("both", "left", "right"):
         raise BCTParamError("Tail must be both, left, right")

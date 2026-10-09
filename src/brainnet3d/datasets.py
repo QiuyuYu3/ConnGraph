@@ -61,7 +61,7 @@ def _build_gordon_nodes(parcels_xlsx: PathLike) -> pd.DataFrame:
     try:
         xl = pd.read_excel(parcels_xlsx, keep_default_na=False)
     except ImportError:
-        raise ImportError("Reading Parcels.xlsx needs openpyxl: pip install 'brainnet3d[atlas]'") from None
+        raise ImportError("Reading Parcels.xlsx needs openpyxl: pip install openpyxl") from None
 
     xl = xl.sort_values("ParcelID").reset_index(drop=True)
     network = xl["Community"].astype(str).replace(_XCPD_GORDON_NETWORKS)

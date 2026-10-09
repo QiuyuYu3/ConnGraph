@@ -243,7 +243,7 @@ def _export_html(plt, path: str) -> None:
     try:
         import k3d  # noqa: F401
     except ImportError:
-        raise ImportError("html export needs k3d: pip install 'brainnet3d[html]'") from None
+        raise ImportError("html export needs k3d: pip install k3d") from None
     import vedo
 
     s = vedo.settings

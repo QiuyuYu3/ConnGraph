@@ -10,7 +10,7 @@ def get_fsLR_surface() -> tuple[str, str]:
     try:
         from templateflow import api as tflow
     except ImportError:
-        raise ImportError("get_fsLR_surface needs templateflow: pip install 'brainnet3d[atlas]'") from None
+        raise ImportError("get_fsLR_surface needs templateflow: pip install templateflow") from None
 
     left, right = (
         str(tflow.get("fsLR", hemi=h, density="32k", suffix="midthickness", extension=".surf.gii"))

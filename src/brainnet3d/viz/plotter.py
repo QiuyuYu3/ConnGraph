@@ -220,7 +220,7 @@ class BrainNetPlotter:
         title      : window title.
         show_hemisphere : "both" | "L" | "R" — filter nodes/surface by hemi.
         screenshot : path to save a PNG snapshot at twice the window resolution. None = skip.
-        html       : path to save a standalone interactive HTML page (needs brainnet3d[html]).
+        html       : path to save a standalone interactive HTML page.
         interactive : if True, open a vedo window (needed for highlight_on_click) and return None.
         highlight_on_click : click a node to highlight its edges and grey out
             all others.  Click the same node again or click empty space to reset.

@@ -32,6 +32,11 @@ dependencies = [
     "bibtexparser>=2.0",
     "nilearn>=0.10",
     "tomli>=2.0; python_version < '3.11'",
+    "bctpy>=0.6",
+    "topcorr>=0.5",
+    "templateflow>=24.0",
+    "openpyxl>=3.0",
+    "k3d>=3.0",
 ]
 
 [project.scripts]
@@ -39,17 +44,6 @@ brainnet3d-graph = "brainnet3d.cli.graph:main"
 brainnet3d-nbs   = "brainnet3d.cli.nbs:main"
 
 [project.optional-dependencies]
-graph = [
-    "bctpy>=0.6",
-    "topcorr>=0.5",
-]
-atlas = [
-    "templateflow>=24.0",
-    "openpyxl>=3.0",
-]
-html = [
-    "k3d>=3.0",
-]
 dev = [
     "pytest",
     "ruff",

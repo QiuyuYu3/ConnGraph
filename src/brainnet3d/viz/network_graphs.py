@@ -60,7 +60,7 @@ def spring_plot_3d(
     camera          : vedo camera dict (pos, focalPoint, viewup).
     interactive     : if True, open a vedo window and return None; otherwise render off screen.
     save_path       : save a screenshot to this path (PNG/JPG) at twice the window resolution.
-    html            : save a standalone interactive HTML page (needs brainnet3d[html]).
+    html            : save a standalone interactive HTML page.
     layout          : "spring" (default) or "network" (each network in its own ball,
                       placed closer to networks it shares more |weight| with; needs network_labels).
 
