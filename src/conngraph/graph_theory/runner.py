@@ -43,6 +43,8 @@ class GraphMetricsResult:
     nodes:            pd.DataFrame | None = None
     mean_matrix:      pd.DataFrame | None = None
     global_df:        pd.DataFrame | None = None
+    # result files this was read from, by attribute, for the report to link
+    files:            dict = field(default_factory=dict)
 
     def save_report(self, path, nodes: pd.DataFrame | None = None, surfaces: tuple[str, str] | None = None,
                     static_brain: bool = True, interactive_brain: bool = False) -> None:
@@ -627,28 +629,32 @@ def _load(output_dir: str) -> GraphMetricsResult:
     def path(*parts: str) -> str:
         return os.path.join(output_dir, *parts)
 
+    def read(attr: str, file: str, *args, **kwargs) -> pd.DataFrame:
+        result.files.setdefault(attr, []).append(os.path.abspath(file))
+        return _read_table(file, *args, **kwargs)
+
     with open(path("parameters.json"), encoding="utf-8") as f:
         params = json.load(f)
     result = GraphMetricsResult(params=params, failed=params.get("failed", {}))
     for attr, folder, row in _LEVEL_FOLDERS:
         names = params["levels"].get(folder, {}).get("metrics", [])
-        tables = {m: _read_table(path(folder, f"{m}.tsv"), "ID") for m in names if os.path.isfile(path(folder, f"{m}.tsv"))}
+        tables = {m: read(attr, path(folder, f"{m}.tsv"), "ID") for m in names if os.path.isfile(path(folder, f"{m}.tsv"))}
         if tables:
             setattr(result, attr, pd.concat(tables, axis=1, names=["metric", row]))
     for attr, name in _CONNECTIVITY_FILES:
         if os.path.isfile(path("correlation", name)):
-            setattr(result, attr, _read_table(path("correlation", name), "ID"))
+            setattr(result, attr, read(attr, path("correlation", name), "ID"))
     if os.path.isfile(path(*_MEAN_MATRIX_FILE)):
-        result.mean_matrix = _read_table(path(*_MEAN_MATRIX_FILE), "label")
+        result.mean_matrix = read("mean_matrix", path(*_MEAN_MATRIX_FILE), "label")
     levels = [lv for lv in params["levels"] if os.path.isfile(path("global", f"{lv}.tsv"))]
     if levels:
-        result.global_df = pd.concat({lv: _read_table(path("global", f"{lv}.tsv"), "ID") for lv in levels}, axis=1,
+        result.global_df = pd.concat({lv: read("global_df", path("global", f"{lv}.tsv"), "ID") for lv in levels}, axis=1,
                                      names=["level", "metric"])
-    curves = [_read_table(path(lv, "curves.tsv"), text=("ID", "node")).assign(level=lv) for lv in params["levels"]
+    curves = [read("curves", path(lv, "curves.tsv"), text=("ID", "node")).assign(level=lv) for lv in params["levels"]
               if os.path.isfile(path(lv, "curves.tsv"))]
     if curves:
         result.curves = pd.concat(curves, ignore_index=True)[["level", "ID", "metric", "node", "threshold", "value"]]
     if os.path.isfile(path("nodes.tsv")):
         options = params.get("options", {})
-        result.nodes = _read_table(path("nodes.tsv"), text=(options.get("label_col", "label"),))
+        result.nodes = read("nodes", path("nodes.tsv"), text=(options.get("label_col", "label"),))
     return result

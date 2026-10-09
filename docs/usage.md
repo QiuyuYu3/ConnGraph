@@ -16,7 +16,7 @@ conngraph INPUT OUTPUT group [options]
 
 Graph options (method, metrics, random networks) belong to the participant level, where `--graph-method` is required; group comparison options belong to the group level. Input options and the report options `--coords`, `--surfaces`, `--interactive-brain` and `--no-report` are given at both. Run `conngraph --help` for all options.
 
-The reports are built from the files written to `OUTPUT`, so they always show what is on disk. `--reports-only` rebuilds them from those files without recomputing anything, for example after changing `--surfaces`; give the same input options as the original run, and no analysis options, which are read from the saved results.
+The reports are built from the files written to `OUTPUT`, so they always show what is on disk, and each figure and table links the files it comes from. `--reports-only` rebuilds them from those files without recomputing anything, for example after changing `--surfaces`; give the same input options as the original run, and no analysis options, which are read from the saved results.
 
 ## Input
 

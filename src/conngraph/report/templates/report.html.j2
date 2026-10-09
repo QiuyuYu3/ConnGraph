@@ -25,6 +25,7 @@
   {% if step.desc and not captioned %}<p class="desc">{{ step.desc }}</p>{% endif %}
   {{ step.html }}
   {% if captioned %}<p class="caption"><b>Figure {{ figure.n }}.</b> {{ step.desc }}</p>{% endif %}
+  {% if step.data %}<p class="data">Data: {% for href in step.data %}<a href="{{ href|e }}">{{ href|e }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
 </section>
 {% endfor %}
 {% endfor %}

@@ -81,7 +81,9 @@ def test_reports_only_rebuilds_the_reports_from_the_written_files(xcpd, tmp_path
     assert cli.main([str(root), str(out), "participant", *XCPD, "--reports-only", "--participant-label", "01",
                      "--quiet"]) == 0
     assert [p.name for p in out.glob("*.html")] == ["sub-01.html"]
-    assert 'data-v="123.456"' in (out / "sub-01.html").read_text(encoding="utf-8")
+    page = (out / "sub-01.html").read_text(encoding="utf-8")
+    assert 'data-v="123.456"' in page
+    assert 'href="sub-01/ses-01/sub-01_ses-01_atlas-Toy_level-networkhemi_metrics.tsv"' in page
 
     assert cli.main([str(root), str(out), "group", *XCPD, "--groups", str(groups), "--group-column", "dx",
                      "--contrast", "A", "B", "--correction", "fdr", "--n-perms", "10", "--nbs-thresh", "1.0",
@@ -96,6 +98,8 @@ def test_reports_only_rebuilds_the_reports_from_the_written_files(xcpd, tmp_path
     assert all(p.exists() for p in reports)
     mean = table.iloc[:, 0].mean()
     assert f'data-v="{mean:.10g}"' in reports[0].read_text(encoding="utf-8")
+    links = ('href="node/strength.abs.tsv"', 'href="metrics_node.tsv"', 'href="nbs_components.tsv"')
+    assert all(link in p.read_text(encoding="utf-8") for link, p in zip(links, reports))
     description = json.loads((out / "dataset_description.json").read_text(encoding="utf-8"))
     assert "--reports-only" not in description["GeneratedBy"][0]["Description"]
 

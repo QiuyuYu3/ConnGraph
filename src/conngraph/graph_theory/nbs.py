@@ -20,6 +20,8 @@ class NBSResult:
     params: dict = field(default_factory=dict)
     mean_g1: np.ndarray | None = None
     mean_g2: np.ndarray | None = None
+    # result files this was read from, for the report to link
+    files: dict = field(default_factory=dict)
 
     def save_report(self, path, nodes: pd.DataFrame | None = None, surfaces: tuple[str, str] | None = None,
                     static_brain: bool = True, label_col: str = "label", network_col: str = "network",

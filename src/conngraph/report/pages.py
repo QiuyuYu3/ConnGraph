@@ -37,6 +37,7 @@ def save_graph_report(result, path, nodes: pd.DataFrame | None = None, surfaces:
     opts, levels = params["options"], params["levels"]
     nodes = result.nodes if nodes is None else nodes
     figs = _FigureFolder(path)
+    link = _linker(result.files, path)
     label_col, network_col = opts["label_col"], opts["network_col"]
     networks = _column(nodes, label_col, network_col)
     palette = _palette(networks)
@@ -51,6 +52,7 @@ def save_graph_report(result, path, nodes: pd.DataFrame | None = None, surfaces:
         if df is None:
             continue
         hemi = level == "network_hemi"
+        values, connectivity = ("net_hemi_df", "net_hemi_corr_df") if hemi else ("network_df", "net_corr_df")
         net_of = (lambda n: n.partition("_")[2]) if hemi else (lambda n: n)
         names = _metric_names(df)
         boxes = [(m, _metric_title(m), figures.to_div(figures.level_boxplot(df[m], palette, _metric_title(m), hemi)))
@@ -62,12 +64,12 @@ def save_graph_report(result, path, nodes: pd.DataFrame | None = None, surfaces:
         means = pd.DataFrame({_metric_title(m): df[m].mean() for m in names})
         means.insert(0, "Node", means.index)
         body.append(dict(id=sid, title=title, desc=_level_desc(params, level), steps=[
-            _step("a. Metric distributions", picker=True, html=_picker(f"{sid}-box", boxes),
+            _step("a. Metric distributions", data=link(values), picker=True, html=_picker(f"{sid}-box", boxes),
                   desc="One box per network node" + (", left hemisphere darker than right" if hemi else "")
                        + "; each point is a participant (hover for the ID)."),
-            _step("b. Connectivity", html=figures.to_div(heat),
+            _step("b. Connectivity", data=link(connectivity), html=figures.to_div(heat),
                   desc="Group mean connectivity within (diagonal) and between network nodes: the matrix these graphs were built from."),
-            _step("c. Group means", open=False, html=f'<div class="scroll">{_table(means.reset_index(drop=True))}</div>',
+            _step("c. Group means", data=link(values), open=False, html=f'<div class="scroll">{_table(means.reset_index(drop=True))}</div>',
                   desc="Mean over participants of each network node's value."),
         ]))
         sections.append((sid, title))
@@ -75,11 +77,11 @@ def save_graph_report(result, path, nodes: pd.DataFrame | None = None, surfaces:
     if result.node_df is not None:
         body.append(dict(id="Node", title="Node level", desc=_level_desc(params, "node"),
                          steps=_node_steps(result, _metric_names(result.node_df), nodes, label_col, networks, palette,
-                                           surfaces, static_brain, interactive_brain, notes, figs)))
+                                           surfaces, static_brain, interactive_brain, notes, figs, link)))
         sections.append(("Node", "Node level"))
 
     if result.global_df is not None:
-        body.append(dict(id="Global", title="Whole graph", desc="", steps=_global_steps(result.global_df)))
+        body.append(dict(id="Global", title="Whole graph", desc="", steps=_global_steps(result.global_df, link)))
         sections.append(("Global", "Whole graph"))
 
     if result.curves is not None:
@@ -89,7 +91,7 @@ def save_graph_report(result, path, nodes: pd.DataFrame | None = None, surfaces:
         fig = figures.curves_figure(result.curves, shown, {m: _metric_title(m) for m in shown},
                                     _SWEEP_LABELS.get(sweep, sweep))
         body.append(dict(id="Curves", title="Across " + _SWEEP_LABELS.get(sweep, sweep).lower() + " values", desc="", steps=[
-            _step("a. Metrics at each value", html=figures.to_div(fig),
+            _step("a. Metrics at each value", data=link("curves"), html=figures.to_div(fig),
                   desc="Mean over nodes, then mean ± SD over participants: the values the summary integrates.")]))
         sections.append(("Curves", "Across values"))
 
@@ -126,6 +128,7 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
     """Write the HTML report of a run_nbs result; see NBSResult.save_report."""
     params, o = result.params, result.params["options"]
     figs = _FigureFolder(path)
+    link = _linker(result.files, path)
     labels = list(result.labels) if result.labels is not None else [str(i) for i in range(len(result.adj))]
     networks = _column(nodes, label_col, network_col)
     nets = [networks.get(lab, "None") for lab in labels] if networks is not None else None
@@ -146,9 +149,9 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
     hist = figures.null_histogram(result.null, sizes[shown], [f"C{i + 1}, p {_p_relation(result.pval[i], k)}" for i in shown],
                                   [result.pval[i] < 0.05 for i in shown])
     body = [dict(id="Components", title="Components", desc="", steps=[
-        _step("a. Components above threshold", html=_table(comp, sortable=False),
+        _step("a. Components above threshold", data=link("components"), html=_table(comp, sortable=False),
               desc="Connected components of suprathreshold edges, by p-value."),
-        _step("b. Null distribution", html=figures.to_div(hist),
+        _step("b. Null distribution", data=link("null"), html=figures.to_div(hist),
               desc="Largest component size in each permutation; vertical lines mark observed components."),
     ])]
     sections = [("Components", "Components")]
@@ -178,7 +181,7 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
                     xyz, labels, nets or ["None"] * len(labels), drawn, np.array([diff[i, j] for i, j in drawn]),
                     degree, palette, figures.surface_meshes(_surfaces(surfaces)),
                     ("Group 1 > Group 2", "Group 1 < Group 2")), "brain_edges")
-            steps.append(_step(f"{next(letter)}. On the brain", html=html_,
+            steps.append(_step(f"{next(letter)}. On the brain", data=link("edges"), html=html_,
                                desc=f"Showing {what}, coloured by the sign of the group difference (group 1 − group 2); "
                                     "node size is the number of significant edges at each region."))
         elif xyz is None:
@@ -189,11 +192,11 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
             G = nx.Graph()
             G.add_nodes_from(range(len(labels)))
             G.add_weighted_edges_from((int(i), int(j), diff[i, j]) for i, j in iu)
-            steps.append(_step(f"{next(letter)}. On a circle", html=_figure_row(*_circos_images(G, labels, nets, palette, f"{g1} − {g2}")),
+            steps.append(_step(f"{next(letter)}. On a circle", data=link("edges"), html=_figure_row(*_circos_images(G, labels, nets, palette, f"{g1} − {g2}")),
                                desc=f"All {n_sig} significant edges with regions grouped by network: coloured by the "
                                     "group difference, then bundled through their networks and coloured by the "
                                     "networks they join."))
-        steps.append(_step(f"{next(letter)}. Group means and difference", picker=True,
+        steps.append(_step(f"{next(letter)}. Group means and difference", data=link("means"), picker=True,
                            html=_nbs_matrices(result, adj_sig, labels, nets, (g1, g2), diff),
                            desc="Mean connectivity of each group, then group 1 minus group 2"
                                 + (", ordered by network" if nets else "")
@@ -207,7 +210,7 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
                 if nets[i] != nets[j]:
                     counts.loc[nets[j], nets[i]] += 1
             keep = [n for n in names if counts.loc[n].sum() > 0]
-            steps.append(_step(f"{next(letter)}. By network pair", html=figures.to_div(figures.count_heatmap(counts.loc[keep, keep])),
+            steps.append(_step(f"{next(letter)}. By network pair", data=link("edges"), html=figures.to_div(figures.count_heatmap(counts.loc[keep, keep])),
                                desc="Number of significant edges within and between networks."))
         body.append(dict(id="Edges", title="Significant edges",
                          desc=f"{n_sig} significant edges, each listed in nbs_edges.tsv.", steps=steps))
@@ -239,6 +242,7 @@ def save_compare_report(result, path, nodes: pd.DataFrame | None = None, label_c
     params, o = result.params, result.params["options"]
     if o.get("correction") is None:
         raise ValueError("the report marks significant results, so compare_groups needs a correction: fdr, fwe or none")
+    link = _linker(result.files, path)
     networks = _column(nodes, label_col, network_col)
     g1, g2 = params["contrast"]
     kind = _CORRECTION_P[o["correction"]]
@@ -258,7 +262,7 @@ def save_compare_report(result, path, nodes: pd.DataFrame | None = None, label_c
                 # too many rows to read on the page; the heatmap shows them and the file lists them
                 desc = (f"{len(sig)} of {tested} edges significant at {_P_NAMES[o['correction']]} p < {alpha}; "
                         f"every test is listed in {name}.tsv.")
-                steps.append(_step(f"{next(letter)}. {_COMPARE_TITLES[name]}",
+                steps.append(_step(f"{next(letter)}. {_COMPARE_TITLES[name]}", data=link(name),
                                    html=_compare_heatmap(name, table, kind, networks), desc=desc))
                 continue
             if len(sig):
@@ -273,7 +277,7 @@ def save_compare_report(result, path, nodes: pd.DataFrame | None = None, label_c
             heat = _compare_heatmap(name, table, kind, networks)
             if heat:
                 html_ += heat
-            steps.append(_step(f"{next(letter)}. {_COMPARE_TITLES[name]}", html=html_, desc=desc))
+            steps.append(_step(f"{next(letter)}. {_COMPARE_TITLES[name]}", data=link(name), html=html_, desc=desc))
         body.append(dict(id=section, title=_COMPARE_SECTIONS[section], desc="", steps=steps))
         sections.append((section, _COMPARE_SECTIONS[section]))
 
@@ -358,7 +362,7 @@ def _compare_heatmap(name: str, table: pd.DataFrame, kind: str, networks: dict |
 
 
 def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, static_brain, interactive_brain,
-                notes, figs) -> list[dict]:
+                notes, figs, link) -> list[dict]:
     steps = []
     labels = list(result.node_df.columns.get_level_values(1).unique())
     xyz = _coordinates(nodes, label_col, labels)
@@ -379,7 +383,7 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
                     xyz[shown], [lab for lab, k in zip(labels, shown) if k], [n for n, k in zip(nets, shown) if k],
                     values[shown], t, meshes), f"brain_{m}")
             panes.append((m, t, html_))
-        steps.append(_step("a. Group mean on the brain", picker=True, html=_picker("node-brain", panes, columns=1),
+        steps.append(_step("a. Group mean on the brain", data=link("node_df"), picker=True, html=_picker("node-brain", panes, columns=1),
                            desc="Colour and size both show the mean over participants."
                                 + (" Each link opens a view that can be rotated, with region names on hover."
                                    if interactive_brain else "")))
@@ -392,7 +396,7 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
             values = result.node_df[m].mean(axis=0)
             nets = pd.Series([networks.get(lab, "None") for lab in values.index], index=values.index)
             boxes.append((m, _metric_title(m), figures.to_div(figures.node_boxplot(values, nets, palette, _metric_title(m)))))
-        steps.append(_step(f"{next(letter)}. Values by network", picker=True, html=_picker("node-box", boxes, columns=1),
+        steps.append(_step(f"{next(letter)}. Values by network", data=link("node_df"), picker=True, html=_picker("node-box", boxes, columns=1),
                            desc="Mean over participants of each region; hover for its name."))
     tops = []
     for m in metrics:
@@ -402,13 +406,13 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
             table["Network"] = [networks.get(lab, "None") for lab in top.index]
         table["Group mean"] = top.values
         tops.append((m, _metric_title(m), _table(table)))
-    steps.append(_step(f"{next(letter)}. Highest regions", picker=True, open=False, html=_picker("node-top", tops, columns=3),
+    steps.append(_step(f"{next(letter)}. Highest regions", data=link("node_df"), picker=True, open=False, html=_picker("node-top", tops, columns=3),
                        desc="The 15 regions with the highest mean over participants."))
     if result.mean_matrix is not None:
         M = result.mean_matrix
         names = list(M.index)
         groups = [networks.get(n, "None") for n in names] if networks is not None else None
-        steps.append(_step(f"{next(letter)}. Connectivity", open=False, html=figures.to_div(figures.ordered_heatmap(
+        steps.append(_step(f"{next(letter)}. Connectivity", data=link("mean_matrix"), open=False, html=figures.to_div(figures.ordered_heatmap(
             M.to_numpy(float), names, groups, 1.0, "r")),
             desc="Group mean connectivity between all regions" + (", ordered by network" if groups else "") + "."))
     group = _group_graph(result) if networks is not None else None
@@ -416,7 +420,7 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
         G, names, how = group
         nets = [networks.get(n, "None") for n in names]
         spring = figures.to_div(figures.spring_figure(G, names, nets, palette))
-        steps.append(_step(f"{next(letter)}. Group network",
+        steps.append(_step(f"{next(letter)}. Group network", data=link("mean_matrix"),
                            html=_figure_row(*_circos_images(G, names, nets, palette, "group mean r"),
                                             _figure_block("Spring layout", spring)),
                            desc=f"The group mean connectivity turned into a graph the way each participant's was "
@@ -559,8 +563,18 @@ def _environment():
     return Environment(loader=PackageLoader("conngraph.report", "templates"), autoescape=False)
 
 
-def _step(title: str, html: str, desc: str = "", open: bool = True, picker: bool = False, hint: str = "") -> dict:
-    return dict(title=title, html=html, desc=desc, open=open, picker=picker, hint=hint)
+def _step(title: str, html: str, desc: str = "", open: bool = True, picker: bool = False, hint: str = "",
+          data: list[str] = ()) -> dict:
+    return dict(title=title, html=html, desc=desc, open=open, picker=picker, hint=hint, data=list(data))
+
+
+def _linker(files: dict, report_path):
+    """link(*keys): the result files behind a step, relative to the report; none for a result never written."""
+    base = os.path.dirname(os.path.abspath(report_path))
+
+    def link(*keys: str) -> list[str]:
+        return [os.path.relpath(p, base).replace(os.sep, "/") for k in keys for p in files.get(k, [])]
+    return link
 
 
 def _picker(group: str, panes: list[tuple[str, str, str]], label: str = "Metric", columns: int = 2) -> str:
@@ -602,6 +616,7 @@ class _FigureFolder:
 
     def __init__(self, report_path, folder=None, prefix: str | None = None):
         path = pathlib.Path(report_path).resolve()
+        self.page = path
         self.folder = pathlib.Path(folder).resolve() if folder else path.parent / "figures"
         self.stem = prefix or path.stem
         self.src = os.path.relpath(self.folder, path.parent).replace(os.sep, "/")
@@ -650,7 +665,7 @@ def _metric_title(name: str) -> str:
     return f"{base} ({', '.join(details)})" if details else base
 
 
-def _global_steps(df: pd.DataFrame) -> list[dict]:
+def _global_steps(df: pd.DataFrame, link) -> list[dict]:
     names = list(dict.fromkeys(df.columns.get_level_values(1)))
     boxes = []
     for m in names:
@@ -661,9 +676,9 @@ def _global_steps(df: pd.DataFrame) -> list[dict]:
     means.columns = [_level_title(c) for c in means.columns]
     means.insert(0, "Metric", [_metric_title(m) for m in names])
     return [
-        _step("a. Distributions", picker=True, html=_picker("global-box", boxes),
+        _step("a. Distributions", data=link("global_df"), picker=True, html=_picker("global-box", boxes),
               desc="One value per participant for the whole graph, one box per level; hover for the ID."),
-        _step("b. Group means", open=False, html=f'<div class="scroll">{_table(means.reset_index(drop=True))}</div>',
+        _step("b. Group means", data=link("global_df"), open=False, html=f'<div class="scroll">{_table(means.reset_index(drop=True))}</div>',
               desc="Mean over participants."),
     ]
 

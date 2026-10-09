@@ -29,6 +29,7 @@ from conngraph.report.pages import (
     _rebuilt_graph,
     _static_node_brain,
     _step,
+    _linker,
     _table,
     _wide_to_matrix,
     _write,
@@ -46,6 +47,7 @@ def participant_section(result, sid: str, matrix: pd.DataFrame, nodes: pd.DataFr
     nets = [networks.get(c, "None") for c in cols] if networks is not None else None
     graph = _rebuilt_graph(matrix, params, is_z=False)
     letter = iter("abcdefghij")
+    link = _linker(result.files, figs.page) if figs is not None else (lambda *keys: [])
     errors = [f"{lvl}: {subs[sid]}" for lvl, subs in result.failed.items() if sid in subs] + params["warnings"]
     notes = _input_notes(params.get("input") or {})
 
@@ -62,7 +64,7 @@ def participant_section(result, sid: str, matrix: pd.DataFrame, nodes: pd.DataFr
             panes.append((attr, name, figures.to_div(figures.ordered_heatmap(
                 M.to_numpy(float), list(M.index), [n.partition("_")[2] if hemi else n for n in M.index],
                 float(np.nanmax(np.abs(M.to_numpy(float)))) or 1.0, "Fisher z" if opts.get("apply_fisher_z") else "r"))))
-    steps.append(_step(f"{next(letter)}. Connectivity matrix", picker=True, html=_picker("matrix", panes, "Matrix"),
+    steps.append(_step(f"{next(letter)}. Connectivity matrix", data=link("net_corr_df", "net_hemi_corr_df"), picker=True, html=_picker("matrix", panes, "Matrix"),
                        desc="The input matrix ordered by network, and the mean connectivity within and between networks."))
 
     if result.node_df is not None:
@@ -91,7 +93,7 @@ def participant_section(result, sid: str, matrix: pd.DataFrame, nodes: pd.DataFr
                 node[m], pd.Series(nets, index=node[m].index), palette, _metric_title(m)))) for m in metrics]
             parts.append('<div class="option-label">By network</div>' + _picker("node-box", boxes, columns=1))
         if parts:
-            steps.append(_step(f"{next(letter)}. Node metrics", picker=True, html="".join(parts),
+            steps.append(_step(f"{next(letter)}. Node metrics", data=link("node_df"), picker=True, html="".join(parts),
                                desc="Each region's value; hover for its name."))
 
     tables = []
@@ -103,14 +105,14 @@ def participant_section(result, sid: str, matrix: pd.DataFrame, nodes: pd.DataFr
             tables.append(f'<div class="option-label">{_level_title(level).capitalize()}</div>'
                           f'<div class="scroll">{_table(table.rename_axis("Network").reset_index())}</div>')
     if tables:
-        steps.append(_step(f"{next(letter)}. Network metrics", html="".join(tables),
+        steps.append(_step(f"{next(letter)}. Network metrics", data=link("network_df", "net_hemi_df"), html="".join(tables),
                            desc="Each network node's value in the network-level graph."))
 
     if result.global_df is not None:
         table = result.global_df.loc[sid].unstack(0)
         table.columns = [_level_title(c).capitalize() for c in table.columns]
         table.insert(0, "Metric", [_metric_title(m) for m in table.index])
-        steps.append(_step(f"{next(letter)}. Whole graph", html=_table(table.reset_index(drop=True), sortable=False),
+        steps.append(_step(f"{next(letter)}. Whole graph", data=link("global_df"), html=_table(table.reset_index(drop=True), sortable=False),
                            desc="One value per graph."))
 
     if graph is not None and nets is not None:
@@ -125,7 +127,8 @@ def participant_section(result, sid: str, matrix: pd.DataFrame, nodes: pd.DataFr
         first = params["levels"].get("node") or next(iter(params["levels"].values()))
         sweep = next(k for k, v in first["graph_params"].items() if isinstance(v, list))
         shown = list(dict.fromkeys(curves["metric"]))
-        steps.append(_step(f"{next(letter)}. Across {_SWEEP_LABELS.get(sweep, sweep).lower()} values", html=figures.to_div(
+        steps.append(_step(f"{next(letter)}. Across {_SWEEP_LABELS.get(sweep, sweep).lower()} values",
+                           data=link("curves"), html=figures.to_div(
             figures.curves_figure(curves, shown, {m: _metric_title(m) for m in shown}, _SWEEP_LABELS.get(sweep, sweep))),
             desc="Mean over nodes at each value: the values the summary integrates."))
 

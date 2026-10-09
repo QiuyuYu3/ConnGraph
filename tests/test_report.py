@@ -190,6 +190,7 @@ def test_graph_report_has_every_section_and_the_methods(graph_result, surfaces, 
     assert _sections(text) == ["Summary", "Network", "NetworkHemi", "Node", "Global", "Errors", "Methods", "Versions"]
     assert "https://cdn.plot.ly/" in text
     assert "Triangulated Maximally Filtered Graph" in text
+    assert '<p class="data">' not in text
     pages = sorted((tmp_path / "figures").glob("graph_brain_*.html"))
     assert pages and "scatter3d" in pages[0].read_text(encoding="utf-8") and "scatter3d" not in text
     assert f'href="figures/{pages[0].name}"' in text

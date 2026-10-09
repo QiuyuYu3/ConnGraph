@@ -108,10 +108,16 @@ def _read_participants(records: list[tuple[pathlib.Path, dict]], labels: dict, p
     """Participants' results stacked from their files, a row each; labels maps the files' node names to the input's."""
     from conngraph.graph_theory.runner import GraphMetricsResult, _net_corr_to_wide
 
+    def read(attr: str, sidecar: pathlib.Path, suffix: str, index: str | None = None) -> pd.DataFrame | None:
+        frame = _read(sidecar, suffix, index)
+        if frame is not None:
+            result.files.setdefault(attr, []).append(str(_file(sidecar, suffix).resolve()))
+        return frame
+
     ids = [params["subjects"][0] for _, params in records]
     result = GraphMetricsResult()
     for attr, name, row in LEVEL_FILES:
-        frames = [_read(path, f"_level-{name}_metrics.tsv", row) for path, _ in records]
+        frames = [read(attr, path, f"_level-{name}_metrics.tsv", row) for path, _ in records]
         if frames[0] is None:
             continue
         if name == "node" and set(frames[0].index) != set(labels):
@@ -126,15 +132,16 @@ def _read_participants(records: list[tuple[pathlib.Path, dict]], labels: dict, p
         setattr(result, attr, pd.DataFrame(np.vstack([f.to_numpy(dtype=float).T.ravel() for f in frames]),
                                            index=ids, columns=columns))
     for attr, name in CONNECTIVITY_FILES:
-        squares = [_read(path, f"_level-{name}_connectivity.tsv", "network") for path, _ in records]
+        squares = [read(attr, path, f"_level-{name}_connectivity.tsv", "network") for path, _ in records]
         if squares[0] is not None:
             setattr(result, attr, _net_corr_to_wide(dict(zip(ids, squares))))
-    tables = {level: [_read(path, f"_level-{name}_global.tsv") for path, _ in records] for level, name in GLOBAL_FILES}
+    tables = {level: [read("global_df", path, f"_level-{name}_global.tsv") for path, _ in records]
+              for level, name in GLOBAL_FILES}
     tables = {level: frames for level, frames in tables.items() if frames[0] is not None}
     if tables:
         result.global_df = pd.concat({level: pd.concat(frames, ignore_index=True).set_axis(ids)
                                       for level, frames in tables.items()}, axis=1, names=["level", "metric"])
-    curves = [_read(path, "_curves.tsv") for path, _ in records]
+    curves = [read("curves", path, "_curves.tsv") for path, _ in records]
     if curves[0] is not None:
         result.curves = pd.concat([c.assign(ID=sid) for sid, c in zip(ids, curves)], ignore_index=True)[
             ["level", "ID", "metric", "node", "threshold", "value"]]
@@ -151,8 +158,12 @@ def _comparable(params: dict) -> tuple:
     return json.dumps(options, sort_keys=True), json.dumps(params["levels"], sort_keys=True)
 
 
+def _file(sidecar: pathlib.Path, suffix: str) -> pathlib.Path:
+    return sidecar.with_name(sidecar.name.removesuffix(SIDECAR) + suffix)
+
+
 def _read(sidecar: pathlib.Path, suffix: str, index: str | None = None) -> pd.DataFrame | None:
-    path = sidecar.with_name(sidecar.name.removesuffix(SIDECAR) + suffix)
+    path = _file(sidecar, suffix)
     if not path.exists():
         return None
     # Only empty cells are missing, so a network called "None" keeps its name
@@ -278,18 +289,21 @@ def _read_nbs(out: pathlib.Path):
     from conngraph.graph_theory.nbs import NBSResult
     from conngraph.graph_theory.runner import _read_table
 
-    means = [_read_table(out / f"nbs_mean_group{k}.tsv", "label") for k in (1, 2)]
+    files = {"means": [out / f"nbs_mean_group{k}.tsv" for k in (1, 2)], "components": [out / "nbs_components.tsv"],
+             "edges": [out / "nbs_edges.tsv"], "null": [out / "nbs_null.tsv"]}
+    means = [_read_table(path, "label") for path in files["means"]]
     labels = list(means[0].index)
-    components = _read_table(out / "nbs_components.tsv")
-    edges = _read_table(out / "nbs_edges.tsv", text=("roi_a", "roi_b"))
+    components = _read_table(files["components"][0])
+    edges = _read_table(files["edges"][0], text=("roi_a", "roi_b"))
     pos = {lab: k for k, lab in enumerate(labels)}
     adj = np.zeros((len(labels), len(labels)), dtype=int)
     for a, b, c in zip(edges["roi_a"], edges["roi_b"], edges["component"]):
         adj[pos[a], pos[b]] = adj[pos[b], pos[a]] = c
     return NBSResult(pval=components["p"].to_numpy(float), adj=adj,
-                     null=_read_table(out / "nbs_null.tsv")["largest_component"].to_numpy(),
+                     null=_read_table(files["null"][0])["largest_component"].to_numpy(),
                      labels=labels, params=json.loads((out / "parameters.json").read_text(encoding="utf-8")),
-                     mean_g1=means[0].to_numpy(float), mean_g2=means[1].to_numpy(float))
+                     mean_g1=means[0].to_numpy(float), mean_g2=means[1].to_numpy(float),
+                     files={k: [str(p.resolve()) for p in v] for k, v in files.items()})
 
 
 def _write_comparison(comparison, out: pathlib.Path) -> None:
@@ -306,8 +320,10 @@ def _read_comparison(out: pathlib.Path):
 
     params = json.loads((out / "parameters.json").read_text(encoding="utf-8"))
     text = ("metric", "node", "roi_a", "roi_b", "network_a", "network_b")
-    tables = {name: _read_table(out / f"{name}.tsv", text=text) for name in params.pop("tables")}
-    return GroupComparisonResult(tables=tables, params=params)
+    names = params.pop("tables")
+    tables = {name: _read_table(out / f"{name}.tsv", text=text) for name in names}
+    return GroupComparisonResult(tables=tables, params=params,
+                                 files={name: [str((out / f"{name}.tsv").resolve())] for name in names})
 
 
 def rebuild(args: argparse.Namespace, parser: argparse.ArgumentParser, session: str | None, variant: str | None,

@@ -98,6 +98,8 @@ p.caption { font-size: 0.86rem; color: var(--muted); margin: 0.6rem 0 0; max-wid
 .plot > div, .plot .plotly-graph-div { height: 100% !important; }
 p.caption b { color: var(--ink); font-weight: 600; }
 p.figure-link { margin: 0.35rem 0 0; font-size: 0.84rem; }
+p.data { margin: 0.45rem 0 0; font-size: 0.78rem; color: var(--faint); word-break: break-all; }
+p.data a { color: var(--muted); font-family: var(--mono); }
 p.figure-link a { color: var(--accent); }
 
 /* ---- tables: flat, numbers right-aligned ---- */

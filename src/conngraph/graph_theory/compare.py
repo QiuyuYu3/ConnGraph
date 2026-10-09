@@ -28,6 +28,8 @@ class GroupComparisonResult:
     """Output of compare_groups(): one table per family of tests, and the parameters of the run."""
     tables: dict[str, pd.DataFrame] = field(default_factory=dict)
     params: dict = field(default_factory=dict)
+    # result files this was read from, by table, for the report to link
+    files: dict = field(default_factory=dict)
 
     def save_report(self, path, nodes: pd.DataFrame | None = None, label_col: str = "label",
                     network_col: str = "network") -> None:
