@@ -382,7 +382,8 @@ def _static_node_brain(result, nodes, label_col, labels, values, title, surfaces
             views=[{"view": "L"}, {"view": "S"}, {"view": "R"}], node_color=title, node_size=title, node_cmap="viridis",
             node_size_range=(1.5, 6.0), edge_threshold=2.0, surface_L=left, surface_R=right, surface_alpha=0.12,
             legend=["node_color"], width=10.5, panel_size=500)
-    return _png(fig)
+    # rendered panels already sit at their own resolution; resampling them adds bytes, not detail
+    return _png(fig, dpi="figure")
 
 
 def _static_nbs_brain(nodes, label_col, network_col, labels, drawn, diff, degree, palette, surfaces) -> str:
@@ -404,7 +405,7 @@ def _static_nbs_brain(nodes, label_col, network_col, labels, drawn, diff, degree
             node_size_range=(0.8, 6.0), edge_threshold=1e-12, edge_color="weight", surface_L=left, surface_R=right,
             surface_alpha=0.12, legend=["node_color", "edge_color"], legend_titles={"edge_color": "Group 1 − Group 2"},
             node_palette=palette or None, width=10.5, panel_size=500)
-    return _png(fig)
+    return _png(fig, dpi="figure")
 
 
 def _write(path, title, params, sections, summary, call, body, errors, notes, methods, chip) -> None:
@@ -463,11 +464,11 @@ def _table(df: pd.DataFrame, sortable: bool = True) -> str:
     return f'<table class="flat{" sortable" if sortable else ""}"><thead><tr>{head}</tr></thead><tbody>{"".join(rows)}</tbody></table>'
 
 
-def _png(fig) -> str:
+def _png(fig, dpi: float | str = 300) -> str:
     import matplotlib.pyplot as plt
 
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", bbox_inches="tight", facecolor="white")
+    fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight", facecolor="white")
     plt.close(fig)
     return base64.b64encode(buf.getvalue()).decode()
 
