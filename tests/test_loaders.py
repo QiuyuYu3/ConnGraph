@@ -113,3 +113,87 @@ def test_load_group_records_the_drop_rule(mode):
     assert record["source"] == "matrix files"
     assert (record["n_loaded"], record["bad_node_threshold"], record["drop_mode"]) == (2, 0.5, mode)
     assert record["dropped"] == (["r1", "r4"] if mode == "union" else ["r1"])
+
+
+@pytest.mark.parametrize("name, sep", [("m.csv", ","), ("m.tsv", "\t"), ("m.txt", " "), ("m.txt", "\t"), ("m.1D", " ")])
+def test_load_reads_headerless_text_in_node_table_order(tmp_path, name, sep):
+    mat = _matrix(["r2"])
+    np.savetxt(tmp_path / name, mat.to_numpy(), delimiter=sep)
+    ds = bnv.load(str(tmp_path / name), _nodes())
+    pd.testing.assert_frame_equal(ds.matrices["single"], mat, check_names=False)
+
+
+def test_load_still_reads_labelled_text_with_numeric_labels(tmp_path):
+    labels = [str(i) for i in range(1, 7)]
+    mat = pd.DataFrame(_matrix().to_numpy(), index=labels, columns=labels)
+    mat.to_csv(tmp_path / "m.csv")
+    nodes = _nodes().assign(label=labels)
+    pd.testing.assert_frame_equal(bnv.load(str(tmp_path / "m.csv"), nodes).matrices["single"], mat, check_names=False)
+
+
+def test_load_reads_npy_and_arrays(tmp_path):
+    mat = _matrix()
+    np.save(tmp_path / "m.npy", mat.to_numpy())
+    for src in (str(tmp_path / "m.npy"), mat.to_numpy()):
+        pd.testing.assert_frame_equal(bnv.load(src, _nodes()).matrices["single"], mat, check_names=False)
+
+
+def test_load_group_accepts_arrays_in_dict():
+    mats = {"sub-a": _matrix().to_numpy(), "sub-b": _matrix(seed=1)}
+    ds = bnv.load_group(mats, _nodes())
+    assert all(m.columns.tolist() == LABELS for m in ds.matrices.values())
+    np.testing.assert_array_equal(ds.matrices["sub-a"].to_numpy(), _matrix().to_numpy())
+
+
+def test_headerless_size_mismatch_is_an_error():
+    with pytest.raises(bnv.exceptions.DataValidationError, match="node table"):
+        bnv.load(_matrix().to_numpy(), _nodes().iloc[:5])
+
+
+def test_load_reads_mat_files(tmp_path):
+    from scipy.io import savemat
+
+    mat = _matrix()
+    savemat(tmp_path / "one.mat", {"Z": mat.to_numpy()})
+    savemat(tmp_path / "two.mat", {"r": mat.to_numpy(), "p": np.ones((6, 6))})
+    pd.testing.assert_frame_equal(bnv.load(str(tmp_path / "one.mat"), _nodes()).matrices["single"], mat, check_names=False)
+    with pytest.raises(bnv.exceptions.DataValidationError, match=r"mat_key[\s\S]*'p'[\s\S]*'r'"):
+        bnv.load(str(tmp_path / "two.mat"), _nodes())
+    ds = bnv.load(str(tmp_path / "two.mat"), _nodes(), mat_key="r")
+    pd.testing.assert_frame_equal(ds.matrices["single"], mat, check_names=False)
+
+
+def _cifti_parcels(labels):
+    import nibabel as nib
+
+    bm = nib.cifti2.BrainModelAxis.from_mask(np.ones(len(labels), bool), name="CortexLeft")
+    return nib.cifti2.ParcelsAxis.from_brain_models([(lbl, bm[i:i + 1]) for i, lbl in enumerate(labels)])
+
+
+def test_load_reads_cifti_pconn_with_its_parcel_names(tmp_path):
+    import nibabel as nib
+
+    order = LABELS[::-1]
+    mat = _matrix().loc[order, order]
+    parcels = _cifti_parcels(order)
+    img = nib.Cifti2Image(mat.to_numpy(), nib.cifti2.Cifti2Header.from_axes((parcels, parcels)))
+    nib.save(img, tmp_path / "sub-01.pconn.nii")
+    got = bnv.load(str(tmp_path / "sub-01.pconn.nii"), _nodes()).matrices["single"]
+    pd.testing.assert_frame_equal(got, mat, check_names=False)
+
+
+def test_fisher_z_input_is_converted_back_to_r():
+    mat = _matrix()
+    z = np.arctanh(mat.to_numpy())
+    ds = bnv.load_group({"sub-a": z}, _nodes(), values="z")
+    np.testing.assert_allclose(ds.matrices["sub-a"].to_numpy(), mat.to_numpy())
+    assert ds.nodes_df.attrs["brainnet3d_input"]["values"] == "z"
+    with pytest.raises(ValueError, match="values"):
+        bnv.load(mat, _nodes(), values="t")
+
+
+def test_load_group_subject_id_drops_the_extension(tmp_path):
+    for sid in ("sub01", "sub02"):
+        np.save(tmp_path / f"{sid}.npy", _matrix().to_numpy())
+    ds = bnv.load_group(str(tmp_path), _nodes(), pattern="*.npy")
+    assert sorted(ds.matrices) == ["sub01", "sub02"]

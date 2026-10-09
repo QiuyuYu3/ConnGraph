@@ -13,6 +13,7 @@ import os
 import glob
 import warnings
 
+import numpy as np
 import pandas as pd
 
 from brainnet3d.core.dataset import ConnectivityDataset
@@ -38,46 +39,55 @@ def record_input(table: pd.DataFrame, before: dict, after: dict, threshold: floa
 
 
 def load(
-    matrix: str | pd.DataFrame,
+    matrix: str | pd.DataFrame | np.ndarray,
     nodes:  str | pd.DataFrame,
     subject_id: str = "single",
     bad_node_threshold: float = 1.0,
+    values: str = "r",
+    mat_key: str | None = None,
 ) -> ConnectivityDataset:
     """
     Load a single-subject connectivity dataset.
 
     Parameters
     ----------
-    matrix : str | pd.DataFrame
-        Path to a square CSV/TSV with ROI labels as the first column (index)
-        and matching column headers.
+    matrix : str | pd.DataFrame | np.ndarray
+        A labelled square CSV/TSV (ROI labels as the first column and as
+        column headers), an unlabelled square matrix (.csv, .tsv, .txt, .1D,
+        .npy, .mat or an array) whose rows follow the order of `nodes`, or a
+        CIFTI .pconn.nii, which carries its own parcel names.
     nodes : str | pd.DataFrame
         Path to a CSV/TSV with at minimum: label, x, y, z.
     subject_id : label for this subject inside the dataset.
     bad_node_threshold : drop ROIs where NaN fraction exceeds this (0–1).
+    values : "r" for correlations, "z" for Fisher z values (converted back to r).
+    mat_key : variable to read from a .mat file holding more than one square matrix.
 
     Returns
     -------
     ConnectivityDataset
     """
-    mat_df   = _read_matrix(matrix)
+    _check_values(values)
     nodes_df = _read_nodes(nodes)
+    mat_df   = _read_matrix(matrix, nodes_df["label"].tolist(), mat_key, values)
 
     raw      = {subject_id: mat_df}
     kept     = _drop_bad_nodes(raw, bad_node_threshold)
     mat_df   = kept[subject_id]
     nodes_df = _align_nodes(nodes_df, mat_df)
-    record_input(nodes_df, raw, kept, bad_node_threshold, "union", source="matrix files")
+    record_input(nodes_df, raw, kept, bad_node_threshold, "union", source="matrix files", values=values)
 
     return ConnectivityDataset(matrices={subject_id: mat_df}, nodes_df=nodes_df)
 
 
 def load_group(
-    matrices: str | dict[str, str | pd.DataFrame],
+    matrices: str | dict[str, str | pd.DataFrame | np.ndarray],
     nodes:    str | pd.DataFrame,
     pattern:  str = "*_matrix.csv",
     bad_node_threshold: float = 0.9,
     drop_mode: str = "union",
+    values: str = "r",
+    mat_key: str | None = None,
 ) -> ConnectivityDataset:
     """
     Load a multi-subject connectivity dataset.
@@ -86,20 +96,26 @@ def load_group(
     ----------
     matrices : str | dict
         Directory path → scans for files matching `pattern`.
-        Subject IDs are extracted from the filename stem before the first
-        underscore (e.g. ``sub-001_matrix.csv`` → ``sub-001``).
-        Dict → ``{subject_id: path_or_DataFrame}``.
+        Subject IDs are extracted from the file name, without its extension,
+        before the first underscore (e.g. ``sub-001_matrix.csv`` → ``sub-001``).
+        Dict → ``{subject_id: path_DataFrame_or_array}``.
+        Each matrix may be in any form :func:`load` accepts.
     nodes : str | pd.DataFrame
         Same as :func:`load`.
     pattern : glob pattern used when `matrices` is a directory.
     bad_node_threshold : nodes with NaN fraction > threshold are dropped.
     drop_mode : "union" removes a node if bad in ANY subject.
                 "intersection" removes only nodes bad in ALL subjects.
+    values : same as :func:`load`.
+    mat_key : same as :func:`load`.
 
     Returns
     -------
     ConnectivityDataset
     """
+    _check_values(values)
+    nodes_df = _read_nodes(nodes)
+    labels   = nodes_df["label"].tolist()
     raw: dict[str, pd.DataFrame] = {}
 
     if isinstance(matrices, str) and os.path.isdir(matrices):
@@ -109,41 +125,126 @@ def load_group(
                 f"No files matching '{pattern}' found in {matrices}"
             )
         for p in paths:
-            stem   = os.path.basename(p)
-            sub_id = stem.split("_")[0]
-            raw[sub_id] = _read_matrix(p)
+            raw[subject_id_from_path(p)] = _read_matrix(p, labels, mat_key, values)
     elif isinstance(matrices, dict):
         for sub_id, src in matrices.items():
-            raw[sub_id] = _read_matrix(src)
+            raw[sub_id] = _read_matrix(src, labels, mat_key, values)
     else:
         raise TypeError("`matrices` must be a directory path (str) or a dict.")
 
     before = raw
     raw = _drop_bad_nodes(raw, bad_node_threshold, drop_mode)
 
-    nodes_df = _read_nodes(nodes)
     ref_mat  = next(iter(raw.values()))
     nodes_df = _align_nodes(nodes_df, ref_mat)
-    record_input(nodes_df, before, raw, bad_node_threshold, drop_mode, source="matrix files")
+    record_input(nodes_df, before, raw, bad_node_threshold, drop_mode, source="matrix files", values=values)
 
     return ConnectivityDataset(matrices=raw, nodes_df=nodes_df)
 
 
-def _read_matrix(src: str | pd.DataFrame) -> pd.DataFrame:
-    if isinstance(src, pd.DataFrame):
-        return src.copy()
+_EXTENSIONS = (".pconn.nii", ".ptseries.nii", ".npy", ".mat", ".csv", ".tsv", ".txt", ".1D")
 
-    sep = "\t" if src.endswith((".tsv", ".txt")) else ","
-    df  = pd.read_csv(src, sep=sep, index_col=0)
-    df.index   = df.index.astype(str)
-    df.columns = df.columns.astype(str)
 
+def subject_id_from_path(path: str) -> str:
+    name = os.path.basename(path)
+    for ext in _EXTENSIONS:
+        if name.endswith(ext):
+            name = name[: -len(ext)]
+            break
+    return name.split("_")[0]
+
+
+def _check_values(values: str) -> None:
+    if values not in ("r", "z"):
+        raise ValueError(f"values must be 'r' or 'z', got {values!r}")
+
+
+def _read_matrix(
+    src: str | pd.DataFrame | np.ndarray,
+    labels: list[str] | None = None,
+    mat_key: str | None = None,
+    values: str = "r",
+) -> pd.DataFrame:
+    df = _read_square(src, labels, mat_key)
     if df.shape[0] != df.shape[1]:
         raise DataValidationError(
             f"Matrix in '{src}' is not square: {df.shape}. "
             "Make sure the first column is used as the row index."
         )
+    return np.tanh(df) if values == "z" else df
+
+
+def _read_square(src, labels: list[str] | None, mat_key: str | None) -> pd.DataFrame:
+    if isinstance(src, pd.DataFrame):
+        return src.copy()
+    if isinstance(src, np.ndarray):
+        return _labelled(src, labels, "array")
+    if src.endswith(".npy"):
+        return _labelled(np.load(src), labels, src)
+    if src.endswith(".mat"):
+        return _labelled(_read_mat(src, mat_key), labels, src)
+    if src.endswith(".pconn.nii"):
+        return _read_pconn(src)
+
+    headerless = _read_headerless(src)
+    if headerless is not None and labels is not None and headerless.shape == (len(labels), len(labels)):
+        return _labelled(headerless, labels, src)
+
+    sep = "\t" if src.endswith((".tsv", ".txt")) else ","
+    df  = pd.read_csv(src, sep=sep, index_col=0)
+    df.index   = df.index.astype(str)
+    df.columns = df.columns.astype(str)
     return df
+
+
+def _read_headerless(path: str) -> np.ndarray | None:
+    """The file as a plain numeric array, or None when it has a header row or label column."""
+    delimiter = {".csv": ",", ".tsv": "\t"}.get(os.path.splitext(path)[1])
+    try:
+        return np.loadtxt(path, delimiter=delimiter, ndmin=2)
+    except ValueError:
+        return None
+
+
+def _labelled(arr: np.ndarray, labels: list[str] | None, src: str) -> pd.DataFrame:
+    arr = np.asarray(arr, dtype=float)
+    if arr.ndim != 2 or arr.shape[0] != arr.shape[1]:
+        raise DataValidationError(f"Matrix in '{src}' is not square: {arr.shape}.")
+    if labels is None or len(labels) != arr.shape[0]:
+        raise DataValidationError(
+            f"Matrix in '{src}' has {arr.shape[0]} rows but the node table has "
+            f"{0 if labels is None else len(labels)} labels; an unlabelled matrix must follow the node table order."
+        )
+    return pd.DataFrame(arr, index=labels, columns=labels)
+
+
+def _read_mat(path: str, key: str | None) -> np.ndarray:
+    from scipy.io import loadmat
+
+    try:
+        data = {k: v for k, v in loadmat(path).items() if not k.startswith("__")}
+    except NotImplementedError as e:
+        raise DataValidationError(f"Cannot read '{path}': MATLAB v7.3 files are not supported; save with -v7.") from e
+    if key is not None:
+        if key not in data:
+            raise DataValidationError(f"No variable '{key}' in '{path}'; it holds {sorted(data)}.")
+        return data[key]
+    square = sorted(k for k, v in data.items()
+                    if isinstance(v, np.ndarray) and v.ndim == 2 and v.shape[0] == v.shape[1] and v.shape[0] > 1)
+    if len(square) != 1:
+        raise DataValidationError(
+            f"'{path}' holds {len(square)} square matrices; choose one with mat_key (variables: {sorted(data)})."
+        )
+    return data[square[0]]
+
+
+def _read_pconn(path: str) -> pd.DataFrame:
+    import nibabel as nib
+
+    img = nib.load(path)
+    names = [str(n) for n in img.header.get_axis(0).name]
+    cols  = [str(n) for n in img.header.get_axis(1).name]
+    return pd.DataFrame(np.asarray(img.get_fdata()), index=names, columns=cols)
 
 
 def _read_nodes(src: str | pd.DataFrame) -> pd.DataFrame:
