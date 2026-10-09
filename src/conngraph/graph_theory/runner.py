@@ -140,8 +140,8 @@ def compute_graph_metrics(
     exclude_networks : network labels whose ROIs are left out of the network level, e.g. unassigned parcels
         (default "None"); the node level keeps them. None or () keeps every label.
     n_jobs : parallel workers for node-level computation; -1 = cpu_count - 1.
-    output_dir : if given, saves CSV files there, one folder per level and one file per metric, and
-        ``result.params`` as parameters.json.
+    output_dir : if given, saves TSV files there, one folder per level and one file per metric, the node table as
+        nodes.tsv, and ``result.params`` as parameters.json.
     verbose : print each level's graph method and sign rule, node-level progress and the names of saved files.
 
     Returns
@@ -576,30 +576,79 @@ def _net_corr_to_wide(all_corr: dict[str, pd.DataFrame]) -> pd.DataFrame:
     return pd.DataFrame(rows).set_index("ID")
 
 
+_LEVEL_FOLDERS = (("node_df", "node", "roi"), ("network_df", "network", "network"),
+                  ("net_hemi_df", "network_hemi", "network"))
+_CONNECTIVITY_FILES = (("net_corr_df", "network.tsv"), ("net_hemi_corr_df", "network_hemi.tsv"))
+_MEAN_MATRIX_FILE = ("correlation", "node_mean.tsv")
+
+
 def _save(result: GraphMetricsResult, output_dir: str, verbose: bool) -> None:
-    def _write(df: pd.DataFrame, *parts: str, index: bool = True) -> None:
+    def _write(df: pd.DataFrame, *parts: str, index: bool = True, label: str = "ID") -> None:
         path = os.path.join(output_dir, *parts)
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        out = df.reset_index().rename(columns={"index": "ID"}) if index else df
-        out.to_csv(path, index=False)
+        out = df.rename_axis(label).reset_index() if index else df
+        out.to_csv(path, sep="\t", index=False)
         if verbose:
             print(f"  Saved {'/'.join(parts)}")
 
-    for folder, df in (("node", result.node_df), ("network", result.network_df), ("network_hemi", result.net_hemi_df)):
+    for attr, folder, _ in _LEVEL_FOLDERS:
+        df = getattr(result, attr)
         if df is not None:
             for metric in df.columns.get_level_values(0).unique():
-                _write(df[metric], folder, f"{metric}.csv")
-    if result.net_corr_df is not None:
-        _write(result.net_corr_df, "correlation", "network.csv")
-    if result.net_hemi_corr_df is not None:
-        _write(result.net_hemi_corr_df, "correlation", "network_hemi.csv")
+                _write(df[metric], folder, f"{metric}.tsv")
+    for attr, name in _CONNECTIVITY_FILES:
+        if getattr(result, attr) is not None:
+            _write(getattr(result, attr), "correlation", name)
+    if result.mean_matrix is not None:
+        _write(result.mean_matrix, *_MEAN_MATRIX_FILE, label="label")
     if result.global_df is not None:
         for level in dict.fromkeys(result.global_df.columns.get_level_values(0)):
-            _write(result.global_df[level], "global", f"{level}.csv")
+            _write(result.global_df[level], "global", f"{level}.tsv")
     if result.curves is not None:
         for level, df in result.curves.groupby("level", sort=False):
-            _write(df.drop(columns="level"), level, "curves.csv", index=False)
+            _write(df.drop(columns="level"), level, "curves.tsv", index=False)
+    if result.nodes is not None:
+        _write(result.nodes, "nodes.tsv", index=False)
     with open(os.path.join(output_dir, "parameters.json"), "w", encoding="utf-8") as f:
         json.dump(result.params, f, indent=2)
     if verbose:
         print("  Saved parameters.json")
+
+
+def _read_table(path: str, index: str | None = None, text: tuple[str, ...] = ()) -> pd.DataFrame:
+    # Only empty cells are missing, so a network called "None" keeps its name
+    table = pd.read_csv(path, sep="\t", keep_default_na=False, na_values=[""],
+                        dtype={c: str for c in (index, *text) if c})
+    return table.set_index(index) if index else table
+
+
+def _load(output_dir: str) -> GraphMetricsResult:
+    """The result _save wrote to output_dir, read back from its files."""
+    def path(*parts: str) -> str:
+        return os.path.join(output_dir, *parts)
+
+    with open(path("parameters.json"), encoding="utf-8") as f:
+        params = json.load(f)
+    result = GraphMetricsResult(params=params, failed=params.get("failed", {}))
+    for attr, folder, row in _LEVEL_FOLDERS:
+        names = params["levels"].get(folder, {}).get("metrics", [])
+        tables = {m: _read_table(path(folder, f"{m}.tsv"), "ID") for m in names if os.path.isfile(path(folder, f"{m}.tsv"))}
+        if tables:
+            setattr(result, attr, pd.concat(tables, axis=1, names=["metric", row]))
+    for attr, name in _CONNECTIVITY_FILES:
+        if os.path.isfile(path("correlation", name)):
+            setattr(result, attr, _read_table(path("correlation", name), "ID"))
+    if os.path.isfile(path(*_MEAN_MATRIX_FILE)):
+        result.mean_matrix = _read_table(path(*_MEAN_MATRIX_FILE), "label")
+    levels = [lv for lv in params["levels"] if os.path.isfile(path("global", f"{lv}.tsv"))]
+    if levels:
+        result.global_df = pd.concat({lv: _read_table(path("global", f"{lv}.tsv"), "ID") for lv in levels}, axis=1,
+                                     names=["level", "metric"])
+    curves = [_read_table(path(lv, "curves.tsv"), text=("ID", "node")).assign(level=lv) for lv in params["levels"]
+              if os.path.isfile(path(lv, "curves.tsv"))]
+    if curves:
+        result.curves = pd.concat(curves, ignore_index=True)[["level", "ID", "metric", "node", "threshold", "value"]]
+    if os.path.isfile(path("nodes.tsv")):
+        options = params.get("options", {})
+        result.nodes = _read_table(path("nodes.tsv"), text=(options.get("label_col", "label"),))
+    return result

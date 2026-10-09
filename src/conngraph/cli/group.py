@@ -68,7 +68,7 @@ def _participant_results(args: argparse.Namespace, session: str | None, variant:
 
 
 def _graph_metrics(args, parser, sidecars, matrices, atlas, variant, out, command) -> None:
-    from conngraph.graph_theory.runner import GraphMetricsResult, _mean_matrix, _net_corr_to_wide, _save
+    from conngraph.graph_theory.runner import GraphMetricsResult, _load, _mean_matrix, _net_corr_to_wide, _save
 
     records = [(path, json.loads(path.read_text(encoding="utf-8"))) for path in sidecars]
     first_path, first = records[0]
@@ -125,10 +125,13 @@ def _graph_metrics(args, parser, sidecars, matrices, atlas, variant, out, comman
     if "node" in first["levels"]:
         result.mean_matrix = _mean_matrix({sid: matrices[sid] for sid in ids}, first["options"]["apply_fisher_z"])
 
+    report_nodes = _shared.report_nodes(args, atlas, variant)
+    result.nodes = atlas if report_nodes is None else report_nodes
     _save(result, str(out), verbose=False)
     if not args.no_report:
-        result.save_report(out / "graph_report.html", nodes=_shared.report_nodes(args, atlas, variant),
-                           surfaces=_shared.surfaces(args), interactive_brain=args.interactive_brain)
+        # the report shows what was written, read back from the files
+        _load(str(out)).save_report(out / "graph_report.html", surfaces=_shared.surfaces(args),
+                                    interactive_brain=args.interactive_brain)
     if not args.quiet:
         print(f"[{parser.prog}] Collected {len(ids)} participant(s) in {out}")
     return result

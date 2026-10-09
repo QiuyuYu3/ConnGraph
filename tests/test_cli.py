@@ -74,9 +74,9 @@ def test_group_level_collects_the_participants_into_tables_and_a_report(xcpd, su
                       "clust_coeff",
                       "--n-jobs", "1", "--quiet"], ["--coords", str(coords), "--surfaces", *surfaces], common=XCPD)
     group = out / "group" / "ses-01" / "atlas-Toy"
-    table = pd.read_csv(group / "node" / "strength.abs.csv", dtype={"ID": str})
+    table = pd.read_csv(group / "node" / "strength.abs.tsv", sep="\t", dtype={"ID": str})
     assert list(table["ID"]) == ["01", "02", "03", "04", "05", "06"]
-    assert (group / "network_hemi" / "clust_coeff.costantini.csv").exists()
+    assert (group / "network_hemi" / "clust_coeff.costantini.tsv").exists()
     params = _params(group)
     assert params["subjects"] == ["01", "02", "03", "04", "05", "06"]
     assert params["input"]["source"] == "XCP-D" and params["input"]["atlas"] == "Toy"
@@ -93,7 +93,7 @@ def test_group_tables_match_the_python_api(dataset, tmp_path):
         mat.to_csv(folder / f"{sid}_matrix.tsv", sep="\t")
     out = tmp_path / "out"
     _both(folder, out, ["--input-type", "matrix", *FAST], common=["--input-type", "matrix"])
-    table = pd.read_csv(out / "group" / "node" / "strength.abs.csv", index_col="ID")
+    table = pd.read_csv(out / "group" / "node" / "strength.abs.tsv", sep="\t", index_col="ID")
     api = compute_graph_metrics(dataset.matrices, dataset.nodes_df, level="node", metrics="strength",
                                 graph_method="density", graph_params={"density": 0.2}, network_col="network",
                                 n_jobs=1, verbose=False)
@@ -557,7 +557,7 @@ def test_whole_graph_metrics_are_written_per_participant_and_collected(xcpd, tmp
     node = pd.read_csv(out / "sub-01" / "ses-01" / "sub-01_ses-01_atlas-Toy_level-node_metrics.tsv", sep="\t")
     assert list(node.columns) == ["node", "participation.pos.networks"]
     group = out / "group" / "ses-01" / "atlas-Toy"
-    table = pd.read_csv(group / "global" / "node.csv", dtype={"ID": str})
+    table = pd.read_csv(group / "global" / "node.tsv", sep="\t", dtype={"ID": str})
     assert list(table["ID"]) == ["01", "02", "03", "04", "05", "06"]
     assert table.loc[0, "eff_global.wei"] == pytest.approx(one.loc[0, "eff_global.wei"])
     options = _params(group)["options"]

@@ -1,3 +1,4 @@
+import json
 import re
 
 import numpy as np
@@ -129,10 +130,34 @@ def test_saved_csv_has_one_file_per_level_and_metric(tmp_path):
         matrices, atlas, level="network", hemi_split=False, metrics=["strength", "strength.bin"],
         output_dir=str(tmp_path), verbose=False,
     )
-    files = sorted(p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*.csv"))
-    assert files == ["correlation/network.csv", "network/strength.abs.csv", "network/strength.bin.csv"]
-    header = pd.read_csv(tmp_path / "network" / "strength.abs.csv").columns.tolist()
+    files = sorted(p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*.tsv"))
+    assert files == ["correlation/network.tsv", "network/strength.abs.tsv", "network/strength.bin.tsv", "nodes.tsv"]
+    header = pd.read_csv(tmp_path / "network" / "strength.abs.tsv", sep="\t").columns.tolist()
     assert header == ["ID"] + sorted(atlas["network_label"].unique())
+
+
+def test_saved_results_read_back_unchanged(tmp_path):
+    from conngraph.graph_theory.runner import _load, _mean_matrix, _save
+
+    matrices, atlas = _toy_inputs()
+    matrices["s2"] = matrices["s1"] * 0.9
+    atlas["hemisphere"] = ["L", "R"] * 6
+    result = compute_graph_metrics(matrices, atlas, level="both", hemi_split="both", network_col="network_label",
+                                   metrics=["strength", "eff_global"], graph_method="density",
+                                   graph_params={"density": [0.3, 0.5]}, return_curves=True, n_jobs=1, verbose=False)
+    result.mean_matrix = _mean_matrix(matrices, True)
+    _save(result, str(tmp_path), verbose=False)
+    loaded = _load(str(tmp_path))
+    for attr in ("node_df", "network_df", "net_hemi_df", "net_corr_df", "net_hemi_corr_df", "global_df",
+                 "mean_matrix", "nodes"):
+        pd.testing.assert_frame_equal(getattr(loaded, attr), getattr(result, attr), check_names=False)
+    # curves come back grouped by level in the levels' order
+    by_level = list(result.params["levels"])
+    def ordered(df):
+        return df.sort_values("level", key=lambda s: s.map(by_level.index), kind="stable").reset_index(drop=True)
+    pd.testing.assert_frame_equal(ordered(loaded.curves), ordered(result.curves))
+    assert loaded.params == json.loads(json.dumps(result.params))
+    assert not list(tmp_path.rglob("*.csv"))
 
 
 def test_attach_metrics_reads_metric_level():
@@ -179,7 +204,7 @@ def test_compute_graph_metrics_verbose_false_is_silent(tmp_path, capsys):
         matrices, atlas, level="node", metrics=["strength"], n_jobs=1, output_dir=str(tmp_path), verbose=False,
     )
     assert capsys.readouterr().out == ""
-    assert (tmp_path / "node" / "strength.abs.csv").exists()
+    assert (tmp_path / "node" / "strength.abs.tsv").exists()
 
 
 def _atlas_with_unassigned():
@@ -418,7 +443,7 @@ def test_return_curves_keeps_values_at_each_density(tmp_path):
     at = {t: df.set_index("node")["value"] for t, df in curves.groupby("threshold")}
     auc = (at[0.3] + at[0.5]) / 2 * 0.2
     np.testing.assert_allclose(result.node_df.loc["s1", "strength.abs"][auc.index].values, auc.values)
-    assert (tmp_path / "node" / "curves.csv").exists()
+    assert (tmp_path / "node" / "curves.tsv").exists()
 
 
 def test_random_normalization_divides_by_the_mean_over_random_networks():
@@ -470,7 +495,7 @@ def test_random_normalization_columns_files_and_seeds(tmp_path):
     assert list(df.columns.get_level_values(0).unique()) == ["strength.abs", "strength.bin", "strength.abs.norm"]
     pd.testing.assert_frame_equal(df, again.node_df)
     assert not np.allclose(df.loc["s1", "strength.abs.norm"], df.loc["s2", "strength.abs.norm"])
-    assert (tmp_path / "node" / "strength.abs.norm.csv").exists()
+    assert (tmp_path / "node" / "strength.abs.norm.tsv").exists()
 
 
 @pytest.mark.parametrize("hemi_split, present", [
