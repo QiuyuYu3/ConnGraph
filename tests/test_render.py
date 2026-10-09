@@ -522,3 +522,15 @@ def test_tube_edges_use_edge_colour(bundled):
     gold = (rgb[..., 0] > 150) & (rgb[..., 1] > 100) & (rgb[..., 2] < 80)
     assert blue.mean() > 0.002
     assert gold.sum() == 0
+
+
+def test_tube_radius_is_a_quarter_of_edge_width(monkeypatch):
+    import pandas as pd
+
+    nodes = pd.DataFrame({"label": ["a", "b"], "x": [-40.0, 40.0], "y": [0.0, 0.0], "z": [0.0, 0.0]})
+    mat = pd.DataFrame([[1.0, 0.9], [0.9, 1.0]], index=["a", "b"], columns=["a", "b"])
+    actors = _plot_actors(bnv.BrainNetPlotter(bnv.load(mat, nodes)), monkeypatch, show_surface=False, use_tube=True,
+                          edge_width=2.0, node_color=(0.5, 0.5, 0.5))
+    (tube,) = [a for a in actors if hasattr(a, "_endpoints")]
+    pts = np.asarray(tube.vertices)
+    assert np.hypot(pts[:, 1], pts[:, 2]).max() == pytest.approx(0.5, rel=1e-3)
