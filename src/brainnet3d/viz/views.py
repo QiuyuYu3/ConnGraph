@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 import numpy as np
+
+# saved screenshots are rendered at this multiple of the window size
+_SCREENSHOT_SCALE = 2
 
 
 _DEFAULT_CAMERAS: dict[str, dict] = {
@@ -26,7 +31,7 @@ def save_three_views(
     ----------
     actors      : list of vedo actor objects (Mesh, Sphere, Line, …).
     output_path : destination file path.
-    panel_size  : (width, height) per panel in pixels.
+    panel_size  : (width, height) per panel in window pixels; the saved image has twice as many.
     cameras     : dict of {label: camera_dict} to override the defaults.
                   Each camera_dict must have keys: pos, focalPoint, viewup.
                   Default views are Left-lateral, Right-lateral, and Dorsal.
@@ -44,18 +49,20 @@ def save_three_views(
         raise ImportError("Pillow is required: pip install Pillow")
 
     views  = cameras if cameras is not None else _DEFAULT_CAMERAS
-    w, h   = panel_size
+    s      = _SCREENSHOT_SCALE
+    w, h   = panel_size[0] * s, panel_size[1] * s
     canvas = Image.new("RGB", (len(views) * w, h), bg)
     draw   = ImageDraw.Draw(canvas)
 
     for col, (label, cam) in enumerate(views.items()):
         plt = VPlotter(offscreen=True, size=panel_size, bg=bg)
         plt.show(actors, camera=cam, interactive=False)
-        img = plt.screenshot(asarray=True)
+        with _scaled_lines(actors, s):
+            img = plt.screenshot(asarray=True, scale=s)
         plt.close()
 
         canvas.paste(Image.fromarray(img), (col * w, 0))
-        draw.text((col * w + 10, 10), label, fill="black")
+        draw.text((col * w + 10 * s, 10 * s), label, fill="black")
 
     canvas.save(output_path)
     if verbose:
@@ -201,7 +208,8 @@ def _finish_render(
 
     # vedo ignores show(screenshot=...) without an interactor, so save explicitly
     if screenshot is not None:
-        plt.screenshot(screenshot)
+        with _scaled_lines(actors, _SCREENSHOT_SCALE):
+            plt.screenshot(screenshot, scale=_SCREENSHOT_SCALE)
     if html is not None:
         _export_html(plt, html)
 
@@ -215,6 +223,20 @@ def _finish_render(
         image = np.asarray(plt.screenshot(asarray=True))
     plt.close()
     return image
+
+
+@contextmanager
+def _scaled_lines(actors: list, scale: float):
+    # line widths are in pixels, so they must grow with the screenshot scale to look the same
+    props = [a.properties for a in actors if hasattr(getattr(a, "properties", None), "SetLineWidth")]
+    widths = [p.GetLineWidth() for p in props]
+    for p, lw in zip(props, widths):
+        p.SetLineWidth(lw * scale)
+    try:
+        yield
+    finally:
+        for p, lw in zip(props, widths):
+            p.SetLineWidth(lw)
 
 
 def _export_html(plt, path: str) -> None:

@@ -11,6 +11,12 @@
 - Hovering over a node in the interactive window shows a card with its label, network, hemisphere and the values used for node size or colour.
 - The interactive window has an edge threshold slider and a network list that hides or shows each network.
 - Legend titles of multi-view figures can be changed.
+- Circos plots can bundle edges through their networks and colour each edge by the networks at its two ends.
+
+### Changed
+
+- Circos plots produce two figures by default: the curved chords coloured by weight as before, and the bundled, network-coloured version.
+- Saved figures are 300 dpi: 2-D plots, multi-view figures by default, and 3-D screenshots, which are now rendered at twice the window size.
 
 ### Fixed
 

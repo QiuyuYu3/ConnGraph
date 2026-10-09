@@ -40,7 +40,7 @@ def plot_nbs_matrices(
     group_names      : display names for group 1 and group 2.
     title            : overall figure title.
     figsize          : figure size; auto-calculated from N if None. Widened if labels would overlap a neighbouring panel.
-    save_path        : save figure to this path at 150 dpi.
+    save_path        : save figure to this path at 300 dpi.
     sig_style        : "auto" (default) → "outline" for up to 60 nodes, else "fade".
                        "outline" → black outline around significant cells.
                        "fade" → non-significant cells drawn faint.
@@ -103,7 +103,7 @@ def plot_nbs_matrices(
         fig.suptitle(title, y=top + 0.03, va="bottom")
 
     if save_path:
-        fig.savefig(save_path, dpi=150, bbox_inches="tight")
+        fig.savefig(save_path, dpi=300, bbox_inches="tight")
 
     return fig
 

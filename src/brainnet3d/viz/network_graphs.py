@@ -59,7 +59,7 @@ def spring_plot_3d(
     title           : vedo window title.
     camera          : vedo camera dict (pos, focalPoint, viewup).
     interactive     : if True, open a vedo window and return None; otherwise render off screen.
-    save_path       : save a screenshot to this path (PNG/JPG).
+    save_path       : save a screenshot to this path (PNG/JPG) at twice the window resolution.
     html            : save a standalone interactive HTML page (needs brainnet3d[html]).
     layout          : "spring" (default) or "network" (each network in its own ball,
                       placed closer to networks it shares more |weight| with; needs network_labels).
@@ -146,7 +146,7 @@ def matrix_heatmap(
     cmap           : colormap name.
     figsize        : figure size. Auto-calculated if None.
     title          : axes title.
-    save_path      : save figure to this path at 150 dpi.
+    save_path      : save figure to this path at 300 dpi.
     order          : "network" (default) → grouped by network; input order without network_labels.
                      "cluster" → hierarchical clustering of each node's row (average linkage,
                      Euclidean distance, optimal leaf order), ignoring networks.
@@ -190,7 +190,7 @@ def matrix_heatmap(
                   fontsize=7, frameon=False)
 
     if save_path:
-        fig.savefig(save_path, dpi=150, bbox_inches="tight")
+        fig.savefig(save_path, dpi=300, bbox_inches="tight")
 
     return fig, ax
 
@@ -223,7 +223,7 @@ def spring_plot(
     roi_labels : node label strings, length N.
     network_labels : subnetwork name per node, length N.
     net2color : {network_name: colour}. None → the 3-D plot's default network colours.
-    save_path : if given, save figure to this path at 150 dpi.
+    save_path : if given, save figure to this path at 300 dpi.
     edge_color : colour name or RGB tuple; "weight" → edge_cmap centred on 0;
                  "sign" → edge_sign_colors (positive, negative).
     network_hulls : shade a rounded convex hull behind each network's nodes.
@@ -283,7 +283,7 @@ def spring_plot(
     plt.tight_layout()
 
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
 
     return fig, ax
 

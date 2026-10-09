@@ -219,7 +219,7 @@ class BrainNetPlotter:
         background : "white" or "black".
         title      : window title.
         show_hemisphere : "both" | "L" | "R" — filter nodes/surface by hemi.
-        screenshot : path to save a PNG snapshot. None = skip.
+        screenshot : path to save a PNG snapshot at twice the window resolution. None = skip.
         html       : path to save a standalone interactive HTML page (needs brainnet3d[html]).
         interactive : if True, open a vedo window (needed for highlight_on_click) and return None.
         highlight_on_click : click a node to highlight its edges and grey out
@@ -355,7 +355,7 @@ class BrainNetPlotter:
         self,
         views:      list | None       = None,
         legend:     bool | str | list[str] = True,
-        panel_size: int               = 600,
+        panel_size: int               = 1200,
         titles:     bool              = True,
         width:      float | None      = None,
         legend_titles: dict | None    = None,
@@ -385,9 +385,10 @@ class BrainNetPlotter:
         legend : True → a legend for every style mapped to data: node colour (category swatches
                  or colour bar), node size and edge colour. False → no legend.
                  One of "node_color", "node_size", "edge_color", "edge_width", or a list of them → just those.
-        panel_size : render size of each panel in pixels before cropping. A 600-pixel panel is
-                     4 inches wide; the figure DPI scales with panel_size, so fig.savefig keeps
-                     the rendered resolution and the layout looks the same at any size.
+        panel_size : render size of each panel in pixels before cropping. A panel is 4 inches
+                     wide, so the default 1200 pixels gives 300 dpi; the figure DPI scales with
+                     panel_size, so fig.savefig keeps the rendered resolution and the layout
+                     looks the same at any size.
         titles : draw a title above each panel.
         width : figure width in inches, e.g. 7 for two journal columns or 3.5 for one. Panels
                 scale to fit at the same rendered resolution, text keeps its point size, and
