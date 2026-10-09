@@ -4,11 +4,10 @@ Assemble and write the graph-metrics and NBS reports.
 
 from __future__ import annotations
 
-import base64
 import html
-import io
 import json
 import os
+import pathlib
 import warnings
 from functools import cache
 from importlib.resources import files
@@ -37,6 +36,7 @@ def save_graph_report(result, path, nodes: pd.DataFrame | None = None, surfaces:
     params = result.params
     opts, levels = params["options"], params["levels"]
     nodes = result.nodes if nodes is None else nodes
+    figs = _FigureFolder(path)
     label_col, network_col = opts["label_col"], opts["network_col"]
     networks = _column(nodes, label_col, network_col)
     palette = _palette(networks)
@@ -75,7 +75,7 @@ def save_graph_report(result, path, nodes: pd.DataFrame | None = None, surfaces:
     if result.node_df is not None:
         body.append(dict(id="Node", title="Node level", desc=_level_desc(params, "node"),
                          steps=_node_steps(result, _metric_names(result.node_df), nodes, label_col, networks, palette,
-                                           surfaces, static_brain, notes)))
+                                           surfaces, static_brain, notes, figs)))
         sections.append(("Node", "Node level"))
 
     if result.global_df is not None:
@@ -124,6 +124,7 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
                     static_brain: bool = True, label_col: str = "label", network_col: str = "network") -> None:
     """Write the HTML report of a run_nbs result; see NBSResult.save_report."""
     params, o = result.params, result.params["options"]
+    figs = _FigureFolder(path)
     labels = list(result.labels) if result.labels is not None else [str(i) for i in range(len(result.adj))]
     networks = _column(nodes, label_col, network_col)
     nets = [networks.get(lab, "None") for lab in labels] if networks is not None else None
@@ -171,8 +172,8 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
             parts = []
             if static_brain:
                 parts.append('<div class="option-label">Option 1: static</div>'
-                             + _img(_static_nbs_brain(nodes, label_col, network_col, labels, drawn, diff, degree,
-                                                      palette, surfaces)))
+                             + _static_nbs_brain(nodes, label_col, network_col, labels, drawn, diff, degree,
+                                                 palette, surfaces, figs))
             parts.append('<div class="option-label">Option 2: interactive</div>' + figures.to_div(figures.brain_edges(
                 xyz, labels, nets or ["None"] * len(labels), drawn, np.array([diff[i, j] for i, j in drawn]), degree,
                 palette, meshes, ("Group 1 > Group 2", "Group 1 < Group 2"))))
@@ -187,7 +188,7 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
             G = nx.Graph()
             G.add_nodes_from(range(len(labels)))
             G.add_weighted_edges_from((int(i), int(j), diff[i, j]) for i, j in iu)
-            steps.append(_step(f"{next(letter)}. On a circle", html=_circos_images(G, labels, nets, palette, f"{g1} − {g2}"),
+            steps.append(_step(f"{next(letter)}. On a circle", html=_circos_images(G, labels, nets, palette, f"{g1} − {g2}", figs),
                                desc=f"All {n_sig} significant edges with regions grouped by network: coloured by the "
                                     "group difference, then bundled through their networks and coloured by the "
                                     "networks they join."))
@@ -197,7 +198,7 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
             desc="Group 1 minus group 2 for every edge" + (", ordered by network" if nets else "")
                  + "; significant edges keep their colour and the others are faded."))
         steps.append(_step(f"{next(letter)}. Group means and difference",
-                           html=_img(_nbs_matrices(result, adj_sig, labels, nets, palette, (g1, g2))),
+                           html=_nbs_matrices(result, adj_sig, labels, nets, palette, (g1, g2), figs),
                            desc="Mean connectivity of each group and their difference, with the significant edges "
                                 "shown at full strength."))
         rows = []
@@ -245,7 +246,8 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
            body, _input_warnings(loaded), notes, nbs_methods(params), f"{len(params['groups']['g1'])} vs {len(params['groups']['g2'])}")
 
 
-def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, static_brain, notes) -> list[dict]:
+def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, static_brain, notes,
+                figs) -> list[dict]:
     steps = []
     labels = list(result.node_df.columns.get_level_values(1).unique())
     xyz = _coordinates(nodes, label_col, labels)
@@ -259,7 +261,8 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
             values = result.node_df[m].mean(axis=0).reindex(labels).to_numpy(float)
             t = _metric_title(m)
             if static_brain:
-                static.append((m, t, _img(_static_node_brain(result, nodes, label_col, labels, values, t, surfaces))))
+                static.append((m, t, _static_node_brain(result, nodes, label_col, labels, values, t, surfaces,
+                                                        figs, m)))
             shown = keep & ~np.isnan(values)
             interactive.append((m, t, figures.to_div(figures.brain_values(
                 xyz[shown], [lab for lab, k in zip(labels, shown) if k], [n for n, k in zip(nets, shown) if k],
@@ -303,9 +306,9 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
 
         G, names, how = group
         nets = [networks.get(n, "None") for n in names]
-        circos = _circos_images(G, names, nets, palette, "group mean r")
+        circos = _circos_images(G, names, nets, palette, "group mean r", figs)
         spring, _ = bnv.spring_plot(G, names, nets, net2color=palette, figsize=(11, 11), network_hulls=False)
-        steps.append(_step(f"{next(letter)}. Group network", html=circos + _figure_block("Spring layout", _png(spring)),
+        steps.append(_step(f"{next(letter)}. Group network", html=circos + _figure_block("Spring layout", figs.save(spring, "spring")),
                            desc=f"The group mean connectivity turned into a graph the way each participant's was "
                                 f"({how}); the metrics above come from each participant's own graph. The circle "
                                 "groups regions by network; the bundled version routes edges through their networks "
@@ -341,16 +344,17 @@ def _group_graph(result):
     return nx.from_numpy_array(A), list(result.mean_matrix.index), f"{how}, {level['sign']} weights"
 
 
-def _circos_images(G, labels, nets, palette, colorbar_title) -> str:
+def _circos_images(G, labels, nets, palette, colorbar_title, figs) -> str:
     import conngraph as bnv
 
     (curved, _), (bundled, _) = bnv.circos_plot(G, labels, nets, net2color=palette, figsize=(11, 11),
                                                 label_fontsize=3.5, edge_colorbar_title=colorbar_title)
-    return (_figure_block("Circos", _png(curved))
-            + _figure_block("Circos, bundled through networks and coloured by network", _png(bundled)))
+    return (_figure_block("Circos", figs.save(curved, "circos"))
+            + _figure_block("Circos, bundled through networks and coloured by network",
+                            figs.save(bundled, "circos_bundled")))
 
 
-def _nbs_matrices(result, adj_sig, labels, nets, palette, group_names) -> str:
+def _nbs_matrices(result, adj_sig, labels, nets, palette, group_names, figs) -> str:
     import conngraph as bnv
 
     off = ~np.eye(len(labels), dtype=bool)
@@ -360,14 +364,14 @@ def _nbs_matrices(result, adj_sig, labels, nets, palette, group_names) -> str:
         warnings.simplefilter("ignore")
         fig = bnv.plot_nbs_matrices(result.mean_g1, result.mean_g2, adj_sig.astype(float), labels, vmin=-lim, vmax=lim,
                                     group_names=group_names, **layout)
-    return _png(fig)
+    return figs.save(fig, "group_matrices")
 
 
-def _figure_block(label: str, b64: str) -> str:
-    return f'<div class="option-label">{html.escape(label)}</div>' + _img(b64)
+def _figure_block(label: str, img: str) -> str:
+    return f'<div class="option-label">{html.escape(label)}</div>' + img
 
 
-def _static_node_brain(result, nodes, label_col, labels, values, title, surfaces) -> str:
+def _static_node_brain(result, nodes, label_col, labels, values, title, surfaces, figs, metric) -> str:
     import conngraph as bnv
 
     nd = nodes.rename(columns={label_col: "label"}).copy()
@@ -383,10 +387,10 @@ def _static_node_brain(result, nodes, label_col, labels, values, title, surfaces
             node_size_range=(1.5, 6.0), edge_threshold=2.0, surface_L=left, surface_R=right, surface_alpha=0.12,
             legend=["node_color"], width=10.5, panel_size=500)
     # rendered panels already sit at their own resolution; resampling them adds bytes, not detail
-    return _png(fig, dpi="figure")
+    return figs.save(fig, f"brain_{metric}", dpi="figure")
 
 
-def _static_nbs_brain(nodes, label_col, network_col, labels, drawn, diff, degree, palette, surfaces) -> str:
+def _static_nbs_brain(nodes, label_col, network_col, labels, drawn, diff, degree, palette, surfaces, figs) -> str:
     import conngraph as bnv
 
     nd = nodes.rename(columns={label_col: "label", network_col: "network"}).copy()
@@ -405,7 +409,7 @@ def _static_nbs_brain(nodes, label_col, network_col, labels, drawn, diff, degree
             node_size_range=(0.8, 6.0), edge_threshold=1e-12, edge_color="weight", surface_L=left, surface_R=right,
             surface_alpha=0.12, legend=["node_color", "edge_color"], legend_titles={"edge_color": "Group 1 − Group 2"},
             node_palette=palette or None, width=10.5, panel_size=500)
-    return _png(fig, dpi="figure")
+    return figs.save(fig, "brain_edges", dpi="figure")
 
 
 def _write(path, title, params, sections, summary, call, body, errors, notes, methods, chip) -> None:
@@ -464,17 +468,24 @@ def _table(df: pd.DataFrame, sortable: bool = True) -> str:
     return f'<table class="flat{" sortable" if sortable else ""}"><thead><tr>{head}</tr></thead><tbody>{"".join(rows)}</tbody></table>'
 
 
-def _png(fig, dpi: float | str = 300) -> str:
-    import matplotlib.pyplot as plt
+class _FigureFolder:
+    """Static figures saved as PNG files in figures/ beside the report, named after it, and linked from the page."""
 
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight", facecolor="white")
-    plt.close(fig)
-    return base64.b64encode(buf.getvalue()).decode()
+    def __init__(self, report_path):
+        path = pathlib.Path(report_path).resolve()
+        self.folder, self.stem = path.parent / "figures", path.stem
+        # figures left from an earlier report of the same name would otherwise linger
+        for old in self.folder.glob(f"{self.stem}_*.png"):
+            old.unlink()
 
+    def save(self, fig, name: str, dpi: float | str = 300) -> str:
+        import matplotlib.pyplot as plt
 
-def _img(b64: str) -> str:
-    return f'<img class="figure" src="data:image/png;base64,{b64}" alt="">'
+        self.folder.mkdir(parents=True, exist_ok=True)
+        filename = f"{self.stem}_{name}.png"
+        fig.savefig(self.folder / filename, format="png", dpi=dpi, bbox_inches="tight", facecolor="white")
+        plt.close(fig)
+        return f'<img class="figure" src="figures/{html.escape(filename)}" alt="">'
 
 
 def _flag(value, ok: bool, bad_class: str) -> str:

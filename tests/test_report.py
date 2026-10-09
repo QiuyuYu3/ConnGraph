@@ -182,7 +182,14 @@ def test_graph_report_renders_the_static_brain(graph_result, surfaces, tmp_path)
     path = tmp_path / "graph.html"
     graph_result.save_report(path, surfaces=surfaces, static_brain=True)
     text = path.read_text(encoding="utf-8")
-    assert "Option 1: static" in text and "data:image/png;base64," in text
+    assert "Option 1: static" in text and "data:image" not in text
+    pngs = sorted(p.name for p in (tmp_path / "figures").glob("*.png"))
+    assert pngs and all(name.startswith("graph_") for name in pngs)
+    assert all(f'src="figures/{name}"' in text for name in pngs)
+    stale = tmp_path / "figures" / "graph_old.png"
+    stale.write_bytes(b"")
+    graph_result.save_report(path, surfaces=surfaces, static_brain=False)
+    assert not stale.exists() and not list((tmp_path / "figures").glob("graph_brain_*.png"))
 
 
 def test_graph_report_without_coordinates_skips_the_brain(dataset, tmp_path):

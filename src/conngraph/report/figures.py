@@ -53,26 +53,26 @@ def level_boxplot(df: pd.DataFrame, palette: dict, title: str, hemi_split: bool)
         slot = 0.8 / len(hemis)
         for j, hemi in enumerate(hemis):
             offset = (j - (len(hemis) - 1) / 2) * slot
-            opacity = 0.85 if hemi == "L" else 0.4
+            opacity = 0.9 if hemi == "L" else 0.4
             for i, net in enumerate(nets):
                 col = f"{hemi}_{net}"
                 if col in df:
-                    fig.add_traces(_box(df[col], i + offset, palette.get(net), slot * 0.68, f"{hemi} {net}",
-                                        seed=j * len(nets) + i, opacity=opacity))
+                    fig.add_traces(_box(df[col], i + offset, palette.get(net), slot * 0.8, f"{hemi} {net}",
+                                        seed=j * len(nets) + i, opacity=opacity, size=6))
             fig.add_trace(go.Scatter(x=[None], y=[None], mode="markers", name=f"{hemi} hemisphere",
-                                     marker=dict(color="#9aa5b1", size=7, opacity=opacity, line=dict(width=0.5, color=INK))))
+                                     marker=dict(color="#9aa5b1", size=6, opacity=opacity, line=dict(width=0.5, color=INK))))
         _category_axis(fig, nets)
         style(fig, 380, yaxis_title=title, legend=dict(orientation="h", x=1, xanchor="right", y=1.12))
     else:
         cols = sorted(df.columns, key=natural_key)
         for i, col in enumerate(cols):
-            fig.add_traces(_box(df[col], i, palette.get(col), 0.55, col, seed=i))
+            fig.add_traces(_box(df[col], i, palette.get(col), 0.6, col, seed=i))
         _category_axis(fig, cols)
         style(fig, 360, yaxis_title=title, showlegend=False)
     return fig
 
 
-def _box(values: pd.Series, x: float, color: str | None, width: float, hover: str, seed: int, opacity: float = 0.85,
+def _box(values: pd.Series, x: float, color: str | None, width: float, hover: str, seed: int, opacity: float = 0.9,
          size: int = 7) -> list:
     """A hollow box with a dashed mean line, and the values as jittered points (hover for the ID)."""
     color = color or "#9aa5b1"
@@ -88,7 +88,7 @@ def _box(values: pd.Series, x: float, color: str | None, width: float, hover: st
 
 
 def _category_axis(fig: go.Figure, names: list[str]) -> None:
-    fig.update_xaxes(tickvals=list(range(len(names))), ticktext=names, range=[-0.6, len(names) - 0.4])
+    fig.update_xaxes(tickvals=list(range(len(names))), ticktext=names, range=[-0.6, len(names) - 0.4], automargin=True)
 
 
 def node_boxplot(values: pd.Series, networks: pd.Series, palette: dict, title: str) -> go.Figure:
@@ -96,7 +96,7 @@ def node_boxplot(values: pd.Series, networks: pd.Series, palette: dict, title: s
     fig = go.Figure()
     nets = sorted(networks.unique(), key=lambda s: (s == "None", natural_key(s)))
     for i, net in enumerate(nets):
-        fig.add_traces(_box(values[networks == net], i, palette.get(net), 0.55, net, seed=i, size=5))
+        fig.add_traces(_box(values[networks == net], i, palette.get(net), 0.6, net, seed=i, size=5))
     _category_axis(fig, nets)
     return style(fig, 340, yaxis_title=title, showlegend=False)
 

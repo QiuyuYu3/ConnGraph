@@ -95,8 +95,9 @@ OUTPUT/
         node/, network_hemi/, ...     one table per metric, a row per participant
         parameters.json
         graph_report.html
+        figures/                      the report's static figures (300 dpi PNG); keep them beside the report
         compare/                      metrics_node.tsv, global_node.tsv, blocks_networkhemi.tsv, edges.tsv, ...
-        nbs/                          nbs_components.tsv, nbs_edges.tsv, nbs_null.tsv, nbs_report.html
+        nbs/                          nbs_components.tsv, nbs_edges.tsv, nbs_null.tsv, nbs_report.html, figures/
 ```
 
 Without sessions the `ses-` folders are left out; matrix and time series input has no atlas folder. fNIRS channels have no networks, so only the node level is computed.
