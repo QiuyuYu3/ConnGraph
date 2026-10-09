@@ -25,63 +25,82 @@ plain = "The diagonal of each matrix was set to zero, and a sparse graph was con
 [why_tmfg]
 plain = "Compared with proportional thresholding {cite:vandenHeuvel2017}, TMFG was preferred because it guarantees a single connected component and preserves weak but informative edges, properties that improve the reliability of derived graph metrics and the sensitivity to individual differences {cite:Jiang2023}."
 
+# TODO: review wording
 [graph_full]
 plain = "The diagonal of each matrix was set to zero, and every edge was kept, giving a fully connected weighted graph for each participant."
 
+# TODO: review wording
 [graph_absolute]
 plain = "The diagonal of each matrix was set to zero, and a graph was constructed for each participant by keeping the edges whose absolute weight was at least {value}."
 
+# TODO: review wording
 [graph_density]
 plain = "The diagonal of each matrix was set to zero, and a graph was constructed for each participant by keeping the strongest edges up to a density of {value}."
 
+# TODO: review wording
 [graph_eco]
 plain = "The diagonal of each matrix was set to zero, and a graph was constructed for each participant by keeping the strongest edges up to the density that gives an average degree of 3 {todo:efficiency cost optimization}."
 
+# TODO: review wording
 [graph_knn]
 plain = "The diagonal of each matrix was set to zero, and a graph was constructed for each participant by keeping the {value} strongest edges of every node."
 
+# TODO: review wording
 [graph_mst]
 plain = "The diagonal of each matrix was set to zero, and the maximum spanning tree of each participant's matrix was used as the graph {todo:minimum spanning tree analysis}."
 
+# TODO: review wording
 [graph_mst_density]
 plain = "The diagonal of each matrix was set to zero, and a graph was constructed for each participant from the maximum spanning tree plus the strongest remaining edges up to a density of {value}."
 
+# TODO: review wording
 [graph_omst]
 plain = "The diagonal of each matrix was set to zero, and a graph was constructed for each participant from orthogonal minimum spanning trees {todo:orthogonal minimum spanning trees}: spanning trees were added one at a time, and the set that maximized global efficiency minus cost was kept."
 
+# TODO: review wording
 [graph_percolation]
 plain = "The diagonal of each matrix was set to zero, and a graph was constructed for each participant by keeping the edges above the highest weight threshold at which the largest connected component stayed intact {todo:percolation thresholding}."
 
+# TODO: review wording
 [graph_disparity]
 plain = "The diagonal of each matrix was set to zero, and a graph was constructed for each participant with the disparity filter {todo:the disparity filter}, keeping the edges whose share of either endpoint's strength was significant at α = {value}."
 
+# TODO: review wording
 [graph_pmfg]
 plain = "The diagonal of each matrix was set to zero, and a sparse graph was constructed for each participant using the Planar Maximally Filtered Graph (PMFG) {todo:the PMFG method}, which keeps the strongest edges that preserve planarity, 3(N − 2) edges in total."
 
+# TODO: review wording
 [graph_callable]
 plain = "The diagonal of each matrix was set to zero, and a graph was constructed for each participant with a user-supplied function ({value})."
 
 [sign_abs]
 plain = "Edges were selected by the absolute value of their weights and kept their original signs."
 
+# TODO: review wording
 [sign_positive]
 plain = "Negative weights were set to zero before edges were selected."
 
+# TODO: review wording
 [sign_signed]
 plain = "Edges were ranked by their signed weights, so negative edges entered only when there were too few positive ones."
 
+# TODO: review wording
 [sign_negative]
 plain = "Only negative weights were kept, as positive magnitudes."
 
+# TODO: review wording
 [normalize_weights]
 plain = "Each matrix was divided by its largest absolute weight before graph construction."
 
+# TODO: review wording
 [sweep_auc]
 plain = "Each metric was computed at every {param} in {values} and summarized as the area under the curve across {plural} (trapezoidal rule, not normalized) {todo:cost integration}."
 
+# TODO: review wording
 [sweep_mean]
 plain = "Each metric was computed at every {param} in {values} and summarized as the area under the curve divided by the width of the range {todo:cost integration}."
 
+# TODO: review wording
 [network_method]
 plain = "Network-level graphs were constructed with the {value} method instead."
 
@@ -96,12 +115,15 @@ plain = "The clustering coefficient quantifies local cliquishness, the degree to
 ["clust_coeff.costantini"]
 plain = "It was computed with the signed-weight generalization {cite:Costantini2014}, which retains the original positive and negative edge weights."
 
+# TODO: review wording
 ["clust_coeff.zhang"]
 plain = "The Zhang and Horvath generalization was computed on the absolute weights {todo:the Zhang and Horvath clustering coefficient}."
 
+# TODO: review wording
 ["clust_coeff.onnela"]
 plain = "The weighted clustering coefficient based on the geometric mean of triangle weights was computed on the absolute weights {todo:the Onnela clustering coefficient}."
 
+# TODO: review wording
 ["clust_coeff.bin"]
 plain = "A binary clustering coefficient was computed on the unweighted graph."
 
@@ -111,12 +133,15 @@ plain = "The remaining {count} were computed on the absolute values of the edge 
 ["strength.abs"]
 plain = "Strength (absolute strength) is the sum of the absolute edge weights incident to a node, reflecting its total weighted connectivity."
 
+# TODO: review wording
 ["strength.pos"]
 plain = "Positive strength is the sum of a node's positive edge weights."
 
+# TODO: review wording
 ["strength.neg"]
 plain = "Negative strength is the sum of the magnitudes of a node's negative edge weights."
 
+# TODO: review wording
 ["strength.bin"]
 plain = "Degree is the number of edges of a node."
 
@@ -126,30 +151,38 @@ plain = "Betweenness centrality counts the shortest paths in the network that pa
 ["btwn_cent.inv"]
 plain = "For this metric, the absolute weights were first converted to connection lengths (their inverse), with stronger connections corresponding to shorter distances; values were not normalized."
 
+# TODO: review wording
 ["btwn_cent.inv_norm"]
 plain = "Connection lengths were the inverse of the absolute weights, and values were divided by (N − 1)(N − 2)."
 
+# TODO: review wording
 ["btwn_cent.log"]
 plain = "Connection lengths were the negative logarithm of the absolute weights {todo:logarithmic connection lengths}; values were not normalized."
 
+# TODO: review wording
 ["btwn_cent.log_norm"]
 plain = "Connection lengths were the negative logarithm of the absolute weights {todo:logarithmic connection lengths}, and values were divided by (N − 1)(N − 2)."
 
+# TODO: review wording
 ["btwn_cent.bin"]
 plain = "A binary betweenness centrality was computed on the unweighted graph."
 
 [def_ge_local]
 plain = "Local efficiency quantifies the efficiency of information transfer within a node's immediate neighborhood, computed as the average inverse shortest path length among its direct neighbors {cite:Rubinov2010}."
 
+# TODO: review wording
 ["ge_local.wang"]
 plain = "{todo:the weighted generalization of local efficiency used}"
 
+# TODO: review wording
 ["ge_local.rubinov"]
 plain = "The original weighted definition was used."
 
+# TODO: review wording
 ["ge_local.bin"]
 plain = "A binary local efficiency was computed on the unweighted graph."
 
+# TODO: review wording
 [random]
 plain = "Each metric was also divided by its mean over {n} random networks that preserved each node's numbers of positive and negative edges, with weights redistributed within each sign {todo:the null model}."
 
@@ -167,22 +200,27 @@ plain = "At the network level, {z} was averaged within and between each of the {
 [level_network_hemi]
 plain = "At the hemisphere-separated network level, left- and right-hemisphere ROIs of each network were treated as separate nodes ({n} × {n} matrix)."
 
+# TODO: review wording
 [level_network_hemi_alone]
 plain = "At the hemisphere-separated network level, {z} was averaged within and between the left- and right-hemisphere ROIs of each network, treated as separate nodes{back}, and the same graph construction and metrics were applied to the resulting {n} × {n} matrix."
 
 [excluded_none]
 plain = "Parcels not assigned to any network (“None”, {count} parcels) were excluded from the network levels."
 
+# TODO: review wording
 [excluded]
 plain = "Parcels labelled {labels} ({count} parcels) were excluded from the network levels."
 
 # ---- network-based statistic ----
 
+# TODO: review wording
 [nbs_intro]
 plain = "Group differences in connectivity were tested with the network-based statistic {todo:the network-based statistic}, performed with brainnet3d v{ver}."
 
+# TODO: review wording
 [nbs_fisher]
 plain = "Connectivity values were Fisher z-transformed before testing."
 
+# TODO: review wording
 [nbs]
 plain = "A {test} was computed for every edge ({n1} and {n2} participants); edges whose {tail} t-statistic exceeded {thresh} were retained, and each connected component of retained edges was sized by its number of edges. Family-wise error-corrected p-values were obtained from {k} permutations of {shuffle}, by comparing each component with the null distribution of the largest component size."
