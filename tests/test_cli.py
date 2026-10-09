@@ -50,7 +50,7 @@ def _both(input_dir, out, participant_args, group_args=("--no-report",), common=
 def test_participant_level_writes_one_set_of_files_per_participant(dataset, xcpd, tmp_path):
     root, _, _ = xcpd
     out = tmp_path / "out"
-    cli.main([str(root), str(out), "participant", *XCPD, "--network-graph-method", "full",
+    cli.main([str(root), str(out), "participant", *XCPD, "--graph-method", "tmfg", "--network-graph-method", "full",
               "--metrics", "strength", "clust_coeff", "--n-jobs", "1", "--no-report", "--quiet"])
     folder = out / "sub-01" / "ses-01"
     stem = "sub-01_ses-01_atlas-Toy"
@@ -70,7 +70,8 @@ def test_participant_level_writes_one_set_of_files_per_participant(dataset, xcpd
 def test_group_level_collects_the_participants_into_tables_and_a_report(xcpd, surfaces, tmp_path):
     root, coords, _ = xcpd
     out = tmp_path / "out"
-    _both(root, out, [*XCPD, "--network-graph-method", "full", "--metrics", "strength", "clust_coeff",
+    _both(root, out, [*XCPD, "--graph-method", "tmfg", "--network-graph-method", "full", "--metrics", "strength",
+                      "clust_coeff",
                       "--n-jobs", "1", "--quiet"], ["--coords", str(coords), "--surfaces", *surfaces], common=XCPD)
     group = out / "group" / "ses-01" / "atlas-Toy"
     table = pd.read_csv(group / "node" / "strength.abs.csv", dtype={"ID": str})
@@ -194,6 +195,13 @@ def test_participant_level_rejects_unknown_graph_param_syntax(xcpd, tmp_path):
     root, _, _ = xcpd
     with pytest.raises(SystemExit):
         cli.main([str(root), str(tmp_path / "out"), "participant", *XCPD, "--graph-param", "density", "--quiet"])
+
+
+def test_participant_level_needs_a_graph_method(xcpd, tmp_path, capsys):
+    root, _, _ = xcpd
+    with pytest.raises(SystemExit):
+        cli.main([str(root), str(tmp_path / "out"), "participant", *XCPD, "--quiet"])
+    assert "--graph-method is required" in capsys.readouterr().err
 
 
 NBS = ["--nbs-thresh", "1.0", "--n-perms", "20", "--random-seed", "0"]

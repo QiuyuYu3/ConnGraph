@@ -26,7 +26,8 @@ pip install .
 ```bash
 conngraph derivatives/xcpd results participant \
     --input-type xcpd \
-    --atlases Gordon
+    --atlases Gordon \
+    --graph-method tmfg
 
 conngraph derivatives/xcpd results group \
     --input-type xcpd \

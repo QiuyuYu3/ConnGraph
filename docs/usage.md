@@ -14,7 +14,7 @@ conngraph INPUT OUTPUT group [options]
 | `participant` | Computes graph-theory metrics, at the node level and the network level, and writes one set of files and an HTML report (`OUTPUT/sub-<label>.html`, skipped with `--no-report`) per participant. `--participant-label` limits it to some participants, so a cluster can run one job per participant. |
 | `group` | Collects the participant results into tables and an HTML report. With a groups table, it also compares two groups with permutation t-tests, adjusting for `--covariates` if given: the graph metrics and the connectivity within and between networks by default, and every edge when `--compare` names `edges`. `--correction` (`fdr`, `fwe` or `none`) is required for these comparisons. `--nbs-thresh` adds the network-based statistic. |
 
-Graph options (method, metrics, random networks) belong to the participant level; group comparison options belong to the group level. Input options and the report options `--coords`, `--surfaces` and `--no-report` are given at both. Run `conngraph --help` for all options.
+Graph options (method, metrics, random networks) belong to the participant level, where `--graph-method` is required; group comparison options belong to the group level. Input options and the report options `--coords`, `--surfaces` and `--no-report` are given at both. Run `conngraph --help` for all options.
 
 ## Input
 

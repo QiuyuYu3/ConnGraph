@@ -84,7 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add("--metrics", nargs="+", metavar="NAME",
           help='metric or metric.variant names, or "all" (default: the default variant of each metric)')
     p.add("--hemi-col", default="hemisphere", help="hemisphere column (default: hemisphere)")
-    p.add("--graph-method", choices=GRAPH_METHODS, default="tmfg", help="graph construction (default: tmfg)")
+    p.add("--graph-method", choices=GRAPH_METHODS, help="graph construction, e.g. tmfg; required at this level")
     p.add("--graph-param", type=graph_param, action="append", metavar="KEY=VALUE",
           help="parameter of the graph method, e.g. density=0.1 or density=0.1,0.2,0.3 for a range")
     p.add("--sign", choices=SIGNS, help="treatment of negative weights (default depends on the method)")
@@ -131,6 +131,8 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, argparse.ArgumentPa
     args = parser.parse_args(argv)
     for options in args._level_options:
         options.resolve(args, parser)
+    if args.analysis_level == "participant" and args.graph_method is None:
+        parser.error("--graph-method is required at the participant level")
     if args.nbs_thresh is not None and not (args.groups and args.group_column and args.contrast):
         parser.error("--nbs-thresh needs --groups, --group-column and --contrast")
     if args.groups and not (args.group_column and args.contrast):
