@@ -10,7 +10,13 @@ from functools import cache
 from importlib.resources import files
 
 _FORMATS = ("plain", "markdown", "latex", "html")
-_METRIC_ORDER = ("clust_coeff", "strength", "btwn_cent", "ge_local")
+_METRIC_ORDER = ("clust_coeff", "strength", "btwn_cent", "ge_local", "eff_nodal", "close_cent", "eig_cent",
+                 "participation", "module_z", "eff_global", "char_path", "clust_mean", "modularity", "small_world")
+_FIRST_METRICS = ("clust_coeff", "strength", "btwn_cent", "ge_local")
+# Metric variants that read the sign of each weight; the others see it through the signed_fallback rule
+_SIGNED = ("clust_coeff.costantini", "strength.abs", "strength.pos", "strength.neg", "participation.pos",
+           "participation.neg", "modularity.wei")
+_PATHS = ("eff_nodal", "close_cent", "eff_global", "char_path")
 _SLOT = re.compile(r"\{(cite|cite_bare|todo):([^}]+)\}")
 _COUNT_WORDS = {1: "one", 2: "two", 3: "three", 4: "four"}
 _SWEEP_NAMES = {"density": "densities", "threshold": "thresholds", "alpha": "significance levels"}
@@ -81,7 +87,8 @@ def graph_methods(params: dict) -> dict[str, str]:
     if opts.get("n_random"):
         para2.append(("random", {"n": opts["n_random"]}))
 
-    para3 = [("metrics_intro", {})] + _metric_sentences([m for m in first["metrics"] if not m.endswith(".norm")])
+    para3 = [("metrics_intro", {})] + _metric_sentences([m for m in first["metrics"] if not m.endswith(".norm")],
+                                                         first["sign"], opts)
 
     para4 = [("levels", {"count": _count(len(levels), "level")})]
     fisher = opts.get("apply_fisher_z", True)
@@ -242,19 +249,41 @@ def _method_label(level: dict) -> str:
     return level["graph_method"] + (f" ({params})" if params else "")
 
 
-def _metric_sentences(names: list[str]) -> list[tuple[str, dict]]:
+def _metric_sentences(names: list[str], sign: str = "abs", opts: dict | None = None) -> list[tuple[str, dict]]:
+    from conngraph.graph_theory.metrics import LOUVAIN_RUNS, PARTITION_METRICS
+
+    opts = opts or {}
     out: list[tuple[str, dict]] = []
     template = steps()
+    bases = list(dict.fromkeys(".".join(n.split(".")[:2]) for n in names))
+    families = {b.split(".")[0] for b in bases}
     for metric in _METRIC_ORDER:
-        variants = [n for n in names if n.split(".")[0] == metric]
+        variants = [b for b in bases if b.split(".")[0] == metric]
         if not variants:
             continue
         if f"def_{metric}" in template:
             out.append((f"def_{metric}", {}))
         out += [(v, {}) for v in variants if v in template]
-        others = {n.split(".")[0] for n in names} - {"clust_coeff"}
-        if metric == "clust_coeff" and variants == ["clust_coeff.costantini"] and others:
+        others = families - {"clust_coeff"}
+        if (metric == "clust_coeff" and variants == ["clust_coeff.costantini"] and others
+                and families <= set(_FIRST_METRICS)):
             out.append(("remaining_abs", {"count": _count(len(others), "metric")}))
+    new = [b for b in bases if b.split(".")[0] not in _FIRST_METRICS]
+    if any(b.split(".")[0] in _PATHS and b.endswith(".wei") for b in new):
+        out.append(("lengths_inverse", {}))
+    if any(b.endswith(".bin") for b in new):
+        out.append(("unweighted", {}))
+    if families & set(PARTITION_METRICS):
+        partitions = opts.get("partitions") or ["networks", "louvain"]
+        if "networks" in partitions:
+            out.append(("partition_networks", {}))
+        if "louvain" in partitions:
+            out.append(("partition_louvain", {"n": LOUVAIN_RUNS}))
+    if sign in ("abs", "signed") and not families <= set(_FIRST_METRICS):
+        if "modularity" in families:
+            out.append(("modularity_signed", {}))
+        if any(b not in _SIGNED for b in bases):
+            out.append((f"unsigned_{opts.get('signed_fallback', 'abs')}", {}))
     return out
 
 

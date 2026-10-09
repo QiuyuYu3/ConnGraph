@@ -207,6 +207,82 @@ plain = "The original weighted definition was used."
 plain = "A binary local efficiency was computed on the unweighted graph."
 
 # TODO: review wording
+[def_eff_nodal]
+plain = "Nodal efficiency is the average inverse shortest path length from a node to every other node {todo:nodal efficiency}."
+
+# TODO: review wording
+[def_close_cent]
+plain = "Closeness centrality is the inverse of a node's average shortest path length to the nodes it can reach {todo:closeness centrality}."
+
+# TODO: review wording
+[def_eig_cent]
+plain = "Eigenvector centrality weights each of a node's connections by the centrality of the neighbor it leads to {todo:eigenvector centrality}."
+
+# TODO: review wording
+[def_participation]
+plain = "The participation coefficient measures how evenly a node's connections are spread across modules {todo:the participation coefficient}."
+
+# TODO: review wording
+["participation.pos"]
+plain = "It was computed from the positive edge weights {todo:the signed participation coefficient}."
+
+# TODO: review wording
+["participation.neg"]
+plain = "It was computed from the negative edge weights {todo:the signed participation coefficient}."
+
+# TODO: review wording
+[def_module_z]
+plain = "The within-module degree z-score measures how strongly a node connects within its own module, relative to the other nodes of that module {todo:the within-module degree z-score}."
+
+# TODO: review wording
+[def_eff_global]
+plain = "Global efficiency is the average inverse shortest path length over all pairs of nodes {todo:global efficiency}."
+
+# TODO: review wording
+[def_char_path]
+plain = "The characteristic path length is the average shortest path length over the pairs of nodes connected by a path {todo:the characteristic path length}."
+
+# TODO: review wording
+[def_clust_mean]
+plain = "The mean clustering coefficient is the average of the nodes' clustering coefficients."
+
+# TODO: review wording
+[def_modularity]
+plain = "Modularity quantifies how strongly a network divides into modules, with dense connections within and sparse connections between them {todo:modularity}."
+
+# TODO: review wording
+[def_small_world]
+plain = "The small-world index is the mean clustering coefficient divided by the characteristic path length, each first divided by its mean over the random networks {todo:the small-world index}."
+
+# TODO: review wording
+[lengths_inverse]
+plain = "Shortest paths used connection lengths equal to the inverse of the edge weights."
+
+# TODO: review wording
+[unweighted]
+plain = "Binary variants ignored the edge weights."
+
+# TODO: review wording
+[partition_networks]
+plain = "Modules were given by the networks of the node table."
+
+# TODO: review wording
+[partition_louvain]
+plain = "Modules were detected with the Louvain algorithm {todo:the Louvain algorithm}, run {n} times on each graph, keeping the partition with the highest modularity."
+
+# TODO: review wording
+[modularity_signed]
+plain = "Negative edges lowered modularity in proportion to their share of the total weight {todo:modularity with negative weights}."
+
+# TODO: review wording
+[unsigned_abs]
+plain = "Metrics without a signed form were computed on the absolute values of the edge weights."
+
+# TODO: review wording
+[unsigned_positive]
+plain = "Metrics without a signed form were computed on the positive edge weights only."
+
+# TODO: review wording
 [random]
 plain = "Each metric was also divided by its mean over {n} random networks that preserved each node's numbers of positive and negative edges, with weights redistributed within each sign {todo:the null model}."
 

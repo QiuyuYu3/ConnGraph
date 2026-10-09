@@ -8,6 +8,7 @@ import argparse
 import sys
 
 from conngraph.cli import _shared
+from conngraph.graph_theory.metrics import PARTITIONS, SIGNED_FALLBACKS
 from conngraph.graph_theory.sparsify import GRAPH_METHODS, SIGNS
 
 LEVELS = ("participant", "group")
@@ -77,6 +78,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add("--graph-param", type=graph_param, action="append", metavar="KEY=VALUE",
           help="parameter of the graph method, e.g. density=0.1 or density=0.1,0.2,0.3 for a range")
     p.add("--sign", choices=SIGNS, help="treatment of negative weights (default depends on the method)")
+    p.add("--signed-fallback", choices=SIGNED_FALLBACKS, default="abs",
+          help="when negative weights remain, metrics without a signed form use their absolute values (abs, default) "
+               "or only the positive weights (positive)")
+    p.add("--partition", nargs="+", choices=PARTITIONS, metavar="{networks,louvain}",
+          help="modules for participation, module_z and modularity: the node table's networks, Louvain modules, or "
+               "both (default: both; louvain only without networks)")
     p.add("--network-graph-method", choices=GRAPH_METHODS, help="graph construction for the network level")
     p.add("--network-graph-param", type=graph_param, action="append", metavar="KEY=VALUE",
           help="parameter of the network-level graph method")

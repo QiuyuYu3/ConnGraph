@@ -536,6 +536,24 @@ def test_nbs_leaves_out_participants_missing_in_a_session(dataset, xcpd, tmp_pat
     assert "session ses-02" in report and "sub-06" in report
 
 
+def test_whole_graph_metrics_are_written_per_participant_and_collected(xcpd, tmp_path):
+    root, _, _ = xcpd
+    out = tmp_path / "out"
+    _both(root, out, ["--level", "node", "--graph-method", "density", "--graph-param", "density=0.3", "--metrics",
+                      "eff_global", "participation", "--partition", "networks", "--signed-fallback", "positive",
+                      "--sign", "abs", "--n-jobs", "1", "--quiet"], common=XCPD)
+    one = pd.read_csv(out / "sub-01" / "ses-01" / "sub-01_ses-01_atlas-Toy_level-node_global.tsv", sep="\t")
+    assert list(one.columns) == ["eff_global.wei"] and len(one) == 1
+    node = pd.read_csv(out / "sub-01" / "ses-01" / "sub-01_ses-01_atlas-Toy_level-node_metrics.tsv", sep="\t")
+    assert list(node.columns) == ["node", "participation.pos.networks"]
+    group = out / "group" / "ses-01" / "atlas-Toy"
+    table = pd.read_csv(group / "global" / "node.csv", dtype={"ID": str})
+    assert list(table["ID"]) == ["01", "02", "03", "04", "05", "06"]
+    assert table.loc[0, "eff_global.wei"] == pytest.approx(one.loc[0, "eff_global.wei"])
+    options = _params(group)["options"]
+    assert options["signed_fallback"] == "positive" and options["partitions"] == ["networks"]
+
+
 def test_fisher_z_is_applied_before_nbs():
     from conngraph.cli._shared import fisher_z
 

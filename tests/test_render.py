@@ -46,7 +46,8 @@ def test_brainnet_threshold_dir(dataset, out_dir):
 def test_brainnet_absmax(dataset, out_dir):
     pytest.importorskip("bct")
     pytest.importorskip("topcorr")
-    result = bnv.compute_graph_metrics(dataset.matrices, dataset.nodes_df, level="node", n_jobs=1)
+    result = bnv.compute_graph_metrics(dataset.matrices, dataset.nodes_df, level="node", n_jobs=1,
+                                       metrics=["clust_coeff", "btwn_cent", "strength", "ge_local"])
 
     p = bnv.BrainNetPlotter(dataset, subject_id="sub-01")
     p.attach_metrics(result)

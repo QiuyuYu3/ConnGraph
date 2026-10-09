@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 
 from conngraph.cli import _shared
-from conngraph.cli.participant import CONNECTIVITY_FILES, LEVEL_FILES
+from conngraph.cli.participant import CONNECTIVITY_FILES, GLOBAL_FILES, LEVEL_FILES
 from conngraph.loaders import INPUT_ATTR
 
 SIDECAR = "_metrics.json"
@@ -80,6 +80,11 @@ def _graph_metrics(args, parser, sidecars, matrices, atlas, variant, out, comman
         squares = [_read(path, f"_level-{name}_connectivity.tsv", "network") for path, _ in records]
         if squares[0] is not None:
             setattr(result, attr, _net_corr_to_wide(dict(zip(ids, squares))))
+    tables = {level: [_read(path, f"_level-{name}_global.tsv") for path, _ in records] for level, name in GLOBAL_FILES}
+    tables = {level: frames for level, frames in tables.items() if frames[0] is not None}
+    if tables:
+        result.global_df = pd.concat({level: pd.concat(frames, ignore_index=True).set_axis(ids)
+                                      for level, frames in tables.items()}, axis=1, names=["level", "metric"])
     curves = [_read(path, "_curves.tsv") for path, _ in records]
     if curves[0] is not None:
         result.curves = pd.concat([c.assign(ID=sid) for sid, c in zip(ids, curves)], ignore_index=True)[

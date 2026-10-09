@@ -24,7 +24,7 @@ from conngraph.graph_theory.aggregation import (
 )
 from conngraph.exceptions import DataValidationError
 from conngraph.loaders import INPUT_ATTR
-from conngraph.graph_theory.metrics import check_options, output_names, process_subject
+from conngraph.graph_theory.metrics import PARTITIONS, check_options, is_global, output_names, process_subject
 from conngraph.graph_theory.sparsify import requested_edges, resolve_sign
 
 
@@ -42,6 +42,7 @@ class GraphMetricsResult:
     params:           dict = field(default_factory=dict)
     nodes:            pd.DataFrame | None = None
     mean_matrix:      pd.DataFrame | None = None
+    global_df:        pd.DataFrame | None = None
 
     def save_report(self, path, nodes: pd.DataFrame | None = None, surfaces: tuple[str, str] | None = None,
                     static_brain: bool = True) -> None:
@@ -76,6 +77,8 @@ def compute_graph_metrics(
     random_swaps: float = 10,
     random_seed: int | None = None,
     exclude_networks: str | list[str] | tuple[str, ...] | None = ("None",),
+    signed_fallback: str = "abs",
+    partitions: tuple[str, ...] | None = None,
 ) -> GraphMetricsResult:
     """Compute graph-theory metrics from pre-computed connectivity matrices.
 
@@ -159,9 +162,15 @@ def compute_graph_metrics(
     if not (isinstance(hemi_split, bool) or hemi_split == "both"):
         raise ValueError(f"hemi_split={hemi_split!r} is not recognised. Choose True, False or \"both\".")
 
+    has_networks = network_col in atlas.columns and atlas[network_col].notna().any()
+    if partitions is None:
+        partitions = PARTITIONS if has_networks else ("louvain",)
+    elif "networks" in partitions and not has_networks:
+        raise ValueError(f"partitions includes \"networks\", but the atlas has no {network_col!r} column.")
     node_opts = dict(graph_method=graph_method, graph_params=graph_params, sign=sign,
                      summary=summary, return_curves=return_curves, normalize_weights=normalize_weights,
-                     n_random=n_random, random_swaps=random_swaps)
+                     n_random=n_random, random_swaps=random_swaps, signed_fallback=signed_fallback,
+                     partitions=tuple(partitions))
     net_opts = dict(node_opts)
     if network_graph_method is not None:
         net_opts.update(graph_method=network_graph_method, graph_params=network_graph_params)
@@ -173,10 +182,12 @@ def compute_graph_metrics(
     want_hemi = level in ("network", "both") and hemi_split in (True, "both")
 
     node_metrics = (
-        check_options(metrics, graph_method, graph_params, sign, summary, n_random, random_swaps) if want_node else []
+        check_options(metrics, graph_method, graph_params, sign, summary, n_random, random_swaps, signed_fallback,
+                      node_opts["partitions"]) if want_node else []
     )
     net_metrics = (
-        check_options(metrics, net_opts["graph_method"], net_opts["graph_params"], sign, summary, n_random, random_swaps)
+        check_options(metrics, net_opts["graph_method"], net_opts["graph_params"], sign, summary, n_random, random_swaps,
+                      signed_fallback, level="network")
         if want_network or want_hemi else []
     )
     if want_node:
@@ -202,6 +213,7 @@ def compute_graph_metrics(
         result.mean_matrix = _mean_matrix(matrices, apply_fisher_z)
     curves: list[pd.DataFrame] = []
     shortfalls: list[str] = []
+    global_values: dict[tuple[str, str], dict] = {}
     # Seeds follow the subject ID, so a subject's random networks do not depend on the other subjects or workers
     root_seed = np.random.SeedSequence(random_seed)
     seeds = {
@@ -214,12 +226,14 @@ def compute_graph_metrics(
             print(f"[graph_theory] Network-level: {len(net2rois)} networks, {_describe_graph(net_opts)}")
         result.network_df, result.net_corr_df = _network_level(
             "network", matrices, net2rois, apply_fisher_z, net_metrics, net_opts, result, curves, shortfalls,
-            seeds["network"],
+            seeds["network"], global_values,
         )
 
     if want_node:
         atlas_rois = atlas[label_col].dropna().tolist()
-        node_columns = output_names(node_metrics, n_random)
+        node_columns = [m for m in output_names(node_metrics, n_random) if not is_global(m)]
+        global_columns = [m for m in output_names(node_metrics, n_random) if is_global(m)]
+        module_of = _modules(atlas, label_col, network_col, exclude_networks) if has_networks else {}
         node_df = pd.DataFrame(
             index=subject_ids,
             columns=pd.MultiIndex.from_product([node_columns, atlas_rois], names=["metric", "roi"]),
@@ -239,6 +253,7 @@ def compute_graph_metrics(
                 node_metrics,
                 **node_opts,
                 random_seed=seeds["node"][sid],
+                modules=[module_of.get(label, np.nan) for label in matrices[sid].columns] if module_of else None,
             )
             for sid in subject_ids
             if sid in matrices
@@ -258,10 +273,12 @@ def compute_graph_metrics(
                 for roi in atlas_rois:
                     if roi in res[m]:
                         node_df.at[sid, (m, roi)] = res[m][roi]
+            for m in global_columns:
+                global_values.setdefault(("node", m), {})[sid] = res[m]
             _collect_curves(curves, "node", sid, res)
             _collect_shortfall(shortfalls, "node", sid, res)
 
-        result.node_df = node_df.astype(float)
+        result.node_df = node_df.astype(float) if node_columns else None
 
     if want_hemi:
         if verbose:
@@ -269,11 +286,19 @@ def compute_graph_metrics(
                   f"{_describe_graph(net_opts)}")
         result.net_hemi_df, result.net_hemi_corr_df = _network_level(
             "network_hemi", matrices, net_hemi2rois, apply_fisher_z, net_metrics, net_opts, result, curves, shortfalls,
-            seeds["network_hemi"],
+            seeds["network_hemi"], global_values,
         )
 
     if curves:
         result.curves = pd.concat(curves, ignore_index=True)
+    if global_values:
+        order = {"node": 0, "network": 1, "network_hemi": 2}
+        columns = sorted(global_values, key=lambda key: order[key[0]])
+        result.global_df = pd.DataFrame(
+            {key: [global_values[key].get(sid, np.nan) for sid in subject_ids] for key in columns},
+            index=subject_ids, dtype=float,
+        )
+        result.global_df.columns = pd.MultiIndex.from_tuples(columns, names=["level", "metric"])
 
     if shortfalls:
         warnings.warn(
@@ -310,7 +335,8 @@ def compute_graph_metrics(
             "hemi_col": hemi_col, "apply_fisher_z": apply_fisher_z, "summary": summary,
             "return_curves": return_curves, "normalize_weights": normalize_weights, "n_random": n_random,
             "random_swaps": random_swaps, "random_seed": root_seed.entropy if n_random else None,
-            "exclude_networks": exclude_networks,
+            "exclude_networks": exclude_networks, "signed_fallback": signed_fallback,
+            "partitions": list(node_opts["partitions"]),
         },
         "levels": levels,
         "input": atlas.attrs.get(INPUT_ATTR, {}),
@@ -338,10 +364,12 @@ def _network_level(
     curves: list[pd.DataFrame],
     shortfalls: list[str],
     seeds: dict,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+    global_values: dict,
+) -> tuple[pd.DataFrame | None, pd.DataFrame]:
     all_net_corr = compute_net_corr(matrices, net2rois, apply_fisher_z)
     nets = list(next(iter(all_net_corr.values())).columns)
-    columns = output_names(metrics, opts["n_random"])
+    columns = [m for m in output_names(metrics, opts["n_random"]) if not is_global(m)]
+    global_columns = [m for m in output_names(metrics, opts["n_random"]) if is_global(m)]
     net_df = pd.DataFrame(
         index=list(matrices.keys()),
         columns=pd.MultiIndex.from_product([columns, nets], names=["metric", "network"]),
@@ -358,9 +386,11 @@ def _network_level(
         for m in columns:
             for n in nets:
                 net_df.at[sub_id, (m, n)] = res[m].get(n, np.nan)
+        for m in global_columns:
+            global_values.setdefault((level, m), {})[sub_id] = res[m]
         _collect_curves(curves, level, sub_id, res)
         _collect_shortfall(shortfalls, level, sub_id, res)
-    return net_df.astype(float), _net_corr_to_wide(all_net_corr)
+    return (net_df.astype(float) if columns else None), _net_corr_to_wide(all_net_corr)
 
 
 def _mean_matrix(matrices: dict[str, pd.DataFrame], fisher: bool) -> pd.DataFrame:
@@ -378,6 +408,12 @@ def _mean_matrix(matrices: dict[str, pd.DataFrame], fisher: bool) -> pd.DataFram
     mean = np.divide(total, count, out=np.full_like(total, np.nan), where=count > 0)
     np.fill_diagonal(mean, 0)
     return pd.DataFrame(np.tanh(mean) if fisher else mean, index=labels, columns=labels)
+
+
+def _modules(atlas: pd.DataFrame, label_col: str, network_col: str, exclude) -> dict:
+    """Each ROI's network for the "networks" partition; NaN for ROIs whose label is excluded."""
+    excluded = set() if exclude is None else ({exclude} if isinstance(exclude, str) else set(exclude))
+    return {label: (np.nan if net in excluded else net) for label, net in zip(atlas[label_col], atlas[network_col])}
 
 
 def _drop_networks(atlas: pd.DataFrame, network_col: str, exclude, verbose: bool) -> tuple[pd.DataFrame, dict]:
@@ -557,6 +593,9 @@ def _save(result: GraphMetricsResult, output_dir: str, verbose: bool) -> None:
         _write(result.net_corr_df, "correlation", "network.csv")
     if result.net_hemi_corr_df is not None:
         _write(result.net_hemi_corr_df, "correlation", "network_hemi.csv")
+    if result.global_df is not None:
+        for level in dict.fromkeys(result.global_df.columns.get_level_values(0)):
+            _write(result.global_df[level], "global", f"{level}.csv")
     if result.curves is not None:
         for level, df in result.curves.groupby("level", sort=False):
             _write(df.drop(columns="level"), level, "curves.csv", index=False)

@@ -7,6 +7,7 @@ import pytest
 from conngraph.graph_theory import compute_graph_metrics
 from conngraph.graph_theory.aggregation import build_net2rois, build_net_hemi2rois, compute_net_corr
 from conngraph.graph_theory.metrics import (
+    GLOBAL_VARIANTS,
     METRIC_VARIANTS,
     check_options,
     compute_metric,
@@ -314,9 +315,10 @@ def test_unknown_graph_method_raises_before_computing():
 
 
 def test_parse_metrics_expands_defaults_and_all():
-    assert parse_metrics(None) == DEFAULT_NAMES
+    assert parse_metrics(None)[:4] == DEFAULT_NAMES
+    assert len(parse_metrics(None)) == len(METRIC_VARIANTS) + len(GLOBAL_VARIANTS)
     assert parse_metrics(["strength", "strength.abs", "strength.neg"]) == ["strength.abs", "strength.neg"]
-    assert len(parse_metrics("all")) == sum(len(v) for v in METRIC_VARIANTS.values())
+    assert len(parse_metrics("all")) == sum(len(v) for v in (*METRIC_VARIANTS.values(), *GLOBAL_VARIANTS.values()))
     with pytest.raises(ValueError, match="strength.nope"):
         parse_metrics(["strength.nope"])
 

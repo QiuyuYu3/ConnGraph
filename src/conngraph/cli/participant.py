@@ -16,6 +16,7 @@ from conngraph.cli import _shared
 LEVEL_FILES = (("node_df", "node", "node"), ("network_df", "network", "network"),
                ("net_hemi_df", "networkhemi", "network"))
 CONNECTIVITY_FILES = (("net_corr_df", "network"), ("net_hemi_corr_df", "networkhemi"))
+GLOBAL_FILES = (("node", "node"), ("network", "network"), ("network_hemi", "networkhemi"))
 
 
 def run(args: argparse.Namespace, parser: argparse.ArgumentParser, session: str | None, variant: str | None,
@@ -41,6 +42,7 @@ def run(args: argparse.Namespace, parser: argparse.ArgumentParser, session: str 
             summary=args.summary, return_curves=args.return_curves, normalize_weights=args.normalize_weights,
             n_random=args.n_random, random_swaps=args.random_swaps, random_seed=args.random_seed,
             exclude_networks=args.exclude_networks, n_jobs=args.n_jobs, verbose=not args.quiet,
+            signed_fallback=args.signed_fallback, partitions=tuple(args.partition) if args.partition else None,
         )
     except ValueError as exc:
         raise SystemExit(f"{parser.prog}: {exc}") from None
@@ -74,6 +76,11 @@ def _write_participant(result, sid: str, out: pathlib.Path, session: str | None,
         wide = getattr(result, attr)
         if wide is not None:
             _square(wide.loc[sid]).to_csv(folder / f"{stem}_level-{name}_connectivity.tsv", sep="\t")
+    if result.global_df is not None:
+        for level, name in GLOBAL_FILES:
+            if level in result.global_df.columns.get_level_values(0):
+                result.global_df[level].loc[[sid]].to_csv(folder / f"{stem}_level-{name}_global.tsv", sep="\t",
+                                                          index=False)
     if result.curves is not None:
         curves = result.curves[result.curves["ID"] == sid].drop(columns="ID")
         curves.to_csv(folder / f"{stem}_curves.tsv", sep="\t", index=False)

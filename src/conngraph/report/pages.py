@@ -21,7 +21,12 @@ from conngraph.report.methods import graph_methods, nbs_methods, participant_cou
 
 PLOTLY_CDN = "https://cdn.plot.ly/plotly-3.5.0.min.js"
 _METRIC_TITLES = {"clust_coeff": "Clustering coefficient", "btwn_cent": "Betweenness centrality",
-                  "strength": "Strength", "ge_local": "Local efficiency"}
+                  "strength": "Strength", "ge_local": "Local efficiency", "eff_nodal": "Nodal efficiency",
+                  "participation": "Participation coefficient", "module_z": "Within-module degree z",
+                  "eig_cent": "Eigenvector centrality", "close_cent": "Closeness centrality",
+                  "eff_global": "Global efficiency", "char_path": "Characteristic path length",
+                  "clust_mean": "Mean clustering coefficient", "modularity": "Modularity",
+                  "small_world": "Small-world index"}
 _SWEEP_LABELS = {"density": "Density", "threshold": "Threshold", "alpha": "Significance level"}
 _MAX_BRAIN_EDGES = 300
 
@@ -35,7 +40,7 @@ def save_graph_report(result, path, nodes: pd.DataFrame | None = None, surfaces:
     label_col, network_col = opts["label_col"], opts["network_col"]
     networks = _column(nodes, label_col, network_col)
     palette = _palette(networks)
-    metrics = _metric_names(result)
+    metrics = list(dict.fromkeys(m for d in levels.values() for m in d["metrics"]))
     notes: list[str] = [f"{n} ROIs labelled “{k}” were left out of the network levels; the node level keeps them."
                         for k, n in params.get("excluded_rois", {}).items()]
 
@@ -47,13 +52,14 @@ def save_graph_report(result, path, nodes: pd.DataFrame | None = None, surfaces:
             continue
         hemi = level == "network_hemi"
         net_of = (lambda n: n.partition("_")[2]) if hemi else (lambda n: n)
+        names = _metric_names(df)
         boxes = [(m, _metric_title(m), figures.to_div(figures.level_boxplot(df[m], palette, _metric_title(m), hemi)))
-                 for m in metrics]
+                 for m in names]
         M = _wide_to_matrix(corr)
         zmax = float(np.nanmax(np.abs(M.values))) or 1.0
         heat = figures.ordered_heatmap(M.values, list(M.index), [net_of(n) for n in M.index], zmax,
                                        "Fisher z" if opts.get("apply_fisher_z", True) else "r")
-        means = pd.DataFrame({_metric_title(m): df[m].mean() for m in metrics})
+        means = pd.DataFrame({_metric_title(m): df[m].mean() for m in names})
         means.insert(0, "Node", means.index)
         body.append(dict(id=sid, title=title, desc=_level_desc(params, level), steps=[
             _step("a. Metric distributions", picker=True, html=_picker(f"{sid}-box", boxes),
@@ -68,14 +74,19 @@ def save_graph_report(result, path, nodes: pd.DataFrame | None = None, surfaces:
 
     if result.node_df is not None:
         body.append(dict(id="Node", title="Node level", desc=_level_desc(params, "node"),
-                         steps=_node_steps(result, metrics, nodes, label_col, networks, palette, surfaces,
-                                           static_brain, notes)))
+                         steps=_node_steps(result, _metric_names(result.node_df), nodes, label_col, networks, palette,
+                                           surfaces, static_brain, notes)))
         sections.append(("Node", "Node level"))
+
+    if result.global_df is not None:
+        body.append(dict(id="Global", title="Whole graph", desc="", steps=_global_steps(result.global_df)))
+        sections.append(("Global", "Whole graph"))
 
     if result.curves is not None:
         first = levels.get("node") or next(iter(levels.values()))
         sweep = next(k for k, v in first["graph_params"].items() if isinstance(v, list))
-        fig = figures.curves_figure(result.curves, metrics, {m: _metric_title(m) for m in metrics},
+        shown = list(dict.fromkeys(result.curves["metric"]))
+        fig = figures.curves_figure(result.curves, shown, {m: _metric_title(m) for m in shown},
                                     _SWEEP_LABELS.get(sweep, sweep))
         body.append(dict(id="Curves", title="Across " + _SWEEP_LABELS.get(sweep, sweep).lower() + " values", desc="", steps=[
             _step("a. Metrics at each value", html=figures.to_div(fig),
@@ -477,19 +488,33 @@ def _p_relation(p: float, k: int) -> str:
     return _fmt_p(p, k) if p == 0 else f"= {_fmt_p(p, k)}"
 
 
-def _metric_names(result) -> list[str]:
-    for df in (result.node_df, result.net_hemi_df, result.network_df):
-        if df is not None:
-            return list(df.columns.get_level_values(0).unique())
-    return []
+def _metric_names(df: pd.DataFrame) -> list[str]:
+    return list(df.columns.get_level_values(0).unique())
 
 
 def _metric_title(name: str) -> str:
-    metric, _, variant = name.partition(".")
+    metric, *rest = name.split(".")
+    details = [*rest[:1], *(f"{p} partition" for p in rest[1:] if p != "norm"), *(["normalized"] if "norm" in rest[1:] else [])]
     base = _METRIC_TITLES.get(metric, metric)
-    if variant.endswith(".norm"):
-        return f"{base} ({variant[:-5]}, normalized)"
-    return f"{base} ({variant})" if variant else base
+    return f"{base} ({', '.join(details)})" if details else base
+
+
+def _global_steps(df: pd.DataFrame) -> list[dict]:
+    names = list(dict.fromkeys(df.columns.get_level_values(1)))
+    boxes = []
+    for m in names:
+        values = pd.DataFrame({_level_title(lvl): df[(lvl, m)] for lvl in df.columns.get_level_values(0).unique()
+                               if (lvl, m) in df.columns})
+        boxes.append((m, _metric_title(m), figures.to_div(figures.level_boxplot(values, {}, _metric_title(m), False))))
+    means = df.mean().unstack(0).reindex(names)
+    means.columns = [_level_title(c) for c in means.columns]
+    means.insert(0, "Metric", [_metric_title(m) for m in names])
+    return [
+        _step("a. Distributions", picker=True, html=_picker("global-box", boxes),
+              desc="One value per participant for the whole graph, one box per level; hover for the ID."),
+        _step("b. Group means", open=False, html=f'<div class="scroll">{_table(means.reset_index(drop=True))}</div>',
+              desc="Mean over participants."),
+    ]
 
 
 def _level_title(level: str) -> str:
