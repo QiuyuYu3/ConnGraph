@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import tempfile
 
 from conngraph.cli import _shared
 from conngraph.graph_theory.compare import COMPARISONS, CORRECTIONS
@@ -66,6 +67,14 @@ def build_parser() -> argparse.ArgumentParser:
                         "seed is recorded when omitted")
     s.add_argument("--n-jobs", "--nprocs", type=int, default=-1,
                    help="parallel workers (default: all but one); results do not depend on it")
+    s.add_argument("--no-report", action="store_true",
+                   help="skip the HTML reports (participant: OUTPUT/sub-<label>.html; group: one per analysis)")
+    s.add_argument("--coords", help="table with label, x, y, z for the brain figures; Gordon coordinates are added "
+                                    "automatically")
+    s.add_argument("--surfaces", nargs="+", metavar="FILE",
+                   help="brain for the figures: left and right .surf.gii, or one skull-stripped brain volume (NIfTI or "
+                        "AFNI BRIK/HEAD) whose smoothed outline is cut at x = 0 into hemispheres (default: fsLR 32k "
+                        "midthickness)")
 
     p = _LevelOptions(parser, "participant", "participant level: graph metrics")
     p.add("--level", choices=["node", "network", "both"],
@@ -97,13 +106,7 @@ def build_parser() -> argparse.ArgumentParser:
           help="network labels left out of the network level (default: None); give no labels to keep all")
 
     g = _LevelOptions(parser, "group", "group level: report")
-    g.add("--no-report", action="store_true", help="skip the HTML reports")
     g.add("--no-static-brain", action="store_true", help="leave the static brain renderings out of the reports")
-    g.add("--coords", help="table with label, x, y, z for the brain figures; Gordon coordinates are added "
-                           "automatically")
-    g.add("--surfaces", nargs="+", metavar="FILE",
-          help="brain for the figures: left and right .surf.gii, or one skull-stripped brain volume (NIfTI or AFNI "
-               "BRIK/HEAD) whose smoothed outline is cut at x = 0 into hemispheres (default: fsLR 32k midthickness)")
     t = _LevelOptions(parser, "group", "group level: comparing two groups")
     t.add("--groups", help="table with one row per participant, e.g. participants.tsv; runs the comparisons")
     t.add("--participant-column", default="participant_id", help="participant column (default: participant_id)")
@@ -154,8 +157,14 @@ def main(argv: list[str] | None = None) -> int:
     args, parser = parse_args(argv)
     command = _shared.command_line(parser.prog, argv)
     run = participant.run if args.analysis_level == "participant" else group.run
-    code = _shared.run_all(args, parser, lambda session, variant: run(args, parser, session, variant, command),
-                           "logs" if args.analysis_level == "participant" else "group")
+    reports = args.analysis_level == "participant" and not args.no_report
+    with tempfile.TemporaryDirectory(prefix="conngraph_report_") as work:
+        # each session and atlas leaves its report section here; the pages are put together once all have run
+        args.report_dir = work if reports else None
+        code = _shared.run_all(args, parser, lambda session, variant: run(args, parser, session, variant, command),
+                               "logs" if args.analysis_level == "participant" else "group")
+        if reports:
+            participant.write_reports(args, parser)
     _shared.write_description(args.output_dir, args.input_dir, command)
     return code
 

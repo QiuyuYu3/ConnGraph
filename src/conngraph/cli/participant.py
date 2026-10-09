@@ -5,6 +5,7 @@ Participant level: graph-theory metrics written as one set of files per particip
 from __future__ import annotations
 
 import argparse
+import json
 import pathlib
 
 import numpy as np
@@ -47,8 +48,15 @@ def run(args: argparse.Namespace, parser: argparse.ArgumentParser, session: str 
     except ValueError as exc:
         raise SystemExit(f"{parser.prog}: {exc}") from None
     result.params["command"] = command
+    meshes = None
+    nodes = _shared.report_nodes(args, atlas, variant)
+    nodes = atlas if nodes is None else nodes
     for sid in ids:
-        _write_participant(result, sid, pathlib.Path(args.output_dir), session, variant)
+        params = _write_participant(result, sid, pathlib.Path(args.output_dir), session, variant)
+        if args.report_dir:
+            if meshes is None:
+                meshes = _meshes(args, nodes)
+            _save_section(args, result, sid, matrices[sid], nodes, params, session, variant, meshes)
     if not args.quiet:
         print(f"[{parser.prog}] Wrote {len(ids)} participant(s) to {args.output_dir}")
 
@@ -60,7 +68,7 @@ def file_stem(sid: str, session: str | None, variant: str | None) -> tuple[str, 
     return folder, "_".join(x for x in (f"sub-{label}", session, run, variant) if x)
 
 
-def _write_participant(result, sid: str, out: pathlib.Path, session: str | None, variant: str | None) -> None:
+def _write_participant(result, sid: str, out: pathlib.Path, session: str | None, variant: str | None) -> dict:
     folder, stem = file_stem(sid, session, variant)
     folder = out / folder
     folder.mkdir(parents=True, exist_ok=True)
@@ -88,6 +96,42 @@ def _write_participant(result, sid: str, out: pathlib.Path, session: str | None,
                   failed={lvl: {sid: subs[sid]} for lvl, subs in result.params["failed"].items() if sid in subs},
                   warnings=[w for w in result.params["warnings"] if f" / {sid}: " in w])
     _shared.write_json(folder / f"{stem}_metrics.json", params)
+    return params
+
+
+def _meshes(args: argparse.Namespace, nodes: pd.DataFrame) -> list:
+    from conngraph.report import figures
+    from conngraph.report.pages import _surfaces
+
+    if not {"x", "y", "z"} <= set(nodes.columns):
+        return []
+    return figures.surface_meshes(_surfaces(_shared.surfaces(args)))
+
+
+def _save_section(args, result, sid, matrix, nodes, params, session, variant, meshes) -> None:
+    """This participant's report section for one session and atlas, kept until every session has run."""
+    from conngraph.report.participant import participant_section
+
+    label, run = _shared.participant_parts(sid)
+    parts = [x for x in (session, run, variant) if x]
+    section = participant_section(result, sid, matrix, nodes, params, "_".join(parts) or "results",
+                                  " ".join(parts) or "Results", meshes)
+    folder = pathlib.Path(args.report_dir) / f"sub-{label}"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / f"{section['id']}.json").write_text(json.dumps(section), encoding="utf-8")
+
+
+def write_reports(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    """OUTPUT/sub-<label>.html for every participant run, from the sections their sessions and atlases left."""
+    from conngraph.report.participant import save_participant_report
+
+    folders = sorted(pathlib.Path(args.report_dir).glob("sub-*"))
+    for folder in folders:
+        sections = [json.loads(p.read_text(encoding="utf-8")) for p in sorted(folder.glob("*.json"))]
+        save_participant_report(folder.name.removeprefix("sub-"), sections,
+                                pathlib.Path(args.output_dir) / f"{folder.name}.html")
+    if folders and not args.quiet:
+        print(f"[{parser.prog}] Wrote {len(folders)} participant report(s) to {args.output_dir}")
 
 
 def _square(row: pd.Series) -> pd.DataFrame:

@@ -63,7 +63,8 @@ def graph_methods(params: dict) -> dict[str, str]:
 
     para1 = [("input", {"source": source, "ver": params["packages"]["conngraph"]})]
     para1 += _input_sentences(params)
-    para1.append(("participants", {"n": participant_count(params)}))
+    if participant_count(params) > 1:
+        para1.append(("participants", {"n": participant_count(params)}))
     if loaded.get("split_runs"):
         para1.append(("runs_separate", {"n": len(loaded["split_runs"]), "m": len(params["subjects"])}))
     if loaded.get("bad_node_threshold", 1.0) < 1.0:

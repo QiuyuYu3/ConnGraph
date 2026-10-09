@@ -433,30 +433,37 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
 
 def _group_graph(result):
     """The group mean matrix built into a graph with the node level's method, or None when it cannot be redone."""
+    if result.mean_matrix is None:
+        return None
+    opts = result.params["options"]
+    return _rebuilt_graph(result.mean_matrix, result.params, opts.get("apply_fisher_z", True))
+
+
+def _rebuilt_graph(matrix: pd.DataFrame, params: dict, is_z: bool):
+    """A matrix built into a graph with the node level's method, or None when it cannot be redone."""
     import networkx as nx
 
     from conngraph.graph_theory.sparsify import GRAPH_METHODS, apply_sign, build_adjacency
 
-    level = result.params["levels"].get("node") or {}
+    level = params["levels"].get("node") or {}
     method = level.get("graph_method")
     # a custom function cannot be rebuilt from its name, and PMFG takes minutes on a full atlas
-    if result.mean_matrix is None or method not in GRAPH_METHODS or method == "pmfg":
+    if method not in GRAPH_METHODS or method == "pmfg":
         return None
-    params, how = dict(level.get("graph_params") or {}), _method_text(level)
-    for key, value in params.items():
+    graph_params, how = dict(level.get("graph_params") or {}), _method_text(level)
+    for key, value in graph_params.items():
         if isinstance(value, list):
-            params[key] = value[len(value) // 2]
-            how = f"{level['graph_method']}, {key} {params[key]} from the middle of the range"
-    opts = result.params["options"]
-    M = np.nan_to_num(result.mean_matrix.to_numpy(float))
-    if opts.get("apply_fisher_z", True):
+            graph_params[key] = value[len(value) // 2]
+            how = f"{level['graph_method']}, {key} {graph_params[key]} from the middle of the range"
+    M = np.nan_to_num(matrix.to_numpy(float))
+    if is_z:
         M = np.tanh(M)
     np.fill_diagonal(M, 0)
     M = apply_sign(M, level["sign"])
-    if opts.get("normalize_weights") and np.abs(M).max() > 0:
+    if params["options"].get("normalize_weights") and np.abs(M).max() > 0:
         M = M / np.abs(M).max()
-    A = build_adjacency(M, method, params, level["sign"] == "signed")
-    return nx.from_numpy_array(A), list(result.mean_matrix.index), f"{how}, {level['sign']} weights"
+    A = build_adjacency(M, method, graph_params, level["sign"] == "signed")
+    return nx.from_numpy_array(A), list(matrix.index), f"{how}, {level['sign']} weights"
 
 
 def _circos_images(G, labels, nets, palette, colorbar_title) -> list[str]:

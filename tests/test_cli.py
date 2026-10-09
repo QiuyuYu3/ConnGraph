@@ -33,7 +33,7 @@ def xcpd(dataset, tmp_path_factory):
 
 
 FAST = ["--level", "node", "--graph-method", "density", "--graph-param", "density=0.2",
-        "--metrics", "strength", "--n-jobs", "1", "--quiet"]
+        "--metrics", "strength", "--n-jobs", "1", "--no-report", "--quiet"]
 XCPD = ["--input-type", "xcpd", "--atlases", "Toy"]
 
 
@@ -51,7 +51,7 @@ def test_participant_level_writes_one_set_of_files_per_participant(dataset, xcpd
     root, _, _ = xcpd
     out = tmp_path / "out"
     cli.main([str(root), str(out), "participant", *XCPD, "--network-graph-method", "full",
-              "--metrics", "strength", "clust_coeff", "--n-jobs", "1", "--quiet"])
+              "--metrics", "strength", "clust_coeff", "--n-jobs", "1", "--no-report", "--quiet"])
     folder = out / "sub-01" / "ses-01"
     stem = "sub-01_ses-01_atlas-Toy"
     node = pd.read_csv(folder / f"{stem}_level-node_metrics.tsv", sep="\t", index_col=0)
@@ -157,8 +157,8 @@ def test_group_level_needs_participant_results_or_a_test(xcpd, tmp_path):
     ("group", ["--graph-method", "full"]),
     ("group", ["--metrics", "strength"]),
     ("group", ["--n-random", "5"]),
-    ("participant", ["--no-report"]),
-    ("participant", ["--coords", "c.csv"]),
+    ("participant", ["--no-static-brain"]),
+    ("participant", ["--contrast", "A", "B"]),
     ("participant", ["--nbs-thresh", "3"]),
 ])
 def test_options_of_the_other_level_are_refused(xcpd, tmp_path, capsys, level, option):
@@ -564,7 +564,7 @@ def test_fisher_z_is_applied_before_nbs():
 
 
 NETWORK = ["--graph-method", "density", "--graph-param", "density=0.3", "--metrics", "strength",
-           "--network-graph-method", "full", "--n-jobs", "1", "--quiet"]
+           "--network-graph-method", "full", "--n-jobs", "1", "--no-report", "--quiet"]
 
 
 def _compare_args(groups, *extra):
@@ -679,3 +679,29 @@ def test_group_comparisons_get_a_report(xcpd, tmp_path):
     _both(root, out, NETWORK, [*args, "--coords", str(coords), "--no-static-brain"], common=XCPD)
     report = out / "group" / "ses-01" / "atlas-Toy" / "compare" / "compare_report.html"
     assert "Group comparison report" in report.read_text(encoding="utf-8")
+
+
+def test_participant_level_writes_one_report_per_participant(dataset, xcpd, tmp_path):
+    import re
+
+    _, coords, _ = xcpd
+    root = _xcpd_waves(dataset, tmp_path / "xcpd", ["ses-01", "ses-02"])
+    out = tmp_path / "out"
+    cli.main([str(root), str(out), "participant", *XCPD, "--graph-method", "density", "--graph-param", "density=0.3",
+              "--network-graph-method", "full", "--metrics", "strength", "eff_global", "--coords", str(coords),
+              "--n-jobs", "1", "--quiet"])
+    assert sorted(p.name for p in out.glob("sub-*.html")) == [f"sub-{i:02d}.html" for i in range(1, 7)]
+    text = (out / "sub-01.html").read_text(encoding="utf-8")
+    assert re.findall(r'<h2 id="([^"]+)"', text)[:3] == ["Summary", "ses-01_atlas-Toy", "ses-02_atlas-Toy"]
+    for words in ("Overview", "Connectivity matrix", "Node metrics", "Network metrics", "Whole graph", "Graph",
+                  "scatter3d", "Methods"):
+        assert words in text, words
+    leftovers = [p.name for p in out.rglob("*.json") if not p.name.endswith(("_metrics.json", "description.json"))]
+    assert not leftovers
+
+
+def test_participant_reports_can_be_skipped(xcpd, tmp_path):
+    root, _, _ = xcpd
+    out = tmp_path / "out"
+    cli.main([str(root), str(out), "participant", *XCPD, *FAST])
+    assert not list(out.glob("*.html"))
