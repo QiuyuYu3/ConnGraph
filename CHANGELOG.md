@@ -24,6 +24,7 @@
 ### Fixed
 
 - Tube edges ignored the chosen colour, and multi-view colour bars had crowded labels.
+- A node table without networks stopped the run; now only the node level is computed. Matrices that are not symmetric are refused instead of being read in part.
 
 ## [0.2.0] - 2026-10-08
 

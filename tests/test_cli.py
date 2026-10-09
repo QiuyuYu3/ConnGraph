@@ -378,6 +378,17 @@ def test_matrix_folder_runs_without_coordinates(dataset, tmp_path):
     assert "no x, y, z coordinates" in (out / "group" / "graph_report.html").read_text(encoding="utf-8")
 
 
+def test_matrix_folder_without_networks_computes_the_node_level(dataset, tmp_path):
+    folder = tmp_path / "in"
+    folder.mkdir()
+    dataset.nodes_df[["label"]].to_csv(folder / "nodes.tsv", sep="\t", index=False)
+    for sid, mat in dataset.matrices.items():
+        mat.to_csv(folder / f"{sid}_matrix.tsv", sep="\t")
+    out = tmp_path / "out"
+    _both(folder, out, ["--input-type", "matrix", *FAST[2:]], common=["--input-type", "matrix"])
+    assert list(_params(out / "group")["levels"]) == ["node"]
+
+
 def test_matrix_folder_needs_nodes_tsv(dataset, tmp_path):
     folder = tmp_path / "in"
     folder.mkdir()

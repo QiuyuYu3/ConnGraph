@@ -89,7 +89,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = _LevelOptions(parser, "participant", "participant level: graph metrics")
     p.add("--level", choices=["node", "network", "both"],
-          help="levels to compute (default: both; node for nirspipe, which has no networks)")
+          help="levels to compute (default: both; node when the nodes have no networks, as for nirspipe)")
     p.add("--hemi-split", choices=["true", "false", "both"], default="true",
           help="network level: one node per network and hemisphere (true, default), per network (false), or both")
     p.add("--metrics", nargs="+", metavar="NAME",

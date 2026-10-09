@@ -33,7 +33,7 @@ A `matrix` or `timeseries` folder holds one file per participant and a node tabl
 
 ```
 INPUT/
-    nodes.tsv                  label, network; optionally hemisphere, x, y, z
+    nodes.tsv                  label; optionally network, hemisphere, x, y, z
     sub-01_matrix.<ext>        or sub-01_timeseries.<ext>
     sub-02_matrix.<ext>
     ...
@@ -42,10 +42,10 @@ INPUT/
 With several sessions, the session label follows the participant: `sub-01_ses-01_matrix.<ext>`.
 
 - `<ext>` is `.tsv`, `.csv`, `.txt`, `.1D`, `.npy` or `.mat`, a CIFTI `.pconn.nii` (matrices) or `.ptseries.nii` (time series), or AFNI `3dNetCorr` output: `.netcc` (matrices) or `.netts` (time series, one region per row).
-- A matrix is square, one row and one column per node. A time series has one column per node and one row per time point.
+- A matrix is square and symmetric, one row and one column per node; directed connectivity is not supported. A time series has one column per node and one row per time point.
 - Tables may carry the node labels as headers; without them, rows and columns follow the order of `nodes.tsv`.
 - Matrices hold Pearson correlations; add `--values z` if they hold Fisher z values.
-- `nodes.tsv` has one row per node. Without x, y, z the report leaves out the brain figures. For XCP-D input with the Gordon atlas, coordinates are added automatically.
+- `nodes.tsv` has one row per node. Without a network column only the node level is computed; without x, y, z the report leaves out the brain figures. For XCP-D input with the Gordon atlas, coordinates are added automatically.
 - Brain figures are drawn in the fsLR 32k surfaces. `--surfaces` takes another left and right `.surf.gii`, or one skull-stripped brain volume (NIfTI or AFNI BRIK/HEAD), such as a pediatric template, whose smoothed outline is used instead. Node coordinates must be in the template's space.
 
 `--participant-label` and `--session-id` select participants and sessions, as in XCP-D; for `xcpd` and `nirspipe`, `--task-id` selects the task. Each session is analysed on its own; without `--session-id`, every session in `INPUT` is.
@@ -64,8 +64,7 @@ EEG and MEG connectivity matrices can be analysed as `matrix` input. The pipelin
 
 - Add `--no-fisher-z` when the matrices hold the phase-locking value, the weighted phase lag index, coherence or any other measure that is not a correlation; otherwise they are Fisher z-transformed when averaged and compared. The colour bars of the matrix figures still read "r".
 - Give matrices, not time series: `timeseries` input computes Pearson correlations of the signals.
-- Only undirected measures are supported. Directed measures such as Granger causality give asymmetric matrices, which are not checked and give meaningless results.
-- `nodes.tsv` needs a network column, such as the lobe or region of each channel; without one, add `--level node`.
+- Only undirected measures are supported; directed measures such as Granger causality give asymmetric matrices, which are refused.
 - Analyse one frequency band at a time, with each band's matrices in its own `INPUT` folder.
 - Brain figures need x, y, z in the template's space. Regions of a source-space atlas have them; scalp electrode positions lie outside the brain surface.
 

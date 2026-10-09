@@ -183,6 +183,8 @@ def compute_graph_metrics(
     want_node = level in ("node", "both")
     want_network = level in ("network", "both") and hemi_split in (False, "both")
     want_hemi = level in ("network", "both") and hemi_split in (True, "both")
+    if (want_network or want_hemi) and not has_networks:
+        raise ValueError(f"level={level!r} needs a {network_col!r} column in the node table; use level=\"node\".")
 
     node_metrics = (
         check_options(metrics, graph_method, graph_params, sign, summary, n_random, random_swaps, signed_fallback,
@@ -526,6 +528,8 @@ def _check_node_matrices(matrices: dict[str, pd.DataFrame]) -> None:
             problems.append(f"{sub_id}: {n_nan} NaN value(s) off the diagonal")
         if n_inf:
             problems.append(f"{sub_id}: {n_inf} Inf value(s) off the diagonal")
+        if not np.allclose(mat, mat.T, equal_nan=True):
+            problems.append(f"{sub_id}: not symmetric; directed connectivity is not supported")
     if problems:
         raise DataValidationError("Node-level input check failed:\n  " + "\n  ".join(problems))
 

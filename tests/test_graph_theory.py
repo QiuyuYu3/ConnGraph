@@ -191,6 +191,20 @@ def test_node_level_rejects_nan_and_inf_off_diagonal():
     assert "s_ok" not in str(info.value)
 
 
+def test_node_level_rejects_asymmetric_matrices():
+    matrices, atlas = _toy_inputs()
+    bad = {"s_dir": _with_values(matrices["s1"], lambda a: a.__setitem__((0, 1), a[0, 1] + 0.2)), "s_ok": matrices["s1"]}
+    with pytest.raises(ValueError, match="s_dir: not symmetric") as info:
+        compute_graph_metrics(bad, atlas, level="node", hemi_split=False, n_jobs=1)
+    assert "s_ok" not in str(info.value)
+
+
+def test_network_level_needs_a_network_column():
+    matrices, atlas = _toy_inputs()
+    with pytest.raises(ValueError, match="needs a 'network_label' column"):
+        compute_graph_metrics(matrices, atlas[["label"]], level="both", network_col="network_label", n_jobs=1)
+
+
 def test_node_level_accepts_inf_diagonal():
     matrices, atlas = _toy_inputs()
     z = {"s1": _with_values(matrices["s1"], lambda a: np.fill_diagonal(a, np.inf))}

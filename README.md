@@ -4,7 +4,7 @@ Graph-theory metrics, group comparisons and network-based statistics for brain c
 
 ![A brain network on the brain, as a bundled circos plot and in a spring layout](https://raw.githubusercontent.com/QiuyuYu3/brainnet3d/main/docs/images/banner.png)
 
-- Reads XCP-D (fMRI) and NIRSPipe (fNIRS) derivatives as they are, and connectivity matrices or regional time series from any other pipeline in common table, NumPy, MATLAB, CIFTI and AFNI formats. EEG and MEG connectivity matrices can be analysed too, with the precautions in [docs/usage.md](https://github.com/QiuyuYu3/brainnet3d/blob/main/docs/usage.md#eeg-and-meg).
+- Reads XCP-D (fMRI) and NIRSPipe (fNIRS) derivatives as they are, and connectivity matrices or regional time series from any other pipeline in common table, NumPy, MATLAB, CIFTI and AFNI formats.
 - Builds a graph for each participant with one of twelve methods, such as TMFG, density thresholding or orthogonal minimum spanning trees, and computes node, network and whole-graph metrics with bctpy, the Python Brain Connectivity Toolbox.
 - Compares two groups on the metrics, the network blocks and every edge, with covariates and permutation-based corrections, and runs the network-based statistic.
 - Writes an HTML report for each participant and for the group, with a Methods section written from the run's settings.

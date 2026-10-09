@@ -36,4 +36,4 @@ Turn a connectivity matrix and a node table into graph-theory metrics and an int
 
 ## Milestones
 
-- **EEG and fNIRS input**: accept channel-, sensor- or source-level connectivity from EEG and fNIRS (design under discussion).
+- **EEG and MEG input**: read MNE-Connectivity output, handle each connectivity measure (phase-locking value, weighted phase lag index, coherence and others) by name, and analyse frequency bands side by side.
