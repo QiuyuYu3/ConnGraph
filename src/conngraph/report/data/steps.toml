@@ -196,7 +196,7 @@ plain = "Local efficiency quantifies the efficiency of information transfer with
 
 # TODO: review wording
 ["ge_local.wang"]
-plain = "{todo:the weighted generalization of local efficiency used}"
+plain = "The revised weighted definition was used {cite:Wang2017}."
 
 # TODO: review wording
 ["ge_local.rubinov"]

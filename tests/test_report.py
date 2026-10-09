@@ -54,6 +54,7 @@ def test_graph_methods_follow_the_users_text_for_the_default_run(graph_result):
     assert "(van den Heuvel et al., 2017)" in plain and "(Jiang et al., 2023)" in plain
     assert "following the Brain Connectivity Toolbox (BCT; Rubinov & Sporns, 2010)" in plain
     assert "signed-weight generalization (Costantini & Perugini, 2014)" in plain
+    assert "The revised weighted definition was used (Wang et al., 2017)." in plain
     assert "Metrics without a signed form were computed on the absolute values of the edge weights." in plain
     assert "Modules were given by the networks of the node table." in plain
     assert "run 100 times on each graph, keeping the partition with the highest modularity" in plain
@@ -61,7 +62,7 @@ def test_graph_methods_follow_the_users_text_for_the_default_run(graph_result):
     assert "At the hemisphere-separated network level, left- and right-hemisphere ROIs" in plain
     assert "Network-level graphs were constructed with the full method instead." in plain
     refs = plain.split("References")[1].strip().splitlines()
-    assert [r.split(",")[0] for r in refs] == ["Costantini", "van den Heuvel", "Jiang", "Rubinov"]
+    assert [r.split(",")[0] for r in refs] == ["Costantini", "van den Heuvel", "Jiang", "Rubinov", "Wang"]
     assert "\\cite{vandenHeuvel2017}" in text["latex"] and "TODO" in text["latex"]
     assert 'class="todo"' in text["html"]
 
