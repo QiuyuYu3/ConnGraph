@@ -170,6 +170,15 @@ def test_matrix_folder_is_read_by_fixed_names(dataset, tmp_path):
     assert params["input"]["source"] == "matrix files"
 
 
+def test_matrix_folder_refuses_two_files_for_one_participant(dataset, tmp_path):
+    folder = _layout(dataset, tmp_path / "in")
+    sid, mat = next(iter(dataset.matrices.items()))
+    mat.to_csv(folder / f"{sid}_matrix.tsv", sep="\t")
+    np.save(folder / f"{sid}_matrix.npy", mat.to_numpy())
+    with pytest.raises(SystemExit, match=sid):
+        graph_cli.main([str(folder), str(tmp_path / "out"), "--input-format", "matrix"] + FAST)
+
+
 def test_matrix_folder_needs_nodes_tsv(dataset, tmp_path):
     folder = tmp_path / "in"
     folder.mkdir()

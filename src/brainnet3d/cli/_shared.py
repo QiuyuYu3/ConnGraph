@@ -74,7 +74,12 @@ def load_input(args: argparse.Namespace, parser: argparse.ArgumentParser) -> tup
             raise SystemExit(f"{parser.prog}: {args.input_dir} has no {NODES_FILE}")
         pattern = f"sub-*_{args.input_format}.*"
         paths = sorted(p for p in glob.glob(os.path.join(args.input_dir, pattern)) if p.endswith(_EXTENSIONS))
-        files = {subject_id_from_path(p): p for p in paths}
+        files: dict[str, str] = {}
+        for p in paths:
+            sid = subject_id_from_path(p)
+            if sid in files:
+                raise SystemExit(f"{parser.prog}: two files for {sid}: {files[sid]} and {p}")
+            files[sid] = p
         if labels is not None:
             files = {k: p for k, p in files.items() if k.removeprefix("sub-") in labels}
         if not files:
