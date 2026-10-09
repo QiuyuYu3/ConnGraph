@@ -189,7 +189,7 @@ def test_graph_report_renders_the_static_brain(graph_result, surfaces, tmp_path)
     assert all(f'src="figures/{name}"' in text for name in pngs)
     brain = plt.imread(next((tmp_path / "figures").glob("graph_brain_*.png")))
     assert brain.shape[1] / 10.5 > 250  # about 300 dpi at the figure's 10.5 inches
-    assert '<div class="figure-row">' in text
+    assert '<div class="figure-row" style="--columns:3">' in text
     stale = tmp_path / "figures" / "graph_old.png"
     stale.write_bytes(b"")
     graph_result.save_report(path, surfaces=surfaces, static_brain=False)

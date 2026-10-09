@@ -66,7 +66,7 @@ select.picker { font-size: 0.82rem; border: 1px solid #ced4da; border-radius: 4p
 .pane { display: none; } .pane.on { display: block; }
 .option-label { font-size: 0.8rem; color: #8a949e; text-transform: uppercase; letter-spacing: 0.04em; margin: 1rem 0 0.2rem; }
 img.figure { max-width: 100%; height: auto; display: block; border: none; margin-top: 0.5rem; }
-.figure-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: 0 1.5rem; align-items: start; }
+.figure-row { display: grid; grid-template-columns: repeat(var(--columns, 3), minmax(0, 1fr)); gap: 0 1.5rem; align-items: start; }
 
 /* ---- tables: flat, numbers right-aligned ---- */
 table.flat { border-collapse: collapse; font-size: 0.82rem; width: auto; min-width: 22rem; }
@@ -100,5 +100,5 @@ table.flat td.num, table.flat th.num { text-align: right; }
 .boilerplate-refs li { margin-bottom: 0.3rem; }
 table.versions { max-width: 400px; }
 
-@media (max-width: 900px) { .summary-grid { grid-template-columns: 1fr; } main { padding: 1rem; } }
+@media (max-width: 900px) { .summary-grid, .figure-row { grid-template-columns: 1fr; } main { padding: 1rem; } }
 @media print { #topbar { display: none; } details { break-inside: avoid; } }

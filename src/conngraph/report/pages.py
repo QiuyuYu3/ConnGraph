@@ -486,8 +486,10 @@ def _figure_block(label: str, img: str) -> str:
 
 
 def _figure_row(*blocks: str) -> str:
-    """Figures side by side, wrapping onto more rows as the window narrows."""
-    return '<div class="figure-row">' + "".join(f"<div>{b}</div>" for b in blocks) + "</div>"
+    """Figures side by side, one under another in a narrow window."""
+    # the column count is fixed up front: plotly sizes each figure as it is parsed, before its neighbours exist
+    return (f'<div class="figure-row" style="--columns:{len(blocks)}">' + "".join(f"<div>{b}</div>" for b in blocks)
+            + "</div>")
 
 
 def _static_node_brain(result, nodes, label_col, labels, values, title, surfaces, figs, metric) -> str:
