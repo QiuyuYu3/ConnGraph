@@ -69,8 +69,6 @@ def build_parser() -> argparse.ArgumentParser:
                    help="parallel workers (default: all but one); results do not depend on it")
     s.add_argument("--no-report", action="store_true",
                    help="skip the HTML reports (participant: OUTPUT/sub-<label>.html; group: one per analysis)")
-    s.add_argument("--no-static-brain", action="store_true",
-                   help="leave the static brain renderings out of the reports")
     s.add_argument("--coords", help="table with label, x, y, z for the brain figures; Gordon coordinates are added "
                                     "automatically")
     s.add_argument("--surfaces", nargs="+", metavar="FILE",

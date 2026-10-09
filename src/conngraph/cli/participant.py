@@ -117,8 +117,7 @@ def _save_section(args, result, sid, matrix, nodes, params, session, variant, me
     label, run = _shared.participant_parts(sid)
     parts = [x for x in (session, run, variant) if x]
     out = pathlib.Path(args.output_dir)
-    figs = None if args.no_static_brain else _FigureFolder(out / f"sub-{label}.html", out / f"sub-{label}" / "figures",
-                                                           file_stem(sid, session, variant)[1])
+    figs = _FigureFolder(out / f"sub-{label}.html", out / f"sub-{label}" / "figures", file_stem(sid, session, variant)[1])
     section = participant_section(result, sid, matrix, nodes, params, "_".join(parts) or "results",
                                   " ".join(parts) or "Results", meshes, figs, _shared.surfaces(args))
     folder = pathlib.Path(args.report_dir) / f"sub-{label}"

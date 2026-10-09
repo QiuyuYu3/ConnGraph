@@ -67,11 +67,11 @@ def test_participant_level_writes_one_set_of_files_per_participant(dataset, xcpd
     assert not (out / "group").exists() and not list(out.rglob("*.html"))
 
 
-def test_group_level_collects_the_participants_into_tables_and_a_report(xcpd, tmp_path):
+def test_group_level_collects_the_participants_into_tables_and_a_report(xcpd, surfaces, tmp_path):
     root, coords, _ = xcpd
     out = tmp_path / "out"
     _both(root, out, [*XCPD, "--network-graph-method", "full", "--metrics", "strength", "clust_coeff",
-                      "--n-jobs", "1", "--quiet"], ["--coords", str(coords), "--no-static-brain"], common=XCPD)
+                      "--n-jobs", "1", "--quiet"], ["--coords", str(coords), "--surfaces", *surfaces], common=XCPD)
     group = out / "group" / "ses-01" / "atlas-Toy"
     table = pd.read_csv(group / "node" / "strength.abs.csv", dtype={"ID": str})
     assert list(table["ID"]) == ["01", "02", "03", "04", "05", "06"]
@@ -203,10 +203,10 @@ def _nbs_args(groups):
     return ["--groups", str(groups), "--group-column", "dx", "--contrast", "A", "B", *NBS]
 
 
-def test_group_level_runs_nbs_from_a_groups_table(xcpd, tmp_path):
+def test_group_level_runs_nbs_from_a_groups_table(xcpd, surfaces, tmp_path):
     root, coords, groups = xcpd
     out = tmp_path / "out"
-    cli.main([str(root), str(out), "group", *XCPD, *_nbs_args(groups), "--coords", str(coords), "--no-static-brain",
+    cli.main([str(root), str(out), "group", *XCPD, *_nbs_args(groups), "--coords", str(coords), "--surfaces", *surfaces,
               "--quiet"])
     nbs = out / "group" / "ses-01" / "atlas-Toy" / "nbs"
     params = _params(nbs)
@@ -276,7 +276,7 @@ def test_input_type_is_required(xcpd, tmp_path, capsys):
 @pytest.mark.parametrize("option", [["--input-type", "xcpd-flat"], ["--input-format", "xcpd"], ["--atlas-file", "a.tsv"],
                                     ["--nodes", "n.tsv"], ["--pattern", "*.csv"], ["--label-col", "x"],
                                     ["--network-col", "x"], ["--thresh", "1"], ["--perms", "10"], ["--seed", "1"],
-                                    ["--nbs-perms", "10"]])
+                                    ["--nbs-perms", "10"], ["--no-static-brain"]])
 def test_removed_options_are_rejected(xcpd, tmp_path, capsys, option):
     root, _, _ = xcpd
     with pytest.raises(SystemExit):
@@ -514,23 +514,23 @@ def _wave_without_sub06(dataset, root):
     return root
 
 
-def test_group_report_lists_skipped_participants(dataset, xcpd, tmp_path):
+def test_group_report_lists_skipped_participants(dataset, xcpd, surfaces, tmp_path):
     _, coords, _ = xcpd
     root = _wave_without_sub06(dataset, tmp_path / "xcpd")
     out = tmp_path / "out"
     with pytest.warns(UserWarning, match="sub-06"):
-        _both(root, out, FAST, ["--coords", str(coords), "--no-static-brain"], common=[*XCPD, "--session-id", "02"])
+        _both(root, out, FAST, ["--coords", str(coords), "--surfaces", *surfaces], common=[*XCPD, "--session-id", "02"])
     report = (out / "group" / "ses-02" / "atlas-Toy" / "graph_report.html").read_text(encoding="utf-8")
     assert "sub-06: no file found" in report
 
 
-def test_nbs_leaves_out_participants_missing_in_a_session(dataset, xcpd, tmp_path):
+def test_nbs_leaves_out_participants_missing_in_a_session(dataset, xcpd, surfaces, tmp_path):
     _, coords, groups = xcpd
     root = _wave_without_sub06(dataset, tmp_path / "xcpd")
     out = tmp_path / "out"
     with pytest.warns(UserWarning, match="sub-06"):
         cli.main([str(root), str(out), "group", *XCPD, "--session-id", "02", *_nbs_args(groups), "--n-jobs", "1",
-                  "--coords", str(coords), "--no-static-brain", "--quiet"])
+                  "--coords", str(coords), "--surfaces", *surfaces, "--quiet"])
     nbs = out / "group" / "ses-02" / "atlas-Toy" / "nbs"
     params = _params(nbs)
     assert params["groups"]["g2"] == ["04", "05"] and params["input"]["missing"] == ["sub-06"]
@@ -673,11 +673,11 @@ def test_comparisons_need_a_chosen_correction(xcpd, tmp_path):
     assert _params(compare)["options"]["alpha"] == 0.2
 
 
-def test_group_comparisons_get_a_report(xcpd, tmp_path):
+def test_group_comparisons_get_a_report(xcpd, surfaces, tmp_path):
     root, coords, groups = xcpd
     out = tmp_path / "out"
     args = [a for a in _compare_args(groups) if a != "--no-report"]
-    _both(root, out, NETWORK, [*args, "--coords", str(coords), "--no-static-brain"], common=XCPD)
+    _both(root, out, NETWORK, [*args, "--coords", str(coords), "--surfaces", *surfaces], common=XCPD)
     report = out / "group" / "ses-01" / "atlas-Toy" / "compare" / "compare_report.html"
     assert "Group comparison report" in report.read_text(encoding="utf-8")
 
@@ -709,11 +709,3 @@ def test_participant_reports_can_be_skipped(xcpd, tmp_path):
     out = tmp_path / "out"
     cli.main([str(root), str(out), "participant", *XCPD, *FAST])
     assert not list(out.glob("*.html"))
-
-
-def test_participant_reports_can_leave_out_the_static_brain(xcpd, tmp_path):
-    root, coords, _ = xcpd
-    out = tmp_path / "out"
-    cli.main([str(root), str(out), "participant", *XCPD, *[a for a in FAST if a != "--no-report"], "--coords",
-              str(coords), "--no-static-brain"])
-    assert (out / "sub-01.html").exists() and not (out / "sub-01" / "figures").exists()
