@@ -169,17 +169,16 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
         xyz = _coordinates(nodes, label_col, labels)
         if xyz is not None and (static_brain or interactive_brain):
             degree = adj_sig.sum(axis=1)
-            static = interactive = None
+            html_ = ""
             if static_brain:
-                static = _static_nbs_brain(nodes, label_col, network_col, labels, drawn, diff, degree, palette,
+                html_ += _static_nbs_brain(nodes, label_col, network_col, labels, drawn, diff, degree, palette,
                                            surfaces, figs)
             if interactive_brain:
-                interactive = figures.to_div(figures.brain_edges(
+                html_ += figs.save_html(figures.brain_edges(
                     xyz, labels, nets or ["None"] * len(labels), drawn, np.array([diff[i, j] for i, j in drawn]),
                     degree, palette, figures.surface_meshes(_surfaces(surfaces)),
-                    ("Group 1 > Group 2", "Group 1 < Group 2")))
-            html_, hint = _brain_views(static, interactive)
-            steps.append(_step(f"{next(letter)}. On the brain", hint=hint, html=html_,
+                    ("Group 1 > Group 2", "Group 1 < Group 2")), "brain_edges")
+            steps.append(_step(f"{next(letter)}. On the brain", html=html_,
                                desc=f"Showing {what}, coloured by the sign of the group difference (group 1 − group 2); "
                                     "node size is the number of significant edges at each region."))
         elif xyz is None:
@@ -373,24 +372,23 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
         keep = ~np.isnan(xyz).any(axis=1)
         meshes = figures.surface_meshes(_surfaces(surfaces)) if interactive_brain else []
         nets = [networks.get(lab, "None") if networks is not None else "" for lab in labels]
-        static, interactive = [], []
+        panes = []
         for m in metrics:
             values = result.node_df[m].mean(axis=0).reindex(labels).to_numpy(float)
             t = _metric_title(m)
+            html_ = ""
             if static_brain:
-                static.append((m, t, _static_node_brain(result, nodes, label_col, labels, values, t, surfaces,
-                                                        figs, m)))
+                html_ += _static_node_brain(result, nodes, label_col, labels, values, t, surfaces, figs, m)
             if interactive_brain:
                 shown = keep & ~np.isnan(values)
-                interactive.append((m, t, figures.to_div(figures.brain_values(
+                html_ += figs.save_html(figures.brain_values(
                     xyz[shown], [lab for lab, k in zip(labels, shown) if k], [n for n, k in zip(nets, shown) if k],
-                    values[shown], t, meshes))))
-        html_, hint = _brain_views(_picker("node-static", static) if static else None,
-                                   _picker("node-3d", interactive) if interactive else None)
-        steps.append(_step("a. Group mean on the brain", picker=True, hint=hint, html=html_,
+                    values[shown], t, meshes), f"brain_{m}")
+            panes.append((m, t, html_))
+        steps.append(_step("a. Group mean on the brain", picker=True, html=_picker("node-brain", panes),
                            desc="Colour and size both show the mean over participants."
-                                + (" The interactive view can be rotated and hovered for region names, on a "
-                                   "simplified surface." if interactive_brain else "")))
+                                + (" Each link opens a view that can be rotated, with region names on hover."
+                                   if interactive_brain else "")))
     elif xyz is None:
         notes.append(_no_coordinates(nodes))
     letter = iter("abcdef"[len(steps):])
@@ -482,14 +480,6 @@ def _nbs_matrices(result, adj_sig, labels, nets, group_names) -> str:
     panes = [(f"g{k}", name, figures.to_div(figures.ordered_heatmap(M, labels, nets, lim, name, marks)))
              for k, (name, M) in enumerate(zip(group_names, (result.mean_g1, result.mean_g2)), 1)]
     return _picker("nbs-means", panes, "Group")
-
-
-def _brain_views(static: str | None, interactive: str | None) -> tuple[str, str]:
-    """The step body and title hint for static and/or interactive brain views."""
-    if static is None or interactive is None:
-        return static or interactive, ""
-    return ('<div class="option-label">Option 1: static</div>' + static
-            + '<div class="option-label">Option 2: interactive</div>' + interactive, "(static and interactive)")
 
 
 def _figure_block(label: str, img: str) -> str:
@@ -608,7 +598,7 @@ def _table(df: pd.DataFrame, sortable: bool = True) -> str:
 
 
 class _FigureFolder:
-    """Static figures saved as PNG files (in figures/ beside the report by default), named by prefix, linked from the page."""
+    """Figures saved as files (in figures/ beside the report by default), named by prefix, linked from the page."""
 
     def __init__(self, report_path, folder=None, prefix: str | None = None):
         path = pathlib.Path(report_path).resolve()
@@ -616,7 +606,7 @@ class _FigureFolder:
         self.stem = prefix or path.stem
         self.src = os.path.relpath(self.folder, path.parent).replace(os.sep, "/")
         # figures left from an earlier report of the same name would otherwise linger
-        for old in self.folder.glob(f"{self.stem}_*.png"):
+        for old in [*self.folder.glob(f"{self.stem}_*.png"), *self.folder.glob(f"{self.stem}_*.html")]:
             old.unlink()
 
     def save(self, fig, name: str, dpi: float | str = 300) -> str:
@@ -627,6 +617,14 @@ class _FigureFolder:
         fig.savefig(self.folder / filename, format="png", dpi=dpi, bbox_inches="tight", facecolor="white")
         plt.close(fig)
         return f'<img class="figure" src="{html.escape(self.src)}/{html.escape(filename)}" alt="">'
+
+    def save_html(self, fig, name: str) -> str:
+        self.folder.mkdir(parents=True, exist_ok=True)
+        filename = f"{self.stem}_{name}.html"
+        fig.write_html(self.folder / filename, include_plotlyjs="cdn", default_height="95vh",
+                       config={"displaylogo": False, "responsive": True})
+        return (f'<p class="figure-link"><a href="{html.escape(self.src)}/{html.escape(filename)}" target="_blank">'
+                "Open the rotatable 3-D view</a></p>")
 
 
 def _flag(value, ok: bool, bad_class: str) -> str:

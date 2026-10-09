@@ -96,6 +96,8 @@ p.caption { font-size: 0.86rem; color: var(--muted); margin: 0.6rem 0 0; max-wid
 .plot { width: 100%; min-height: 280px; max-height: 85vh; }
 .plot > div, .plot .plotly-graph-div { height: 100% !important; }
 p.caption b { color: var(--ink); font-weight: 600; }
+p.figure-link { margin: 0.35rem 0 0; font-size: 0.84rem; }
+p.figure-link a { color: var(--accent); }
 
 /* ---- tables: flat, numbers right-aligned ---- */
 table.flat { border-collapse: collapse; font-size: 0.85rem; width: auto; min-width: 24rem; }

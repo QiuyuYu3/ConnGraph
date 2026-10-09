@@ -71,20 +71,19 @@ def participant_section(result, sid: str, matrix: pd.DataFrame, nodes: pd.DataFr
         xyz = _coordinates(nodes, opts["label_col"], cols)
         parts = []
         if xyz is not None and figs is not None:
-            static = [(m, _metric_title(m), _static_node_brain(result, nodes, opts["label_col"], cols,
-                                                               node[m].reindex(cols).to_numpy(float), _metric_title(m),
-                                                               surfaces, figs, m)) for m in metrics]
-            label = "On the brain: static" if meshes is not None else "On the brain"
-            parts.append(f'<div class="option-label">{label}</div>' + _picker("node-static", static))
-        if xyz is not None and meshes is not None:
             brains = []
             for m in metrics:
                 values = node[m].reindex(cols).to_numpy(float)
-                shown = ~np.isnan(xyz).any(axis=1) & ~np.isnan(values)
-                brains.append((m, _metric_title(m), figures.to_div(figures.brain_values(
-                    xyz[shown], [lab for lab, k in zip(labels, shown) if k],
-                    [n for n, k in zip(nets or [""] * len(cols), shown) if k], values[shown], _metric_title(m), meshes))))
-            parts.append('<div class="option-label">On the brain: interactive</div>' + _picker("node-brain", brains))
+                html_ = _static_node_brain(result, nodes, opts["label_col"], cols, values, _metric_title(m), surfaces,
+                                           figs, m)
+                if meshes is not None:
+                    shown = ~np.isnan(xyz).any(axis=1) & ~np.isnan(values)
+                    html_ += figs.save_html(figures.brain_values(
+                        xyz[shown], [lab for lab, k in zip(labels, shown) if k],
+                        [n for n, k in zip(nets or [""] * len(cols), shown) if k], values[shown], _metric_title(m),
+                        meshes), f"brain_{m}")
+                brains.append((m, _metric_title(m), html_))
+            parts.append('<div class="option-label">On the brain</div>' + _picker("node-brain", brains))
         elif xyz is None:
             notes.append(_no_coordinates(nodes))
         if nets is not None:
