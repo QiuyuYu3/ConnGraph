@@ -63,6 +63,7 @@ p.desc { color: var(--muted); margin: 0 0 0.9rem; max-width: 110ch; }
 .warn { color: var(--warn); background: #fbf3dc; }
 .bad { color: var(--bad); background: #fdecec; }
 
+.overview { margin: 1.25rem 0 0; }
 .call { margin: 1rem 0 0; }
 .call-title { padding: 0.3rem 0; font-size: 0.85rem; font-weight: 500; color: var(--muted); }
 .call pre { margin-top: 0.4rem; }

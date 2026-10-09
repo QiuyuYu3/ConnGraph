@@ -49,8 +49,8 @@ def participant_section(result, sid: str, matrix: pd.DataFrame, nodes: pd.DataFr
     errors = [f"{lvl}: {subs[sid]}" for lvl, subs in result.failed.items() if sid in subs] + params["warnings"]
     notes = _input_notes(params.get("input") or {})
 
-    steps = [_step(f"{next(letter)}. Overview", html=_table(_overview(matrix, graph, params, errors), sortable=False),
-                   desc="What went into this participant's graphs and how they turned out.")]
+    overview = _overview(matrix, graph, params, errors).to_numpy().tolist()
+    steps = []
 
     panes = [("regions", "Regions", figures.to_div(figures.ordered_heatmap(
         np.nan_to_num(matrix.to_numpy(float)), labels, nets, 1.0, "r")))]
@@ -129,7 +129,8 @@ def participant_section(result, sid: str, matrix: pd.DataFrame, nodes: pd.DataFr
             figures.curves_figure(curves, shown, {m: _metric_title(m) for m in shown}, _SWEEP_LABELS.get(sweep, sweep))),
             desc="Mean over nodes at each value: the values the summary integrates."))
 
-    return dict(id=section_id, title=title, desc="", steps=steps, errors=errors, notes=notes, params=params)
+    return dict(id=section_id, title=title, desc="", steps=steps, errors=errors, notes=notes, params=params,
+                overview=overview)
 
 
 def save_participant_report(label: str, sections: list[dict], path) -> None:
@@ -155,9 +156,12 @@ def save_participant_report(label: str, sections: list[dict], path) -> None:
          ("Warnings", _flag(warned, not warned, "warn"))],
     ]
     body = [{k: s[k] for k in ("id", "title", "desc", "steps")} for s in sections]
+    # one column per session and atlas: what went into its graphs and how they turned out
+    items = list(dict.fromkeys(item for s in sections for item, _ in s["overview"]))
+    overview = pd.DataFrame({"": items} | {s["title"]: [dict(s["overview"]).get(i, "") for i in items] for s in sections})
     _write(path, f"sub-{label}", params, [(s["id"], s["title"]) for s in sections], summary,
            ("compute_graph_metrics", ["matrices", "atlas"], params["options"]), body, errors, notes,
-           graph_methods(params), f"sub-{label}")
+           graph_methods(params), f"sub-{label}", overview=_table(overview, sortable=False))
 
 
 def _overview(matrix: pd.DataFrame, graph, params: dict, errors: list[str]) -> pd.DataFrame:

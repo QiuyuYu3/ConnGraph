@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -95,6 +97,19 @@ def test_compare_groups_tests_metrics_blocks_and_edges(dataset, graph_result):
     params = result.params
     assert params["groups"]["g1"] == sorted(dataset.matrices)[:3] and params["options"]["seed"] == 0
     assert params["options"]["compare"] == ["metrics", "blocks", "edges"]
+
+
+def test_written_comparison_reads_back_unchanged(dataset, graph_result, tmp_path):
+    from conngraph.cli.group import _read_comparison, _write_comparison
+
+    result = compare_groups(_labels(dataset), ("A", "B"), graph_result, dataset.matrices,
+                            compare=("metrics", "blocks", "edges"), n_perms=10, seed=0, verbose=False)
+    _write_comparison(result, tmp_path)
+    loaded = _read_comparison(tmp_path)
+    assert list(loaded.tables) == list(result.tables)
+    for name, table in result.tables.items():
+        pd.testing.assert_frame_equal(loaded.tables[name], table, check_dtype=False)
+    assert loaded.params == json.loads(json.dumps(result.params))
 
 
 def test_edges_are_fisher_z_transformed_unless_asked_not_to(dataset):

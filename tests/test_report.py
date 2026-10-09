@@ -29,6 +29,20 @@ def nbs_result(groups):
     return run_nbs(g1, g2, thresh=1.0, k=20, seed=0, verbose=False)
 
 
+def test_written_nbs_result_reads_back_unchanged(nbs_result, tmp_path):
+    from conngraph.cli.group import _read_nbs, _write_nbs_tables
+
+    _write_nbs_tables(nbs_result, tmp_path)
+    (tmp_path / "parameters.json").write_text(json.dumps(nbs_result.params), encoding="utf-8")
+    loaded = _read_nbs(tmp_path)
+    assert loaded.labels == [str(lab) for lab in nbs_result.labels]
+    for attr in ("adj", "null"):
+        np.testing.assert_array_equal(getattr(loaded, attr), getattr(nbs_result, attr), err_msg=attr)
+    for attr in ("pval", "mean_g1", "mean_g2"):
+        np.testing.assert_allclose(getattr(loaded, attr), getattr(nbs_result, attr), rtol=1e-12, err_msg=attr)
+    assert loaded.params == json.loads(json.dumps(nbs_result.params))
+
+
 def test_graph_result_keeps_nodes_and_fisher_mean_matrix(dataset, graph_result):
     mats = [m.to_numpy(float) for m in dataset.matrices.values()]
     z = np.mean([np.arctanh(np.clip(m, -1 + 1e-7, 1 - 1e-7)) for m in mats], axis=0)

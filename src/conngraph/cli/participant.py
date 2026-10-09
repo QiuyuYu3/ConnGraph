@@ -48,17 +48,37 @@ def run(args: argparse.Namespace, parser: argparse.ArgumentParser, session: str 
     except ValueError as exc:
         raise SystemExit(f"{parser.prog}: {exc}") from None
     result.params["command"] = command
-    meshes = None
-    nodes = _shared.report_nodes(args, atlas, variant)
-    nodes = atlas if nodes is None else nodes
     for sid in ids:
-        params = _write_participant(result, sid, pathlib.Path(args.output_dir), session, variant)
-        if args.report_dir:
-            if meshes is None:
-                meshes = _meshes(args, nodes)
-            _save_section(args, result, sid, matrices[sid], nodes, params, session, variant, meshes)
+        _write_participant(result, sid, pathlib.Path(args.output_dir), session, variant)
+    if args.report_dir:
+        _sections(args, parser, ids, matrices, atlas, session, variant)
     if not args.quiet:
         print(f"[{parser.prog}] Wrote {len(ids)} participant(s) to {args.output_dir}")
+
+
+def rebuild(args: argparse.Namespace, parser: argparse.ArgumentParser, session: str | None, variant: str | None,
+            command: str) -> None:
+    """Report sections from the participant results already written, without recomputing them."""
+    matrices, atlas = _shared.load_input(args, parser, variant, session)
+    ids = [sid for sid in _shared.chosen(matrices, args) if _sidecar(args, sid, session, variant).exists()]
+    if not ids:
+        where = " ".join(x for x in (session, variant) if x)
+        raise SystemExit(f"{parser.prog}: no participant results in {args.output_dir}" + (f" for {where}" if where else "")
+                         + "; run the participant level first")
+    _sections(args, parser, ids, matrices, atlas, session, variant)
+
+
+def _sections(args, parser, ids, matrices, atlas, session, variant) -> None:
+    nodes = _shared.report_nodes(args, atlas, variant)
+    nodes = atlas if nodes is None else nodes
+    meshes = _meshes(args, nodes)
+    for sid in ids:
+        _save_section(args, parser, sid, matrices[sid], nodes, session, variant, meshes)
+
+
+def _sidecar(args: argparse.Namespace, sid: str, session: str | None, variant: str | None) -> pathlib.Path:
+    folder, stem = file_stem(sid, session, variant)
+    return pathlib.Path(args.output_dir) / folder / f"{stem}_metrics.json"
 
 
 def file_stem(sid: str, session: str | None, variant: str | None) -> tuple[str, str]:
@@ -111,8 +131,9 @@ def _meshes(args: argparse.Namespace, nodes: pd.DataFrame) -> list | None:
     return figures.surface_meshes(_surfaces(_shared.surfaces(args)))
 
 
-def _save_section(args, result, sid, matrix, nodes, params, session, variant, meshes) -> None:
-    """This participant's report section for one session and atlas, kept until every session has run."""
+def _save_section(args, parser, sid, matrix, nodes, session, variant, meshes) -> None:
+    """This participant's report section for one session and atlas, from its files, kept until every session has run."""
+    from conngraph.cli.group import _read_participants
     from conngraph.report.participant import participant_section
 
     from conngraph.report.pages import _FigureFolder
@@ -120,7 +141,11 @@ def _save_section(args, result, sid, matrix, nodes, params, session, variant, me
     label, run = _shared.participant_parts(sid)
     parts = [x for x in (session, run, variant) if x]
     out = pathlib.Path(args.output_dir)
-    figs = _FigureFolder(out / f"sub-{label}.html", out / f"sub-{label}" / "figures", file_stem(sid, session, variant)[1])
+    stem = file_stem(sid, session, variant)[1]
+    sidecar = _sidecar(args, sid, session, variant)
+    params = json.loads(sidecar.read_text(encoding="utf-8"))
+    result = _read_participants([(sidecar, params)], {str(c): c for c in matrix.columns}, parser.prog)
+    figs = _FigureFolder(out / f"sub-{label}.html", out / f"sub-{label}" / "figures", stem)
     section = participant_section(result, sid, matrix, nodes, params, "_".join(parts) or "results",
                                   " ".join(parts) or "Results", meshes, figs, _shared.surfaces(args))
     folder = pathlib.Path(args.report_dir) / f"sub-{label}"

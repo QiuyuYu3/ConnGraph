@@ -42,6 +42,9 @@ class _LevelOptions:
         self.defaults[action.dest] = False if kwargs.get("action") == "store_true" else default
         self.flags[action.dest] = flags[0]
 
+    def given(self, args: argparse.Namespace) -> list[str]:
+        return [self.flags[dest] for dest in self.defaults if dest in vars(args)]
+
     def resolve(self, args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
         given = [dest for dest in self.defaults if dest in vars(args)]
         if args.analysis_level != self.level and given:
@@ -69,6 +72,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="parallel workers (default: all but one); results do not depend on it")
     s.add_argument("--no-report", action="store_true",
                    help="skip the HTML reports (participant: OUTPUT/sub-<label>.html; group: one per analysis)")
+    s.add_argument("--reports-only", action="store_true",
+                   help="rebuild the reports from the results already in OUTPUT without recomputing them; the "
+                        "analysis options are read from those results")
     s.add_argument("--coords", help="table with label, x, y, z for the brain figures; Gordon coordinates are added "
                                     "automatically")
     s.add_argument("--surfaces", nargs="+", metavar="FILE",
@@ -131,9 +137,16 @@ def build_parser() -> argparse.ArgumentParser:
 def parse_args(argv: list[str]) -> tuple[argparse.Namespace, argparse.ArgumentParser]:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.reports_only:
+        if args.no_report:
+            parser.error("--reports-only and --no-report cannot be combined")
+        given = [flag for options in args._level_options for flag in options.given(args)]
+        if given:
+            parser.error(f"{given[0]} has no effect with --reports-only; the reports use the options saved with the "
+                         "results")
     for options in args._level_options:
         options.resolve(args, parser)
-    if args.analysis_level == "participant" and args.graph_method is None:
+    if args.analysis_level == "participant" and args.graph_method is None and not args.reports_only:
         parser.error("--graph-method is required at the participant level")
     if args.nbs_thresh is not None and not (args.groups and args.group_column and args.contrast):
         parser.error("--nbs-thresh needs --groups, --group-column and --contrast")
@@ -158,7 +171,10 @@ def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else list(argv)
     args, parser = parse_args(argv)
     command = _shared.command_line(parser.prog, argv)
-    run = participant.run if args.analysis_level == "participant" else group.run
+    if args.reports_only:
+        run = participant.rebuild if args.analysis_level == "participant" else group.rebuild
+    else:
+        run = participant.run if args.analysis_level == "participant" else group.run
     reports = args.analysis_level == "participant" and not args.no_report
     with tempfile.TemporaryDirectory(prefix="conngraph_report_") as work:
         # each session and atlas leaves its report section here; the pages are put together once all have run
@@ -167,7 +183,8 @@ def main(argv: list[str] | None = None) -> int:
                                "logs" if args.analysis_level == "participant" else "group")
         if reports:
             participant.write_reports(args, parser)
-    _shared.write_description(args.output_dir, args.input_dir, command)
+    if not args.reports_only:
+        _shared.write_description(args.output_dir, args.input_dir, command)
     return code
 
 

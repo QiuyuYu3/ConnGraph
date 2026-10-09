@@ -72,11 +72,13 @@ OUTPUT/
         sub-01_ses-01_atlas-Gordon_metrics.json
     group/ses-01/atlas-Gordon/
         node/, network_hemi/, ...     one table per metric, a row per participant
+        correlation/                  network connectivity per participant, and node_mean.tsv, the group mean matrix
+        nodes.tsv                     the node table the reports use, with coordinates when given
         parameters.json
         graph_report.html
         figures/                      the report's static figures (300 dpi PNG); keep them beside the report
         compare/                      metrics_node.tsv, global_node.tsv, blocks_networkhemi.tsv, edges.tsv, ..., compare_report.html
-        nbs/                          nbs_components.tsv, nbs_edges.tsv, nbs_null.tsv, nbs_report.html, figures/
+        nbs/                          nbs_components.tsv, nbs_edges.tsv, nbs_null.tsv, nbs_mean_group1.tsv, nbs_mean_group2.tsv, nbs_report.html, figures/
 ```
 
 Without sessions the `ses-` folders are left out; matrix and time series input has no atlas folder. fNIRS channels have no networks, so only the node level is computed.

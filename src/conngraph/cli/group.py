@@ -18,6 +18,7 @@ from conngraph.cli.participant import CONNECTIVITY_FILES, GLOBAL_FILES, LEVEL_FI
 from conngraph.loaders import INPUT_ATTR
 
 SIDECAR = "_metrics.json"
+NODES_FILE = "nodes.tsv"
 
 
 def run(args: argparse.Namespace, parser: argparse.ArgumentParser, session: str | None, variant: str | None,
@@ -35,7 +36,11 @@ def run(args: argparse.Namespace, parser: argparse.ArgumentParser, session: str 
     if args.covariates and args.nbs_thresh is not None:
         warnings.warn("NBS does not adjust for --covariates; only the other comparisons do", stacklevel=2)
     matrices, atlas = _shared.load_input(args, parser, variant, session)
-    result = _graph_metrics(args, parser, sidecars, matrices, atlas, variant, out, command) if sidecars else None
+    report_nodes = _shared.report_nodes(args, atlas, variant)
+    nodes = atlas if report_nodes is None else report_nodes
+    out.mkdir(parents=True, exist_ok=True)
+    nodes.to_csv(out / NODES_FILE, sep="\t", index=False)
+    result = _graph_metrics(args, parser, sidecars, matrices, atlas, nodes, out, command) if sidecars else None
     if not args.groups:
         return
     matrices = {sid: matrices[sid] for sid in _shared.chosen(matrices, args)}
@@ -43,7 +48,7 @@ def run(args: argparse.Namespace, parser: argparse.ArgumentParser, session: str 
     if compare:
         _compare(args, parser, compare, result, matrices, groups, rows, missing, atlas, out / "compare", command)
     if args.nbs_thresh is not None:
-        _nbs(args, parser, matrices, groups, missing, atlas, variant, out / "nbs", command)
+        _nbs(args, parser, matrices, groups, missing, atlas, out / "nbs", command)
 
 
 def _comparisons(args: argparse.Namespace, parser: argparse.ArgumentParser, sidecars: list) -> list[str]:
@@ -67,8 +72,8 @@ def _participant_results(args: argparse.Namespace, session: str | None, variant:
     return [p for p in paths if p.name.split("_")[0].removeprefix("sub-") in labels]
 
 
-def _graph_metrics(args, parser, sidecars, matrices, atlas, variant, out, command) -> None:
-    from conngraph.graph_theory.runner import GraphMetricsResult, _load, _mean_matrix, _net_corr_to_wide, _save
+def _graph_metrics(args, parser, sidecars, matrices, atlas, nodes, out, command) -> None:
+    from conngraph.graph_theory.runner import _mean_matrix, _save
 
     records = [(path, json.loads(path.read_text(encoding="utf-8"))) for path in sidecars]
     first_path, first = records[0]
@@ -81,19 +86,40 @@ def _graph_metrics(args, parser, sidecars, matrices, atlas, variant, out, comman
     if absent:
         raise SystemExit(f"{parser.prog}: the input no longer has a matrix for {', '.join(absent)}; rerun the "
                          "participant level")
-    labels = {str(c): c for c in matrices[ids[0]].columns}
+    result = _read_participants(records, {str(c): c for c in matrices[ids[0]].columns}, parser.prog)
+    seeds = {params["options"]["random_seed"] for _, params in records}
+    options = dict(first["options"], random_seed=seeds.pop() if len(seeds) == 1 else "per participant")
+    result.params = dict(first, options=options, subjects=ids, failed=result.failed,
+                         warnings=[w for _, params in records for w in params["warnings"]],
+                         input=atlas.attrs.get(INPUT_ATTR, {}), command=f"{first['command']}\n{command}")
+    if "node" in first["levels"]:
+        result.mean_matrix = _mean_matrix({sid: matrices[sid] for sid in ids}, first["options"]["apply_fisher_z"])
 
-    result = GraphMetricsResult(nodes=atlas)
+    result.nodes = nodes
+    _save(result, str(out), verbose=False)
+    if not args.no_report:
+        _graph_report(args, out)
+    if not args.quiet:
+        print(f"[{parser.prog}] Collected {len(ids)} participant(s) in {out}")
+    return result
+
+
+def _read_participants(records: list[tuple[pathlib.Path, dict]], labels: dict, prog: str):
+    """Participants' results stacked from their files, a row each; labels maps the files' node names to the input's."""
+    from conngraph.graph_theory.runner import GraphMetricsResult, _net_corr_to_wide
+
+    ids = [params["subjects"][0] for _, params in records]
+    result = GraphMetricsResult()
     for attr, name, row in LEVEL_FILES:
         frames = [_read(path, f"_level-{name}_metrics.tsv", row) for path, _ in records]
         if frames[0] is None:
             continue
         if name == "node" and set(frames[0].index) != set(labels):
-            raise SystemExit(f"{parser.prog}: the input's nodes differ from those of the participant results; "
+            raise SystemExit(f"{prog}: the input's nodes differ from those of the participant results; "
                              "rerun the participant level")
         if any(f is None or not f.index.equals(frames[0].index) or not f.columns.equals(frames[0].columns)
                for f in frames):
-            raise SystemExit(f"{parser.prog}: participants differ in their {name} rows or metrics; rerun the "
+            raise SystemExit(f"{prog}: participants differ in their {name} rows or metrics; rerun the "
                              "participant level")
         rows = [labels[r] for r in frames[0].index] if name == "node" else list(frames[0].index)
         columns = pd.MultiIndex.from_product([frames[0].columns, rows], names=["metric", "roi" if row == "node" else row])
@@ -117,23 +143,6 @@ def _graph_metrics(args, parser, sidecars, matrices, atlas, variant, out, comman
     for _, params in records:
         for lvl, subs in params["failed"].items():
             result.failed.setdefault(lvl, {}).update(subs)
-    seeds = {params["options"]["random_seed"] for _, params in records}
-    options = dict(first["options"], random_seed=seeds.pop() if len(seeds) == 1 else "per participant")
-    result.params = dict(first, options=options, subjects=ids, failed=result.failed,
-                         warnings=[w for _, params in records for w in params["warnings"]],
-                         input=atlas.attrs.get(INPUT_ATTR, {}), command=f"{first['command']}\n{command}")
-    if "node" in first["levels"]:
-        result.mean_matrix = _mean_matrix({sid: matrices[sid] for sid in ids}, first["options"]["apply_fisher_z"])
-
-    report_nodes = _shared.report_nodes(args, atlas, variant)
-    result.nodes = atlas if report_nodes is None else report_nodes
-    _save(result, str(out), verbose=False)
-    if not args.no_report:
-        # the report shows what was written, read back from the files
-        _load(str(out)).save_report(out / "graph_report.html", surfaces=_shared.surfaces(args),
-                                    interactive_brain=args.interactive_brain)
-    if not args.quiet:
-        print(f"[{parser.prog}] Collected {len(ids)} participant(s) in {out}")
     return result
 
 
@@ -211,21 +220,16 @@ def _compare(args, parser, compare, result, matrices, groups, rows, missing, atl
     if result is not None:
         params["graph"] = {"options": result.params["options"], "levels": result.params["levels"]}
     params["command"] = command
-    out.mkdir(parents=True, exist_ok=True)
-    for name, table in comparison.tables.items():
-        table.to_csv(out / f"{name}.tsv", sep="\t", index=False)
-    _shared.write_json(out / "parameters.json", params)
+    _write_comparison(comparison, out)
     if not args.no_report:
-        label_col, network_col = _shared.node_columns(args)
-        comparison.save_report(out / "compare_report.html", nodes=atlas, label_col=label_col, network_col=network_col)
+        _compare_report(args, out)
     if not args.quiet:
         print(f"[{parser.prog}] Group comparison: {out}")
 
 
-def _nbs(args, parser, matrices, groups, missing, atlas, variant, out, command) -> None:
+def _nbs(args, parser, matrices, groups, missing, atlas, out, command) -> None:
     from conngraph.graph_theory.nbs import run_nbs
 
-    label_col, network_col = _shared.node_columns(args)
     if not args.no_fisher_z:
         matrices = _shared.fisher_z(matrices)
     g1, g2 = ({str(k).removeprefix("sub-"): matrices[k] for k, g in groups.items() if g == name}
@@ -241,10 +245,7 @@ def _nbs(args, parser, matrices, groups, missing, atlas, variant, out, command) 
     _write_nbs_tables(result, out)
     _shared.write_json(out / "parameters.json", result.params)
     if not args.no_report:
-        nodes = _shared.report_nodes(args, atlas, variant)
-        result.save_report(out / "nbs_report.html", nodes=atlas if nodes is None else nodes,
-                           surfaces=_shared.surfaces(args),
-                           label_col=label_col, network_col=network_col, interactive_brain=args.interactive_brain)
+        _nbs_report(args, out)
         if not args.quiet:
             print(f"[{parser.prog}] Report: {out / 'nbs_report.html'}")
 
@@ -267,3 +268,91 @@ def _write_nbs_tables(result, out: pathlib.Path) -> None:
         out / "nbs_edges.tsv", sep="\t", index=False)
     pd.DataFrame({"permutation": np.arange(1, len(result.null) + 1), "largest_component": result.null}).to_csv(
         out / "nbs_null.tsv", sep="\t", index=False)
+    for k, mean in ((1, result.mean_g1), (2, result.mean_g2)):
+        pd.DataFrame(mean, index=pd.Index(labels, name="label"), columns=labels).to_csv(
+            out / f"nbs_mean_group{k}.tsv", sep="\t")
+
+
+def _read_nbs(out: pathlib.Path):
+    """The NBS result _write_nbs_tables and parameters.json hold, read back from the files."""
+    from conngraph.graph_theory.nbs import NBSResult
+    from conngraph.graph_theory.runner import _read_table
+
+    means = [_read_table(out / f"nbs_mean_group{k}.tsv", "label") for k in (1, 2)]
+    labels = list(means[0].index)
+    components = _read_table(out / "nbs_components.tsv")
+    edges = _read_table(out / "nbs_edges.tsv", text=("roi_a", "roi_b"))
+    pos = {lab: k for k, lab in enumerate(labels)}
+    adj = np.zeros((len(labels), len(labels)), dtype=int)
+    for a, b, c in zip(edges["roi_a"], edges["roi_b"], edges["component"]):
+        adj[pos[a], pos[b]] = adj[pos[b], pos[a]] = c
+    return NBSResult(pval=components["p"].to_numpy(float), adj=adj,
+                     null=_read_table(out / "nbs_null.tsv")["largest_component"].to_numpy(),
+                     labels=labels, params=json.loads((out / "parameters.json").read_text(encoding="utf-8")),
+                     mean_g1=means[0].to_numpy(float), mean_g2=means[1].to_numpy(float))
+
+
+def _write_comparison(comparison, out: pathlib.Path) -> None:
+    out.mkdir(parents=True, exist_ok=True)
+    for name, table in comparison.tables.items():
+        table.to_csv(out / f"{name}.tsv", sep="\t", index=False)
+    _shared.write_json(out / "parameters.json", dict(comparison.params, tables=list(comparison.tables)))
+
+
+def _read_comparison(out: pathlib.Path):
+    """The comparison _write_comparison wrote, read back from the files."""
+    from conngraph.graph_theory.compare import GroupComparisonResult
+    from conngraph.graph_theory.runner import _read_table
+
+    params = json.loads((out / "parameters.json").read_text(encoding="utf-8"))
+    text = ("metric", "node", "roi_a", "roi_b", "network_a", "network_b")
+    tables = {name: _read_table(out / f"{name}.tsv", text=text) for name in params.pop("tables")}
+    return GroupComparisonResult(tables=tables, params=params)
+
+
+def rebuild(args: argparse.Namespace, parser: argparse.ArgumentParser, session: str | None, variant: str | None,
+            command: str) -> None:
+    """The reports of the group results already written, without recomputing them."""
+    out = _shared.run_folder(args.output_dir, "group", session, variant)
+    built = []
+    for folder, report, build in ((out, "graph_report.html", _graph_report),
+                                  (out / "compare", "compare_report.html", _compare_report),
+                                  (out / "nbs", "nbs_report.html", _nbs_report)):
+        if (folder / "parameters.json").exists():
+            build(args, folder)
+            built.append(report)
+    if not built:
+        raise SystemExit(f"{parser.prog}: no group results in {out}; run the group level first")
+    if not args.quiet:
+        print(f"[{parser.prog}] Rebuilt {', '.join(built)} in {out}")
+
+
+# Each report shows what was written, read back from the files
+
+def _graph_report(args: argparse.Namespace, out: pathlib.Path) -> None:
+    from conngraph.graph_theory.runner import _load
+
+    _load(str(out)).save_report(out / "graph_report.html", nodes=_saved_nodes(args, out),
+                                surfaces=_shared.surfaces(args), interactive_brain=args.interactive_brain)
+
+
+def _compare_report(args: argparse.Namespace, out: pathlib.Path) -> None:
+    label_col, network_col = _shared.node_columns(args)
+    _read_comparison(out).save_report(out / "compare_report.html", nodes=_saved_nodes(args, out.parent),
+                                      label_col=label_col, network_col=network_col)
+
+
+def _nbs_report(args: argparse.Namespace, out: pathlib.Path) -> None:
+    label_col, network_col = _shared.node_columns(args)
+    _read_nbs(out).save_report(out / "nbs_report.html", nodes=_saved_nodes(args, out.parent),
+                               surfaces=_shared.surfaces(args), label_col=label_col, network_col=network_col,
+                               interactive_brain=args.interactive_brain)
+
+
+def _saved_nodes(args: argparse.Namespace, folder: pathlib.Path) -> pd.DataFrame:
+    """The node table saved with the run, with --coords added when it has no coordinates."""
+    from conngraph.graph_theory.runner import _read_table
+
+    saved = _read_table(folder / NODES_FILE, text=(_shared.node_columns(args)[0],))
+    merged = _shared.report_nodes(args, saved)
+    return saved if merged is None else merged

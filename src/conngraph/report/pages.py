@@ -534,13 +534,13 @@ def _static_nbs_brain(nodes, label_col, network_col, labels, drawn, diff, degree
     return figs.save(fig, "brain_edges", dpi="figure")
 
 
-def _write(path, title, params, sections, summary, call, body, errors, notes, methods, chip) -> None:
+def _write(path, title, params, sections, summary, call, body, errors, notes, methods, chip, overview: str = "") -> None:
     command = params.get("command")
     fn, args, opts = call
     call_text = command or f"{fn}(\n    " + ",\n    ".join(args + [f"{k}={json.dumps(v)}" for k, v in opts.items()]) + ",\n)"
     page = _environment().get_template("report.html.j2").render(
         page_title=title, heading=title, version=params["packages"]["conngraph"],
-        created=params["created"].replace("T", " "), chip=chip, sections=sections, summary=summary,
+        created=params["created"].replace("T", " "), chip=chip, sections=sections, summary=summary, overview=overview,
         call_title="Run command" if command else "Call", call=html.escape(call_text), body=body,
         errors=[html.escape(e) for e in errors], notes=notes, methods=methods,
         versions={"python": params["python"], **{k: v for k, v in params["packages"].items() if v}},

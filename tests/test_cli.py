@@ -67,6 +67,48 @@ def test_participant_level_writes_one_set_of_files_per_participant(dataset, xcpd
     assert not (out / "group").exists() and not list(out.rglob("*.html"))
 
 
+def test_reports_only_rebuilds_the_reports_from_the_written_files(xcpd, tmp_path):
+    root, _, groups = xcpd
+    out = tmp_path / "out"
+    assert cli.main([str(root), str(out), "participant", *XCPD, "--graph-method", "density", "--graph-param",
+                     "density=0.2", "--network-graph-method", "full", "--metrics", "strength", "--n-jobs", "1",
+                     "--no-report", "--quiet"]) == 0
+    # plots carry their numbers encoded, so the change is looked for in a table of the report
+    first = out / "sub-01" / "ses-01" / "sub-01_ses-01_atlas-Toy_level-networkhemi_metrics.tsv"
+    table = pd.read_csv(first, sep="\t", index_col=0)
+    table.iloc[0, 0] = 123.456
+    table.to_csv(first, sep="\t")
+    assert cli.main([str(root), str(out), "participant", *XCPD, "--reports-only", "--participant-label", "01",
+                     "--quiet"]) == 0
+    assert [p.name for p in out.glob("*.html")] == ["sub-01.html"]
+    assert 'data-v="123.456"' in (out / "sub-01.html").read_text(encoding="utf-8")
+
+    assert cli.main([str(root), str(out), "group", *XCPD, "--groups", str(groups), "--group-column", "dx",
+                     "--contrast", "A", "B", "--correction", "fdr", "--n-perms", "10", "--nbs-thresh", "1.0",
+                     "--n-jobs", "1", "--no-report", "--quiet"]) == 0
+    group = out / "group" / "ses-01" / "atlas-Toy"
+    saved = group / "node" / "strength.abs.tsv"
+    table = pd.read_csv(saved, sep="\t", index_col=0)
+    table.iloc[0, 0] = 654.321
+    table.to_csv(saved, sep="\t")
+    assert cli.main([str(root), str(out), "group", *XCPD, "--reports-only", "--quiet"]) == 0
+    reports = [group / "graph_report.html", group / "compare" / "compare_report.html", group / "nbs" / "nbs_report.html"]
+    assert all(p.exists() for p in reports)
+    mean = table.iloc[:, 0].mean()
+    assert f'data-v="{mean:.10g}"' in reports[0].read_text(encoding="utf-8")
+    description = json.loads((out / "dataset_description.json").read_text(encoding="utf-8"))
+    assert "--reports-only" not in description["GeneratedBy"][0]["Description"]
+
+
+def test_reports_only_refuses_analysis_options_and_missing_results(xcpd, tmp_path, capsys):
+    root, _, _ = xcpd
+    with pytest.raises(SystemExit):
+        cli.main([str(root), str(tmp_path / "out"), "participant", *XCPD, "--reports-only", "--metrics", "strength"])
+    assert "--metrics has no effect with --reports-only" in capsys.readouterr().err
+    with pytest.raises(SystemExit, match="no group results"):
+        cli.main([str(root), str(tmp_path / "out"), "group", *XCPD, "--reports-only", "--quiet"])
+
+
 def test_group_level_collects_the_participants_into_tables_and_a_report(xcpd, surfaces, tmp_path):
     root, coords, _ = xcpd
     out = tmp_path / "out"
@@ -702,7 +744,8 @@ def test_participant_level_writes_one_report_per_participant(dataset, xcpd, surf
     assert sorted(p.name for p in out.glob("sub-*.html")) == [f"sub-{i:02d}.html" for i in range(1, 7)]
     text = (out / "sub-01.html").read_text(encoding="utf-8")
     assert re.findall(r'<h2 id="([^"]+)"', text)[:3] == ["Summary", "ses-01_atlas-Toy", "ses-02_atlas-Toy"]
-    for words in ("Overview", "Connectivity matrix", "Node metrics", "Network metrics", "Whole graph", "Graph",
+    assert '<div class="overview">' in text and "Edges kept" in text and ">ses-02 atlas-Toy</th>" in text
+    for words in ("Connectivity matrix", "Node metrics", "Network metrics", "Whole graph", "Graph",
                   "Open the rotatable 3-D view", "Methods"):
         assert words in text, words
     leftovers = [p.name for p in out.rglob("*.json") if not p.name.endswith(("_metrics.json", "description.json"))]
