@@ -50,35 +50,55 @@ def level_boxplot(df: pd.DataFrame, palette: dict, title: str, hemi_split: bool)
         split = {c: c.partition("_")[::2] for c in df.columns}
         nets = sorted({net for _, net in split.values()}, key=natural_key)
         hemis = sorted({hemi for hemi, _ in split.values()})
-        for hemi in hemis:
-            for net in nets:
+        slot = 0.8 / len(hemis)
+        for j, hemi in enumerate(hemis):
+            offset = (j - (len(hemis) - 1) / 2) * slot
+            opacity = 0.85 if hemi == "L" else 0.4
+            for i, net in enumerate(nets):
                 col = f"{hemi}_{net}"
                 if col in df:
-                    fig.add_trace(_box(df[col], net, palette.get(net), name=f"{hemi} hemisphere", legendgroup=hemi,
-                                       showlegend=net == nets[0], offsetgroup=hemi, opacity=0.9 if hemi == "L" else 0.45,
-                                       hover=f"{hemi} "))
-        style(fig, 380, boxmode="group", yaxis_title=title, legend=dict(orientation="h", x=1, xanchor="right", y=1.12))
+                    fig.add_traces(_box(df[col], i + offset, palette.get(net), slot * 0.68, f"{hemi} {net}",
+                                        seed=j * len(nets) + i, opacity=opacity))
+            fig.add_trace(go.Scatter(x=[None], y=[None], mode="markers", name=f"{hemi} hemisphere",
+                                     marker=dict(color="#9aa5b1", size=7, opacity=opacity, line=dict(width=0.5, color=INK))))
+        _category_axis(fig, nets)
+        style(fig, 380, yaxis_title=title, legend=dict(orientation="h", x=1, xanchor="right", y=1.12))
     else:
-        for col in sorted(df.columns, key=natural_key):
-            fig.add_trace(_box(df[col], col, palette.get(col), name=col, showlegend=False))
-        style(fig, 360, yaxis_title=title)
+        cols = sorted(df.columns, key=natural_key)
+        for i, col in enumerate(cols):
+            fig.add_traces(_box(df[col], i, palette.get(col), 0.55, col, seed=i))
+        _category_axis(fig, cols)
+        style(fig, 360, yaxis_title=title, showlegend=False)
     return fig
 
 
-def _box(values: pd.Series, x: str, color: str | None, hover: str = "", **kw) -> go.Box:
+def _box(values: pd.Series, x: float, color: str | None, width: float, hover: str, seed: int, opacity: float = 0.85,
+         size: int = 7) -> list:
+    """A hollow box with a dashed mean line, and the values as jittered points (hover for the ID)."""
     color = color or "#9aa5b1"
-    return go.Box(y=values, x=[x] * len(values), boxpoints="all", jitter=0.35, pointpos=0,
-                  marker=dict(color=color, size=4, opacity=0.8), line=dict(color=INK, width=1), fillcolor=color,
-                  text=[str(i) for i in values.index], hovertemplate="%{text}<br>" + hover + "%{x}: %{y:.4g}<extra></extra>", **kw)
+    v = values.to_numpy(float)
+    jitter = np.random.default_rng(seed).uniform(-width * 0.32, width * 0.32, len(v))
+    return [
+        go.Box(x=[x] * len(v), y=v, width=width, boxpoints=False, boxmean=True, line=dict(color=color, width=1.2),
+               fillcolor="rgba(0,0,0,0)", hoverinfo="skip", showlegend=False),
+        go.Scatter(x=x + jitter, y=v, mode="markers", showlegend=False, text=[str(i) for i in values.index],
+                   marker=dict(color=color, size=size, opacity=opacity, line=dict(width=0.5, color=INK)),
+                   hovertemplate="<b>%{text}</b><br>" + hover + ": %{y:.4g}<extra></extra>"),
+    ]
+
+
+def _category_axis(fig: go.Figure, names: list[str]) -> None:
+    fig.update_xaxes(tickvals=list(range(len(names))), ticktext=names, range=[-0.6, len(names) - 0.4])
 
 
 def node_boxplot(values: pd.Series, networks: pd.Series, palette: dict, title: str) -> go.Figure:
     """One box per network over its regions' values."""
     fig = go.Figure()
-    for net in sorted(networks.unique(), key=lambda s: (s == "None", natural_key(s))):
-        sel = networks == net
-        fig.add_trace(_box(values[sel], net, palette.get(net), name=net, showlegend=False))
-    return style(fig, 340, yaxis_title=title)
+    nets = sorted(networks.unique(), key=lambda s: (s == "None", natural_key(s)))
+    for i, net in enumerate(nets):
+        fig.add_traces(_box(values[networks == net], i, palette.get(net), 0.55, net, seed=i, size=5))
+    _category_axis(fig, nets)
+    return style(fig, 340, yaxis_title=title, showlegend=False)
 
 
 def ordered_heatmap(M: np.ndarray, names: list[str], groups: list[str] | None, zmax: float, value: str,
