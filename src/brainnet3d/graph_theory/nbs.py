@@ -16,6 +16,15 @@ class NBSResult:
     null: np.ndarray
     labels: list[str] | None = None
     params: dict = field(default_factory=dict)
+    mean_g1: np.ndarray | None = None
+    mean_g2: np.ndarray | None = None
+
+    def save_report(self, path, nodes: pd.DataFrame | None = None, surfaces: tuple[str, str] | None = None,
+                    static_brain: bool = True, label_col: str = "label", network_col: str = "network") -> None:
+        """Write an HTML report (plotly loads from its CDN); nodes adds networks and, with x, y, z, brain figures."""
+        from brainnet3d.report.pages import save_nbs_report
+
+        save_nbs_report(self, path, nodes, surfaces, static_brain, label_col, network_col)
 
 
 def run_nbs(
@@ -44,7 +53,8 @@ def run_nbs(
 
     Returns
     -------
-    NBSResult with pval, adj, null arrays, the ROI label list, and params (options, groups, package versions).
+    NBSResult with pval, adj, null arrays, the ROI label list, params (options, groups, package versions) and the
+    two group mean matrices; .save_report(path) writes an HTML report.
     """
     try:
         from bct import BCTParamError, get_components
@@ -114,7 +124,8 @@ def run_nbs(
         "groups": {"g1": ids1, "g2": ids2},
         "n_nodes": n,
     })
-    return NBSResult(pval=pval, adj=adj, null=null, labels=labels, params=params)
+    return NBSResult(pval=pval, adj=adj, null=null, labels=labels, params=params,
+                     mean_g1=X.mean(axis=2), mean_g2=Y.mean(axis=2))
 
 
 def _two_sample_t(a: np.ndarray, b: np.ndarray, tail: str) -> np.ndarray:

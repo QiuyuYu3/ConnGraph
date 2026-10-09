@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>{{ page_title }}</title>
+<script src="{{ plotly_src }}"></script>
+<style>
+{{ css }}
+</style>
+</head>
+<body>
+<nav id="topbar">
+  <a href="#Summary">Summary</a><span class="sep"></span>
+  {%- for id, name in sections %}
+  <a href="#{{ id }}">{{ name }}</a>
+  {%- endfor %}
+  <span class="sep"></span>
+  <a href="#Errors">Errors</a><a href="#Methods">Methods</a><a href="#Versions">Versions</a>
+  <span class="chip">{{ chip }}</span>
+</nav>
+<main>
+<div class="page-header">
+  <h1>{{ heading }}</h1>
+  <span class="subtitle">brainnet3d v{{ version }} &bull; {{ created }}</span>
+</div>
+
+{% block content %}{% endblock %}
+
+<h2 id="Errors">Errors &amp; Warnings</h2>
+{% if notes %}<h3>Notes</h3><ul class="note-list">{% for n in notes %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
+{% if errors %}<ul class="error-list">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+{% else %}<p class="no-errors">No errors or warnings.</p>{% endif %}
+
+<h2 id="Methods">Methods</h2>
+<p class="section-hint">Generated from the options this run recorded. Citations follow APA 7; switch tabs to copy as plain text, Markdown or LaTeX.</p>
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="showTab(event,'tab-rendered')">Rendered</button>
+  <button class="tab-btn" onclick="showTab(event,'tab-plain')">Plain text</button>
+  <button class="tab-btn" onclick="showTab(event,'tab-md')">Markdown</button>
+  <button class="tab-btn" onclick="showTab(event,'tab-latex')">LaTeX</button>
+</div>
+<div id="tab-rendered" class="tab-content active"><div class="boilerplate-html">{{ methods.html }}</div></div>
+<div id="tab-plain" class="tab-content"><pre>{{ methods.plain }}</pre></div>
+<div id="tab-md" class="tab-content"><pre>{{ methods.markdown }}</pre></div>
+<div id="tab-latex" class="tab-content"><pre>{{ methods.latex }}</pre></div>
+
+<h2 id="Versions">Software Versions</h2>
+<table class="flat versions">
+  <tr><th>Package</th><th>Version</th></tr>
+  {% for pkg, ver in versions.items() %}<tr><td>{{ pkg }}</td><td>{{ ver }}</td></tr>{% endfor %}
+</table>
+</main>
+<script>
+function showTab(event, id) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+}
+// a picker shows one pane of its group; Plotly sizes a hidden plot wrongly, so resize on show
+document.querySelectorAll('select.picker').forEach(sel => sel.addEventListener('change', () => {
+  document.querySelectorAll(`.pane[data-group="${sel.dataset.group}"]`).forEach(p => {
+    const on = p.dataset.key === sel.value;
+    p.classList.toggle('on', on);
+    if (on) p.querySelectorAll('.js-plotly-plot').forEach(g => Plotly.Plots.resize(g));
+  });
+}));
+document.querySelectorAll('details').forEach(d => d.addEventListener('toggle', () => {
+  if (d.open) d.querySelectorAll('.pane.on .js-plotly-plot, .always .js-plotly-plot').forEach(g => Plotly.Plots.resize(g));
+}));
+document.querySelectorAll('table.flat.sortable th').forEach(th => th.addEventListener('click', () => {
+  const tb = th.closest('table').tBodies[0], rows = [...tb.rows], asc = th.dataset.asc !== '1';
+  th.closest('tr').querySelectorAll('th').forEach(h => delete h.dataset.asc); th.dataset.asc = asc ? '1' : '0';
+  const key = r => { const c = r.cells[th.cellIndex]; return c.dataset.v !== undefined ? parseFloat(c.dataset.v) : c.textContent; };
+  rows.sort((a, b) => { const x = key(a), y = key(b); return (x > y ? 1 : x < y ? -1 : 0) * (asc ? 1 : -1); });
+  rows.forEach(r => tb.appendChild(r));
+}));
+</script>
+</body>
+</html>

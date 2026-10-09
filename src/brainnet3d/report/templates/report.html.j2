@@ -1,0 +1,25 @@
+{% extends "base.html.j2" %}
+{% block content %}
+<h2 id="Summary">Summary</h2>
+<div class="summary-grid">
+  {%- for column in summary %}
+  <table>{% for key, value in column %}<tr><th>{{ key }}</th><td>{{ value }}</td></tr>{% endfor %}</table>
+  {%- endfor %}
+</div>
+<h3>{{ call_title }}</h3>
+<pre>{{ call }}</pre>
+
+{% for section in body %}
+<h2 id="{{ section.id }}">{{ section.title }}</h2>
+{% if section.desc %}<p class="desc">{{ section.desc }}</p>{% endif %}
+{% for step in section.steps %}
+<details{% if step.open %} open{% endif %}>
+  <summary>{{ step.title }}{% if step.hint %} <span class="hint">{{ step.hint }}</span>{% endif %}</summary>
+  <div class="details-body{% if not step.picker %} always{% endif %}">
+    {% if step.desc %}<p class="desc">{{ step.desc }}</p>{% endif %}
+    {{ step.html }}
+  </div>
+</details>
+{% endfor %}
+{% endfor %}
+{% endblock %}

@@ -6,6 +6,7 @@
 
 - Two more ways to build the graph for graph metrics: the disparity filter, also over a range of significance levels, and the planar maximally filtered graph (PMFG).
 - NBS results record their options, groups, package versions and random seed; a run without a seed can be repeated with the recorded one.
+- HTML reports for graph metrics and NBS results, with interactive figures, static and rotatable group-mean brain views, and a Methods section written from the run's settings. plotly, jinja2 and bibtexparser are now required.
 - Hovering over a node in the interactive window shows a card with its label, network, hemisphere and the values used for node size or colour.
 - The interactive window has an edge threshold slider and a network list that hides or shows each network.
 - Legend titles of multi-view figures can be changed.

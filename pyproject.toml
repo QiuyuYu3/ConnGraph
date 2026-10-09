@@ -27,6 +27,10 @@ dependencies = [
     "scipy>=1.10",
     "Pillow>=9.0",
     "imageio>=2.20",
+    "plotly>=5.18",
+    "jinja2>=3.1",
+    "bibtexparser>=2.0",
+    "tomli>=2.0; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
@@ -51,6 +55,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "brainnet3d" = ["config/*.json"]
+"brainnet3d.report" = ["data/*", "templates/*"]
 
 [tool.ruff]
 target-version = "py310"

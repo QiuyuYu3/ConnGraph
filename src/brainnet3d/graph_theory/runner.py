@@ -38,6 +38,15 @@ class GraphMetricsResult:
     curves:           pd.DataFrame | None = None
     failed:           dict[str, dict[str, str]] = field(default_factory=dict)
     params:           dict = field(default_factory=dict)
+    nodes:            pd.DataFrame | None = None
+    mean_matrix:      pd.DataFrame | None = None
+
+    def save_report(self, path, nodes: pd.DataFrame | None = None, surfaces: tuple[str, str] | None = None,
+                    static_brain: bool = True) -> None:
+        """Write an HTML report (plotly loads from its CDN); nodes overrides the atlas, e.g. to add x, y, z."""
+        from brainnet3d.report.pages import save_graph_report
+
+        save_graph_report(self, path, nodes, surfaces, static_brain)
 
 
 def compute_graph_metrics(
@@ -141,6 +150,9 @@ def compute_graph_metrics(
         .curves           — long table (level, ID, metric, node, threshold, value) when return_curves is set
         .failed           — {level: {subject_id: error}} for subjects left as NaN rows
         .params           — options, graph method and sign of each level, package versions and data summary
+        .nodes            — the atlas table as passed
+        .mean_matrix      — group mean node-level connectivity (Fisher z averaged when apply_fisher_z)
+        Call .save_report(path) to write an HTML report.
     """
     if not (isinstance(hemi_split, bool) or hemi_split == "both"):
         raise ValueError(f"hemi_split={hemi_split!r} is not recognised. Choose True, False or \"both\".")
@@ -183,7 +195,9 @@ def compute_graph_metrics(
     _check_knn_fits(sizes, node_opts, net_opts)
 
     subject_ids = list(matrices.keys())
-    result = GraphMetricsResult()
+    result = GraphMetricsResult(nodes=atlas)
+    if want_node:
+        result.mean_matrix = _mean_matrix(matrices, apply_fisher_z)
     curves: list[pd.DataFrame] = []
     shortfalls: list[str] = []
     # One seed per level and subject, so results do not depend on worker scheduling
@@ -346,6 +360,23 @@ def _network_level(
         _collect_curves(curves, level, sub_id, res)
         _collect_shortfall(shortfalls, level, sub_id, res)
     return net_df.astype(float), _net_corr_to_wide(all_net_corr)
+
+
+def _mean_matrix(matrices: dict[str, pd.DataFrame], fisher: bool) -> pd.DataFrame:
+    # A running sum, so a large cohort is never stacked in memory
+    labels = next(iter(matrices.values())).index
+    total = np.zeros((len(labels), len(labels)))
+    count = np.zeros_like(total)
+    for mat in matrices.values():
+        a = mat.reindex(index=labels, columns=labels).to_numpy(dtype=float)
+        if fisher:
+            a = np.arctanh(np.clip(a, -1 + 1e-7, 1 - 1e-7))
+        present = ~np.isnan(a)
+        total += np.where(present, a, 0.0)
+        count += present
+    mean = np.divide(total, count, out=np.full_like(total, np.nan), where=count > 0)
+    np.fill_diagonal(mean, 0)
+    return pd.DataFrame(np.tanh(mean) if fisher else mean, index=labels, columns=labels)
 
 
 def _drop_networks(atlas: pd.DataFrame, network_col: str, exclude, verbose: bool) -> tuple[pd.DataFrame, dict]:
