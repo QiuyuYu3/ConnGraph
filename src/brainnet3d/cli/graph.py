@@ -5,7 +5,6 @@ brainnet3d-graph: graph-theory metrics of connectivity matrices, written as tabl
 from __future__ import annotations
 
 import argparse
-import pathlib
 import sys
 
 from brainnet3d.cli import _shared
@@ -67,14 +66,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     command = _shared.command_line(parser.prog, argv)
-    for variant in _shared.input_variants(args, parser):
-        out = pathlib.Path(args.output_dir) / (variant or "")
-        _run(args, parser, variant, out, command, compute_graph_metrics)
-    return 0
+    return _shared.run_all(args, parser, lambda session, variant, out: _run(
+        args, parser, variant, out, command, compute_graph_metrics, session))
 
 
-def _run(args, parser, variant, out, command, compute_graph_metrics) -> None:
-    matrices, atlas = _shared.load_input(args, parser, variant)
+def _run(args, parser, variant, out, command, compute_graph_metrics, session=None) -> None:
+    matrices, atlas = _shared.load_input(args, parser, variant, session)
     label_col, network_col = _shared.node_columns(args)
     level = args.level or ("node" if args.input_type == "fnirs-pipe" else "both")
 

@@ -38,7 +38,7 @@ def test_graph_command_writes_tables_parameters_description_and_report(xcpd, tmp
     out = tmp_path / "graph"
     graph_cli.main([str(root), str(out), "--input-type", "xcpd", "--atlases", "Toy", "--coords", str(coords), "--network-graph-method", "full",
                     "--metrics", "strength", "clust_coeff", "--n-jobs", "1", "--no-static-brain", "--quiet"])
-    out = out / "atlas-Toy"
+    out = out / "ses-01" / "atlas-Toy"
     assert (out / "node" / "strength.abs.csv").exists()
     assert (out / "network_hemi" / "clust_coeff.costantini.csv").exists()
     params = json.loads((out / "parameters.json").read_text(encoding="utf-8"))
@@ -78,7 +78,7 @@ def test_nbs_command_compares_two_groups_from_a_table(xcpd, tmp_path):
     nbs_cli.main([str(root), str(out), "--input-type", "xcpd", "--atlases", "Toy", "--groups", str(groups), "--group-column", "dx",
                   "--contrast", "A", "B", "--thresh", "1.0", "--perms", "20", "--seed", "0", "--coords", str(coords),
                   "--no-static-brain", "--quiet"])
-    out = out / "atlas-Toy"
+    out = out / "ses-01" / "atlas-Toy"
     params = json.loads((out / "parameters.json").read_text(encoding="utf-8"))
     assert params["groups"] == {"g1": ["01", "02", "03"], "g2": ["04", "05", "06"]}
     assert params["input"]["fisher_z"] is True and params["input"]["contrast"] == ["A", "B"]
@@ -234,7 +234,7 @@ def test_graph_command_computes_xcpd_connectivity_from_time_series(dataset, tmp_
     out = tmp_path / "graph"
     graph_cli.main([str(tmp_path / "xcpd"), str(out), "--input-type", "xcpd", "--atlases", "Toy", "--connectivity",
                     "correlation"] + FAST)
-    params = json.loads((out / "atlas-Toy" / "parameters.json").read_text(encoding="utf-8"))
+    params = json.loads((out / "ses-01" / "atlas-Toy" / "parameters.json").read_text(encoding="utf-8"))
     assert (params["input"]["source"], params["input"]["connectivity"]) == ("XCP-D", "correlation")
 
 
@@ -276,13 +276,13 @@ def test_fnirs_pipe_input_writes_each_chromophore_on_its_own(dataset, tmp_path):
     graph_cli.main([str(root), str(out), "--input-type", "fnirs-pipe", "--graph-method", "full",
                     "--metrics", "strength", "--n-jobs", "1", "--no-report", "--quiet"])
     for chromo in ("hbo", "hbr"):
-        params = json.loads((out / f"chromo-{chromo}" / "parameters.json").read_text(encoding="utf-8"))
+        params = json.loads((out / "ses-01" / f"chromo-{chromo}" / "parameters.json").read_text(encoding="utf-8"))
         assert (params["input"]["source"], params["input"]["chromophore"]) == ("fnirs-pipe", chromo)
         assert list(params["levels"]) == ["node"]
     only = tmp_path / "hbr_only"
     graph_cli.main([str(root), str(only), "--input-type", "fnirs-pipe", "--chromophore", "hbr", "--session-id", "01",
                     "--graph-method", "full", "--metrics", "strength", "--n-jobs", "1", "--no-report", "--quiet"])
-    assert sorted(p.name for p in only.iterdir()) == ["chromo-hbr"]
+    assert sorted(p.name for p in (only / "ses-01").iterdir()) == ["chromo-hbr"]
 
 
 def test_nbs_command_runs_each_atlas(xcpd, tmp_path):
@@ -291,7 +291,7 @@ def test_nbs_command_runs_each_atlas(xcpd, tmp_path):
     nbs_cli.main([str(root), str(out), "--input-type", "xcpd", "--atlases", "Toy", "--session-id", "ses-01",
                   "--groups", str(groups), "--group-column", "dx", "--contrast", "A", "B", "--thresh", "1.0",
                   "--perms", "20", "--seed", "0", "--no-report", "--quiet"])
-    assert (out / "atlas-Toy" / "nbs_components.tsv").exists()
+    assert (out / "ses-01" / "atlas-Toy" / "nbs_components.tsv").exists()
 
 
 def test_fisher_z_is_applied_before_nbs(xcpd):
@@ -300,3 +300,93 @@ def test_fisher_z_is_applied_before_nbs(xcpd):
     m = pd.DataFrame([[1.0, 0.5], [0.5, 1.0]])
     z = fisher_z({"s": m})["s"]
     assert z.iloc[0, 1] == pytest.approx(np.arctanh(0.5)) and z.iloc[0, 0] == 0
+
+
+TAIL = "task-rest_space-fsLR_seg-Toy_stat-pearsoncorrelation_relmat.tsv"
+
+
+def _xcpd_waves(dataset, root, sessions):
+    """The toy participants as XCP-D output in each of the given sessions (None: no session level)."""
+    for k, ses in enumerate(sessions):
+        for i, (sid, mat) in enumerate(sorted(dataset.matrices.items()), 1):
+            func = root / f"sub-{i:02d}" / (ses or "") / "func"
+            func.mkdir(parents=True, exist_ok=True)
+            (mat * (1 - 0.1 * k)).to_csv(func / (f"sub-{i:02d}_" + (f"{ses}_" if ses else "") + TAIL), sep="\t")
+    atlas_dir = root / "atlases" / "atlas-Toy"
+    atlas_dir.mkdir(parents=True)
+    nodes = dataset.nodes_df
+    pd.DataFrame({"label": nodes["label"], "network_label": nodes["network"],
+                  "hemisphere": nodes["hemisphere"]}).to_csv(atlas_dir / "atlas-Toy_dseg.tsv", sep="\t", index=False)
+    return root
+
+
+def _session(folder):
+    return json.loads((folder / "parameters.json").read_text(encoding="utf-8"))["input"]["session"]
+
+
+def test_each_session_gets_its_own_result_folder(dataset, tmp_path):
+    root = _xcpd_waves(dataset, tmp_path / "xcpd", ["ses-01", "ses-02"])
+    out = tmp_path / "graph"
+    assert graph_cli.main([str(root), str(out), "--input-type", "xcpd", "--atlases", "Toy"] + FAST) == 0
+    assert sorted(p.name for p in out.iterdir()) == ["ses-01", "ses-02"]
+    assert [_session(out / s / "atlas-Toy") for s in ("ses-01", "ses-02")] == ["ses-01", "ses-02"]
+
+
+def test_session_id_selects_sessions_with_or_without_prefix(dataset, tmp_path):
+    root = _xcpd_waves(dataset, tmp_path / "xcpd", ["ses-01", "ses-02", "ses-03"])
+    out = tmp_path / "graph"
+    graph_cli.main([str(root), str(out), "--input-type", "xcpd", "--atlases", "Toy", "--session-id", "03", "ses-01"]
+                   + FAST)
+    assert sorted(p.name for p in out.iterdir()) == ["ses-01", "ses-03"]
+
+
+def test_input_without_sessions_has_no_session_folder(dataset, tmp_path):
+    root = _xcpd_waves(dataset, tmp_path / "xcpd", [None])
+    out = tmp_path / "graph"
+    graph_cli.main([str(root), str(out), "--input-type", "xcpd", "--atlases", "Toy"] + FAST)
+    assert sorted(p.name for p in out.iterdir()) == ["atlas-Toy"]
+
+
+def test_matrix_folder_with_sessions(dataset, tmp_path):
+    folder = _layout(dataset, tmp_path / "in")
+    for sid, mat in dataset.matrices.items():
+        for ses in ("ses-01", "ses-02"):
+            mat.to_csv(folder / f"{sid}_{ses}_matrix.tsv", sep="\t")
+    out = tmp_path / "graph"
+    graph_cli.main([str(folder), str(out), "--input-type", "matrix"] + FAST)
+    for ses in ("ses-01", "ses-02"):
+        params = json.loads((out / ses / "parameters.json").read_text(encoding="utf-8"))
+        assert params["subjects"] == sorted(dataset.matrices) and params["input"]["session"] == ses
+
+
+def test_matrix_folder_mixing_files_with_and_without_session_is_refused(dataset, tmp_path):
+    folder = _layout(dataset, tmp_path / "in")
+    (a, ma), (b, mb) = list(dataset.matrices.items())[:2]
+    ma.to_csv(folder / f"{a}_ses-01_matrix.tsv", sep="\t")
+    mb.to_csv(folder / f"{b}_matrix.tsv", sep="\t")
+    with pytest.raises(SystemExit, match="session"):
+        graph_cli.main([str(folder), str(tmp_path / "out"), "--input-type", "matrix"] + FAST)
+
+
+def test_a_failed_session_leaves_an_error_file_and_the_others_still_run(dataset, tmp_path, capsys):
+    folder = _layout(dataset, tmp_path / "in")
+    for sid, mat in dataset.matrices.items():
+        mat.to_csv(folder / f"{sid}_ses-01_matrix.tsv", sep="\t")
+        np.save(folder / f"{sid}_ses-02_matrix.npy", np.ones((2, 3)))
+    out = tmp_path / "graph"
+    assert graph_cli.main([str(folder), str(out), "--input-type", "matrix"] + FAST) == 1
+    assert (out / "ses-01" / "parameters.json").exists()
+    assert "not square" in (out / "ses-02" / "error.txt").read_text(encoding="utf-8")
+    assert "ses-02" in capsys.readouterr().err
+
+
+def test_nbs_command_runs_each_session(dataset, xcpd, tmp_path):
+    _, _, groups = xcpd
+    root = _xcpd_waves(dataset, tmp_path / "xcpd", ["ses-01", "ses-02"])
+    out = tmp_path / "nbs"
+    nbs_cli.main([str(root), str(out), "--input-type", "xcpd", "--atlases", "Toy", "--groups", str(groups),
+                  "--group-column", "dx", "--contrast", "A", "B", "--thresh", "1.0", "--perms", "20", "--seed", "0",
+                  "--n-jobs", "1", "--no-report", "--quiet"])
+    for ses in ("ses-01", "ses-02"):
+        assert (out / ses / "atlas-Toy" / "nbs_components.tsv").exists()
+        assert _session(out / ses / "atlas-Toy") == ses

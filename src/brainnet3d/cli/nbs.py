@@ -46,13 +46,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     command = _shared.command_line(parser.prog, argv)
-    for variant in _shared.input_variants(args, parser):
-        _run(args, parser, variant, pathlib.Path(args.output_dir) / (variant or ""), command, run_nbs)
-    return 0
+    return _shared.run_all(args, parser, lambda session, variant, out: _run(
+        args, parser, variant, out, command, run_nbs, session))
 
 
-def _run(args, parser, variant, out, command, run_nbs) -> None:
-    matrices, atlas = _shared.load_input(args, parser, variant)
+def _run(args, parser, variant, out, command, run_nbs, session=None) -> None:
+    matrices, atlas = _shared.load_input(args, parser, variant, session)
     label_col, network_col = _shared.node_columns(args)
 
     table = pd.read_csv(args.groups, sep="\t" if args.groups.endswith((".tsv", ".txt")) else ",", dtype=str)

@@ -102,3 +102,29 @@ def test_graph_methods_describe_fnirs_input(tmp_path):
     assert "each of the 6 channels." in plain and "parcels" not in plain
     result.save_report(tmp_path / "graph.html", static_brain=False)
     assert "fnirs-pipe (chromophore hbo, task rest)" in (tmp_path / "graph.html").read_text(encoding="utf-8")
+
+
+def _xcpd_tree(root, session):
+    for k, sub in enumerate(("01", "02")):
+        folder = root / f"sub-{sub}" / (session or "") / "func"
+        folder.mkdir(parents=True)
+        name = f"sub-{sub}_" + (f"{session}_" if session else "") + XCPD_TAIL
+        pd.DataFrame(_fc(k), index=CHANNELS, columns=CHANNELS).to_csv(folder / name, sep="\t")
+    atlas = root / "atlases" / "atlas-Gordon"
+    atlas.mkdir(parents=True)
+    pd.DataFrame({"label": CHANNELS, "network_label": ["a", "b"] * 3}).to_csv(
+        atlas / "atlas-Gordon_dseg.tsv", sep="\t", index=False)
+    return root
+
+
+def test_load_xcpd_default_reads_data_without_sessions(tmp_path):
+    matrices, _ = bnv.load_xcpd(str(_xcpd_tree(tmp_path, None)), "Gordon", verbose=False)
+    assert sorted(matrices) == ["01", "02"]
+
+
+def test_session_label_may_omit_the_prefix(tmp_path):
+    matrices, atlas = bnv.load_xcpd(str(_xcpd_tree(tmp_path / "xcpd", "ses-02")), "Gordon", session="02", verbose=False)
+    assert sorted(matrices) == ["01", "02"] and atlas.attrs["brainnet3d_input"]["session"] == "ses-02"
+    matrices, nodes = bnv.load_fnirs_pipe(str(_fnirs_tree(tmp_path / "fnirs", session="ses-02")), "hbo", session="02",
+                                          verbose=False)
+    assert sorted(matrices) == ["01", "02"] and nodes.attrs["brainnet3d_input"]["session"] == "ses-02"

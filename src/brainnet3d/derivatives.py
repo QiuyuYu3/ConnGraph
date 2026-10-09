@@ -22,7 +22,7 @@ _SERIES = "_stat-mean_timeseries.tsv"
 def load_xcpd(
     xcpd_dir: str,
     atlas: str,
-    session: str = "ses-01",
+    session: str | None = None,
     task: str = "rest",
     space: str = "fsLR",
     subject_ids: list[str] | None = None,
@@ -46,8 +46,8 @@ def load_xcpd(
         Atlas name as it appears in the filename and atlas folder, e.g.
         ``"Gordon"``.  Used to locate both the matrix files and the atlas TSV.
     session : str | None
-        BIDS session label, e.g. ``"ses-01"``; None takes each subject's one
-        matching file, with or without a session.
+        BIDS session label, e.g. ``"ses-01"`` or ``"01"``; None (default) takes each
+        subject's one matching file, with or without a session.
     task : str
         BIDS task label, e.g. ``"rest"``.
     space : str
@@ -87,6 +87,7 @@ def load_xcpd(
     """
     xcpd_dir = os.path.abspath(xcpd_dir)
     stem = _stem(connectivity)
+    session = _session_label(session)
 
     # Discover subjects
     if subject_ids is None:
@@ -278,7 +279,7 @@ def load_fnirs_pipe(
     ----------
     deriv_dir : fnirs-pipe output folder holding ``sub-*/[ses-*/]nirs/``.
     chromophore : "hbo" or "hbr"; the two are never mixed.
-    session : session label such as ``"ses-01"``; None takes each subject's one matching file, with or without a session.
+    session : session label such as ``"ses-01"`` or ``"01"``; None takes each subject's one matching file, with or without a session.
     task : task label in the file names.
     subject_ids, bad_node_threshold, verbose : as in :func:`load_xcpd`.
     drop_mode : "union" drops a channel rejected in any participant, "intersection" only one rejected in all.
@@ -291,6 +292,7 @@ def load_fnirs_pipe(
     if chromophore not in CHROMOPHORES:
         raise ValueError(f"chromophore must be one of {CHROMOPHORES}, got {chromophore!r}")
     deriv_dir = os.path.abspath(deriv_dir)
+    session = _session_label(session)
     if subject_ids is None:
         subject_ids = _discover_subjects(deriv_dir)
         if not subject_ids:
@@ -330,6 +332,10 @@ def _find(root: str, sub: str, session: str | None, datatype: str, tail: str) ->
         return glob.glob(os.path.join(folder, session, datatype, f"sub-{sub}_{session}_{tail}"))
     return (glob.glob(os.path.join(folder, datatype, f"sub-{sub}_{tail}"))
             + glob.glob(os.path.join(folder, "ses-*", datatype, f"sub-{sub}_ses-*_{tail}")))
+
+
+def _session_label(session: str | None) -> str | None:
+    return f"ses-{session.removeprefix('ses-')}" if session else None
 
 
 def _stem(connectivity: str | None) -> str:

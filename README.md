@@ -53,16 +53,20 @@ INPUT/
     ...
 ```
 
+With several sessions, the session label follows the participant: `sub-01_ses-01_matrix.<ext>`.
+
 - `<ext>` is `.tsv`, `.csv`, `.txt`, `.1D`, `.npy` or `.mat`, a CIFTI `.pconn.nii` (matrices) or `.ptseries.nii` (time series), or AFNI `3dNetCorr` output: `.netcc` (matrices) or `.netts` (time series, one region per row).
 - A matrix is square, one row and one column per node. A time series has one column per node and one row per time point.
 - Tables may carry the node labels as headers; without them, rows and columns follow the order of `nodes.tsv`.
 - Matrices hold Pearson correlations; add `--values z` if they hold Fisher z values.
 - `nodes.tsv` has one row per node. Without x, y, z the report leaves out the brain figures. For XCP-D input with the Gordon atlas, coordinates are added automatically.
 
-For `xcpd` and `fnirs-pipe`, `--participant-label`, `--session-id` and `--task-id` select the files, as in XCP-D. Without `--session-id`, each participant must have exactly one matching file, in any session or none.
+`--participant-label` and `--session-id` select participants and sessions, as in XCP-D; for `xcpd` and `fnirs-pipe`, `--task-id` selects the task. Each session is analysed on its own; without `--session-id`, every session in `INPUT` is.
 
 ## Output
 
 `brainnet3d-graph` writes one table per level and metric (`node/`, `network_hemi/`, ...) and `graph_report.html`. `brainnet3d-nbs` writes `nbs_components.tsv`, `nbs_edges.tsv`, `nbs_null.tsv` and `nbs_report.html`.
 
 For `xcpd` these go into one folder per atlas (`OUTPUT/atlas-Gordon/`), and for `fnirs-pipe` into one folder per chromophore (`OUTPUT/chromo-hbo/`, `OUTPUT/chromo-hbr/`). fNIRS channels have no networks, so `brainnet3d-graph` computes the node level only.
+
+When `INPUT` has sessions, each gets its own folder above these (`OUTPUT/ses-01/atlas-Gordon/`), even if there is only one. If one session or atlas fails, the others still run, and its folder holds `error.txt`.

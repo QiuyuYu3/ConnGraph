@@ -10,6 +10,7 @@ import json
 import os
 import pathlib
 import shlex
+import sys
 
 import numpy as np
 import pandas as pd
@@ -44,8 +45,9 @@ def add_input_arguments(parser: argparse.ArgumentParser) -> None:
                    help="xcpd: atlas names as in the file names, e.g. Gordon; each gets its own result folder")
     g.add_argument("--chromophore", nargs="+", choices=["hbo", "hbr"], default=["hbo", "hbr"],
                    help="fnirs-pipe: chromophores to analyse, each in its own result folder (default: hbo hbr)")
-    g.add_argument("--session-id", help="xcpd and fnirs-pipe: session label, with or without ses- (default: each "
-                                        "participant's one file, with or without a session)")
+    g.add_argument("--session-id", nargs="+", metavar="LABEL",
+                   help="sessions to analyse, with or without ses-, each in its own result folder (default: every "
+                        "session in the input)")
     g.add_argument("--task-id", default="rest", help="xcpd and fnirs-pipe: task label in the file names (default: rest)")
     g.add_argument("--space", default="fsLR", help="xcpd: space label in the file names (default: fsLR)")
     g.add_argument("--participant-label", nargs="+", metavar="LABEL", help="participants to include, with or without sub-")
@@ -75,17 +77,69 @@ def input_variants(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
     return [None]
 
 
-def load_input(args: argparse.Namespace, parser: argparse.ArgumentParser,
-               variant: str | None = None) -> tuple[dict, pd.DataFrame]:
-    """Matrices and node table as the chosen loader returns them, with what it read noted on the table."""
-    labels = [s.removeprefix("sub-") for s in args.participant_label] if args.participant_label else None
-    verbose = not args.quiet
-    kind = args.connectivity.replace("-", " ") if args.connectivity else None
+def input_sessions(args: argparse.Namespace, parser: argparse.ArgumentParser) -> list[str | None]:
+    """Sessions analysed one at a time: those named by --session-id, else every session in the input, else None."""
+    if args.session_id:
+        return [f"ses-{s.removeprefix('ses-')}" for s in dict.fromkeys(args.session_id)]
+    if args.input_type in ("matrix", "timeseries"):
+        found = {_file_session(p) for p in _input_files(args.input_dir, f"sub-*_{args.input_type}.*")}
+        if None in found and len(found) > 1:
+            raise SystemExit(f"{parser.prog}: {args.input_dir} mixes files with and without a session (ses-) label")
+    else:
+        labels = [s.removeprefix("sub-") for s in args.participant_label] if args.participant_label else ["*"]
+        datatype = "nirs" if args.input_type == "fnirs-pipe" else "func"
+        found = {os.path.basename(os.path.dirname(p)) for lbl in labels
+                 for p in glob.glob(os.path.join(args.input_dir, f"sub-{lbl}", "ses-*", datatype))}
+    return sorted(s for s in found if s) or [None]
+
+
+def run_all(args: argparse.Namespace, parser: argparse.ArgumentParser, run) -> int:
+    """Call run(session, variant, out) for each session and variant; with several, a failure is noted and the rest run."""
+    kind = args.connectivity
     if args.input_type in ("matrix", "fnirs-pipe") and (kind or args.shrinkage):
         parser.error("--connectivity and --shrinkage need timeseries or XCP-D input")
     if args.shrinkage and not kind and args.input_type != "timeseries":
         parser.error("--shrinkage needs --connectivity")
-    session = f"ses-{args.session_id.removeprefix('ses-')}" if args.session_id else None
+    variants = input_variants(args, parser)
+    runs = [(s, v) for s in input_sessions(args, parser) for v in variants]
+    failed = []
+    for session, variant in runs:
+        out = pathlib.Path(args.output_dir) / (session or "") / (variant or "")
+        name = " ".join(x for x in (session, variant) if x)
+        if len(runs) == 1:
+            run(session, variant, out)
+            break
+        if not args.quiet:
+            print(f"[{parser.prog}] {name}")
+        try:
+            run(session, variant, out)
+        except (Exception, SystemExit) as exc:
+            message = str(exc).removeprefix(f"{parser.prog}: ") or type(exc).__name__
+            out.mkdir(parents=True, exist_ok=True)
+            (out / "error.txt").write_text(message + "\n", encoding="utf-8")
+            print(f"{parser.prog}: {name} failed: {message}", file=sys.stderr)
+            failed.append(name)
+    if failed:
+        print(f"{parser.prog}: {len(failed)} of {len(runs)} runs failed: {', '.join(failed)}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def _input_files(folder: str, pattern: str) -> list[str]:
+    return sorted(p for p in glob.glob(os.path.join(folder, pattern)) if p.endswith(_EXTENSIONS))
+
+
+def _file_session(path: str) -> str | None:
+    parts = os.path.basename(path).split("_")
+    return parts[1] if len(parts) > 2 and parts[1].startswith("ses-") else None
+
+
+def load_input(args: argparse.Namespace, parser: argparse.ArgumentParser,
+               variant: str | None = None, session: str | None = None) -> tuple[dict, pd.DataFrame]:
+    """Matrices and node table as the chosen loader returns them, with what it read noted on the table."""
+    labels = [s.removeprefix("sub-") for s in args.participant_label] if args.participant_label else None
+    verbose = not args.quiet
+    kind = args.connectivity.replace("-", " ") if args.connectivity else None
     if args.input_type == "fnirs-pipe":
         return brainnet3d.load_fnirs_pipe(args.input_dir, variant.removeprefix("chromo-"), session=session,
                                           task=args.task_id, subject_ids=labels,
@@ -95,8 +149,8 @@ def load_input(args: argparse.Namespace, parser: argparse.ArgumentParser,
         nodes = os.path.join(args.input_dir, NODES_FILE)
         if not os.path.isfile(nodes):
             raise SystemExit(f"{parser.prog}: {args.input_dir} has no {NODES_FILE}")
-        pattern = f"sub-*_{args.input_type}.*"
-        paths = sorted(p for p in glob.glob(os.path.join(args.input_dir, pattern)) if p.endswith(_EXTENSIONS))
+        pattern = f"sub-*_{session}_{args.input_type}.*" if session else f"sub-*_{args.input_type}.*"
+        paths = _input_files(args.input_dir, pattern)
         files: dict[str, str] = {}
         for p in paths:
             sid = subject_id_from_path(p)
@@ -113,7 +167,7 @@ def load_input(args: argparse.Namespace, parser: argparse.ArgumentParser,
         else:
             ds = brainnet3d.load_timeseries(files, nodes, kind=kind or "correlation", shrinkage=args.shrinkage,
                                             **common)
-        ds.nodes_df.attrs[INPUT_ATTR]["path"] = os.path.abspath(args.input_dir)
+        ds.nodes_df.attrs[INPUT_ATTR].update(path=os.path.abspath(args.input_dir), session=session)
         return ds.matrices, ds.nodes_df
     return brainnet3d.load_xcpd(args.input_dir, variant.removeprefix("atlas-"), session=session, task=args.task_id,
                                 space=args.space, subject_ids=labels, bad_node_threshold=args.bad_node_threshold,
