@@ -48,7 +48,6 @@ h3 { font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spa
 code, pre { font-family: var(--mono); }
 pre { background: var(--surface); border: 1px solid var(--rule-soft); padding: 0.85rem 1rem; border-radius: 6px;
       font-size: 0.78rem; line-height: 1.55; white-space: pre-wrap; word-break: break-word; margin: 0; }
-.hint { font-size: 0.8rem; color: var(--faint); font-weight: 400; }
 p.desc { color: var(--muted); margin: 0 0 0.9rem; max-width: 110ch; }
 
 /* ---- summary ---- */
@@ -63,7 +62,6 @@ p.desc { color: var(--muted); margin: 0 0 0.9rem; max-width: 110ch; }
 .warn { color: var(--warn); background: #fbf3dc; }
 .bad { color: var(--bad); background: #fdecec; }
 
-.overview { margin: 1.25rem 0 0; }
 .call { margin: 1rem 0 0; }
 .call-title { padding: 0.3rem 0; font-size: 0.85rem; font-weight: 500; color: var(--muted); }
 .call pre { margin-top: 0.4rem; }
@@ -74,20 +72,7 @@ h3.step-title { display: flex; align-items: baseline; gap: 0.55rem; margin: 0 0 
                 font-size: 0.98rem; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--ink);
                 border-bottom: 1px solid var(--rule-soft); }
 
-/* ---- pickers and figures ---- */
-select.picker { font: inherit; font-size: 0.84rem; color: var(--ink); appearance: none; border: 1px solid var(--rule);
-                border-radius: 6px; padding: 0.28rem 2rem 0.28rem 0.65rem; margin: 0 0 0.6rem 0.4rem; cursor: pointer;
-                /* a chevron drawn from two gradients */
-                background: linear-gradient(45deg, transparent 50%, var(--faint) 50%) calc(100% - 15px) 55% / 5px 5px no-repeat,
-                            linear-gradient(135deg, var(--faint) 50%, transparent 50%) calc(100% - 10px) 55% / 5px 5px no-repeat, #fff; }
-select.picker:hover, select.picker:focus { border-color: var(--faint); outline: none; }
-.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; margin: 0 0 0.6rem 0.4rem;
-       vertical-align: middle; }
-.seg button { font: inherit; font-size: 0.82rem; color: var(--muted); background: #fff; border: none;
-              border-right: 1px solid var(--rule); padding: 0.25rem 0.8rem; cursor: pointer; }
-.seg button:last-child { border-right: none; }
-.seg button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-.pane { display: none; } .pane.on { display: block; }
+/* ---- figures ---- */
 .option-label { font-size: 0.75rem; font-weight: 600; color: var(--faint); text-transform: uppercase; letter-spacing: 0.06em;
                 margin: 1.4rem 0 0.35rem; }
 img.figure { max-width: 100%; height: auto; display: block; margin-top: 0.5rem; }

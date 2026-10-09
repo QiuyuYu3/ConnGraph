@@ -748,7 +748,7 @@ def test_participant_level_writes_one_report_per_participant(dataset, xcpd, surf
     assert sorted(p.name for p in out.glob("sub-*.html")) == [f"sub-{i:02d}.html" for i in range(1, 7)]
     text = (out / "sub-01.html").read_text(encoding="utf-8")
     assert re.findall(r'<h2 id="([^"]+)"', text)[:3] == ["Summary", "ses-01_atlas-Toy", "ses-02_atlas-Toy"]
-    assert '<div class="overview">' in text and "Edges kept" in text and ">ses-02 atlas-Toy</th>" in text
+    assert '<h2 id="Quantities">' in text and "Edges kept" in text and ">ses-02 atlas-Toy</th>" in text
     for words in ("Connectivity matrix", "Node metrics", "Network metrics", "Whole graph", "Graph",
                   "Open the rotatable 3-D view", "Methods"):
         assert words in text, words

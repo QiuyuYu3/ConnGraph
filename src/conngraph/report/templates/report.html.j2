@@ -6,7 +6,6 @@
   <table>{% for key, value in column %}<tr><th>{{ key }}</th><td>{{ value }}</td></tr>{% endfor %}</table>
   {%- endfor %}
 </div>
-{% if overview %}<div class="overview">{{ overview }}</div>{% endif %}
 <div class="call">
   <div class="call-title">{{ call_title }} <button type="button" class="copy">Copy</button></div>
   <pre>{{ call }}</pre>
@@ -21,7 +20,7 @@
 {%- set captioned = step.desc and ('plotly-graph-div' in step.html or 'class="figure"' in step.html) %}
 {%- if captioned %}{% set figure.n = figure.n + 1 %}{% endif %}
 <section class="step">
-  <h3 class="step-title">{{ step.title }}{% if step.hint %} <span class="hint">{{ step.hint }}</span>{% endif %}</h3>
+  <h3 class="step-title">{{ step.title }}</h3>
   {% if step.desc and not captioned %}<p class="desc">{{ step.desc }}</p>{% endif %}
   {{ step.html }}
   {% if captioned %}<p class="caption"><b>Figure {{ figure.n }}.</b> {{ step.desc }}</p>{% endif %}

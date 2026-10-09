@@ -203,7 +203,8 @@ def test_comparison_report_lists_results_and_writes_the_methods(dataset, graph_r
     path = tmp_path / "compare.html"
     result.save_report(path, nodes=dataset.nodes_df, network_col="network")
     text = path.read_text(encoding="utf-8")
-    assert _sections(text) == ["Summary", "Metrics", "Global", "Blocks", "Edges", "Errors", "Methods", "Versions"]
+    assert _sections(text) == ["Summary", "Metrics", "Global", "Blocks", "Edges", "Errors", "Quantities", "Methods",
+                               "Versions"]
     assert words in text and "Fisher z-transformed" in text and "A vs B" in text
     assert text.count('class="plotly-graph-div"') >= 3  # t heatmaps of the blocks and the edges
 

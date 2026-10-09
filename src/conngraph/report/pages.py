@@ -64,12 +64,12 @@ def save_graph_report(result, path, nodes: pd.DataFrame | None = None, surfaces:
         means = pd.DataFrame({_metric_title(m): df[m].mean() for m in names})
         means.insert(0, "Node", means.index)
         body.append(dict(id=sid, title=title, desc=_level_desc(params, level), steps=[
-            _step("a. Metric distributions", data=link(values), picker=True, html=_picker(f"{sid}-box", boxes),
+            _step("a. Metric distributions", data=link(values), html=_picker(boxes),
                   desc="One box per network node" + (", left hemisphere darker than right" if hemi else "")
                        + "; each point is a participant (hover for the ID)."),
             _step("b. Connectivity", data=link(connectivity), html=figures.to_div(heat),
                   desc="Group mean connectivity within (diagonal) and between network nodes: the matrix these graphs were built from."),
-            _step("c. Group means", data=link(values), open=False, html=f'<div class="scroll">{_table(means.reset_index(drop=True))}</div>',
+            _step("c. Group means", data=link(values), html=f'<div class="scroll">{_table(means.reset_index(drop=True))}</div>',
                   desc="Mean over participants of each network node's value."),
         ]))
         sections.append((sid, title))
@@ -196,7 +196,7 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
                                desc=f"All {n_sig} significant edges with regions grouped by network: coloured by the "
                                     "group difference, then bundled through their networks and coloured by the "
                                     "networks they join."))
-        steps.append(_step(f"{next(letter)}. Group means and difference", data=link("means"), picker=True,
+        steps.append(_step(f"{next(letter)}. Group means and difference", data=link("means"),
                            html=_nbs_matrices(result, adj_sig, labels, nets, (g1, g2), diff),
                            desc="Mean connectivity of each group, then group 1 minus group 2"
                                 + (", ordered by network" if nets else "")
@@ -227,13 +227,15 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
          ("Threshold", f"t > {o['thresh']} ({o['tail']} tail)"),
          ("Permutations", f"{k} (seed {o['seed']})")],
         [("Created", params["created"].replace("T", " ")),
-         ("ConnGraph", "v" + params["packages"]["conngraph"]),
-         ("Components", len(result.pval)),
-         ("Significant (p < 0.05)", _flag(len(sig), bool(sig), "")),
-         ("Smallest p", _fmt_p(min(result.pval), k) if len(result.pval) else "–")],
+         ("ConnGraph", "v" + params["packages"]["conngraph"])],
     ]
+    quantities = pd.DataFrame([("Components", str(len(result.pval))),
+                               ("Significant (p < 0.05)", _flag(len(sig), bool(sig), "")),
+                               ("Smallest p", _fmt_p(min(result.pval), k) if len(result.pval) else "–")],
+                              columns=["Quantity", "Value"])
     _write(path, "Network-based statistic report", params, sections, summary, ("run_nbs", ["matrices_g1", "matrices_g2"], o),
-           body, _input_warnings(loaded), notes, nbs_methods(params), f"{len(params['groups']['g1'])} vs {len(params['groups']['g2'])}")
+           body, _input_warnings(loaded), notes, nbs_methods(params), f"{len(params['groups']['g1'])} vs {len(params['groups']['g2'])}",
+           quantities=_table(quantities, sortable=False))
 
 
 def save_compare_report(result, path, nodes: pd.DataFrame | None = None, label_col: str = "label",
@@ -304,10 +306,11 @@ def save_compare_report(result, path, nodes: pd.DataFrame | None = None, label_c
            ("Significance", f"{_P_NAMES[o['correction']]} p < {alpha}"),
            ("Permutations", f"{o['n_perms']} (seed {o['seed']})")],
         [("Created", params["created"].replace("T", " ")),
-         ("ConnGraph", "v" + params["packages"]["conngraph"])] + counts,
+         ("ConnGraph", "v" + params["packages"]["conngraph"])],
     ]
+    quantities = pd.DataFrame(counts, columns=["Tests", "Significant"])
     _write(path, "Group comparison report", params, sections, summary, ("compare_groups", ["groups", "contrast"], o),
-           body, errors, notes, compare_methods(params), f"{g1} vs {g2}")
+           body, errors, notes, compare_methods(params), f"{g1} vs {g2}", quantities=_table(quantities, sortable=False))
 
 
 _CORRECTION_P = {"fdr": "p_fdr", "fwe": "p_fwe", "none": "p"}
@@ -383,7 +386,7 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
                     xyz[shown], [lab for lab, k in zip(labels, shown) if k], [n for n, k in zip(nets, shown) if k],
                     values[shown], t, meshes), f"brain_{m}")
             panes.append((m, t, html_))
-        steps.append(_step("a. Group mean on the brain", data=link("node_df"), picker=True, html=_picker("node-brain", panes, columns=1),
+        steps.append(_step("a. Group mean on the brain", data=link("node_df"), html=_picker(panes, columns=1),
                            desc="Colour and size both show the mean over participants."
                                 + (" Each link opens a view that can be rotated, with region names on hover."
                                    if interactive_brain else "")))
@@ -396,7 +399,7 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
             values = result.node_df[m].mean(axis=0)
             nets = pd.Series([networks.get(lab, "None") for lab in values.index], index=values.index)
             boxes.append((m, _metric_title(m), figures.to_div(figures.node_boxplot(values, nets, palette, _metric_title(m)))))
-        steps.append(_step(f"{next(letter)}. Values by network", data=link("node_df"), picker=True, html=_picker("node-box", boxes, columns=1),
+        steps.append(_step(f"{next(letter)}. Values by network", data=link("node_df"), html=_picker(boxes, columns=1),
                            desc="Mean over participants of each region; hover for its name."))
     tops = []
     for m in metrics:
@@ -406,13 +409,13 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
             table["Network"] = [networks.get(lab, "None") for lab in top.index]
         table["Group mean"] = top.values
         tops.append((m, _metric_title(m), _table(table)))
-    steps.append(_step(f"{next(letter)}. Highest regions", data=link("node_df"), picker=True, open=False, html=_picker("node-top", tops, columns=3),
+    steps.append(_step(f"{next(letter)}. Highest regions", data=link("node_df"), html=_picker(tops, columns=3),
                        desc="The 15 regions with the highest mean over participants."))
     if result.mean_matrix is not None:
         M = result.mean_matrix
         names = list(M.index)
         groups = [networks.get(n, "None") for n in names] if networks is not None else None
-        steps.append(_step(f"{next(letter)}. Connectivity", data=link("mean_matrix"), open=False, html=figures.to_div(figures.ordered_heatmap(
+        steps.append(_step(f"{next(letter)}. Connectivity", data=link("mean_matrix"), html=figures.to_div(figures.ordered_heatmap(
             M.to_numpy(float), names, groups, 1.0, "r")),
             desc="Group mean connectivity between all regions" + (", ordered by network" if groups else "") + "."))
     group = _group_graph(result) if networks is not None else None
@@ -480,7 +483,7 @@ def _nbs_matrices(result, adj_sig, labels, nets, group_names, diff) -> str:
     name = " − ".join(group_names)
     panes.append(("diff", name, figures.to_div(figures.ordered_heatmap(
         diff, labels, nets, float(np.abs(diff).max()) or 1.0, name, marks))))
-    return _picker("nbs-means", panes, "Group", columns=3)
+    return _picker(panes, columns=3)
 
 
 def _figure_block(label: str, img: str) -> str:
@@ -538,13 +541,14 @@ def _static_nbs_brain(nodes, label_col, network_col, labels, drawn, diff, degree
     return figs.save(fig, "brain_edges", dpi="figure")
 
 
-def _write(path, title, params, sections, summary, call, body, errors, notes, methods, chip, overview: str = "") -> None:
+def _write(path, title, params, sections, summary, call, body, errors, notes, methods, chip,
+           quantities: str = "") -> None:
     command = params.get("command")
     fn, args, opts = call
     call_text = command or f"{fn}(\n    " + ",\n    ".join(args + [f"{k}={json.dumps(v)}" for k, v in opts.items()]) + ",\n)"
     page = _environment().get_template("report.html.j2").render(
         page_title=title, heading=title, version=params["packages"]["conngraph"],
-        created=params["created"].replace("T", " "), chip=chip, sections=sections, summary=summary, overview=overview,
+        created=params["created"].replace("T", " "), chip=chip, sections=sections, summary=summary, quantities=quantities,
         call_title="Run command" if command else "Call", call=html.escape(call_text), body=body,
         errors=[html.escape(e) for e in errors], notes=notes, methods=methods,
         versions={"python": params["python"], **{k: v for k, v in params["packages"].items() if v}},
@@ -563,9 +567,8 @@ def _environment():
     return Environment(loader=PackageLoader("conngraph.report", "templates"), autoescape=False)
 
 
-def _step(title: str, html: str, desc: str = "", open: bool = True, picker: bool = False, hint: str = "",
-          data: list[str] = ()) -> dict:
-    return dict(title=title, html=html, desc=desc, open=open, picker=picker, hint=hint, data=list(data))
+def _step(title: str, html: str, desc: str = "", data: list[str] = ()) -> dict:
+    return dict(title=title, html=html, desc=desc, data=list(data))
 
 
 def _linker(files: dict, report_path):
@@ -577,21 +580,12 @@ def _linker(files: dict, report_path):
     return link
 
 
-def _picker(group: str, panes: list[tuple[str, str, str]], label: str = "Metric", columns: int = 2) -> str:
-    """Buttons, or a select when the labels are many or long, showing one pane at a time; panes are (key, label, html)."""
+def _picker(panes: list[tuple[str, str, str]], columns: int = 2) -> str:
+    """Every pane in a grid, each under its label; panes are (key, label, html)."""
     if len(panes) == 1:
         return panes[0][2]
     cells = "".join(f"<div>{_figure_block(t, h)}</div>" for _, t, h in panes)
     return f'<div class="figure-row" style="--columns:{min(columns, len(panes))}">{cells}</div>'
-    bodies = "".join(f'<div class="pane{" on" if i == 0 else ""}" data-group="{group}" data-key="{k}">{h}</div>'
-                     for i, (k, _, h) in enumerate(panes))
-    if len(panes) <= 4 and sum(len(t) for _, t, _ in panes) <= 70:
-        on = ' class="on"'
-        buttons = "".join(f'<button type="button"{on if i == 0 else ""} data-key="{k}">{html.escape(t)}</button>'
-                          for i, (k, t, _) in enumerate(panes))
-        return f'<span class="hint">{label}</span><span class="seg" data-group="{group}">{buttons}</span>{bodies}'
-    options = "".join(f'<option value="{k}">{html.escape(t)}</option>' for k, t, _ in panes)
-    return f'<label class="hint">{label} </label><select class="picker" data-group="{group}">{options}</select>{bodies}'
 
 
 def _table(df: pd.DataFrame, sortable: bool = True) -> str:
@@ -676,9 +670,9 @@ def _global_steps(df: pd.DataFrame, link) -> list[dict]:
     means.columns = [_level_title(c) for c in means.columns]
     means.insert(0, "Metric", [_metric_title(m) for m in names])
     return [
-        _step("a. Distributions", data=link("global_df"), picker=True, html=_picker("global-box", boxes),
+        _step("a. Distributions", data=link("global_df"), html=_picker(boxes),
               desc="One value per participant for the whole graph, one box per level; hover for the ID."),
-        _step("b. Group means", data=link("global_df"), open=False, html=f'<div class="scroll">{_table(means.reset_index(drop=True))}</div>',
+        _step("b. Group means", data=link("global_df"), html=f'<div class="scroll">{_table(means.reset_index(drop=True))}</div>',
               desc="Mean over participants."),
     ]
 

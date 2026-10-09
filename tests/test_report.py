@@ -211,8 +211,8 @@ def test_graph_report_numbers_captions_below_figures_and_folds_the_call(graph_re
 def test_pickers_lay_every_pane_out_in_a_grid():
     from conngraph.report.pages import _picker
 
-    assert _picker("m", [("a", "Regions", "A")]) == "A"
-    grid = _picker("m", [(str(i), f"Metric {i}", f"<p>{i}</p>") for i in range(5)])
+    assert _picker([("a", "Regions", "A")]) == "A"
+    grid = _picker([(str(i), f"Metric {i}", f"<p>{i}</p>") for i in range(5)])
     assert grid.startswith('<div class="figure-row" style="--columns:2">')
     assert all(f"Metric {i}</div><p>{i}</p>" in grid for i in range(5)) and "<button" not in grid
 

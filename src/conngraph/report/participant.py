@@ -64,7 +64,7 @@ def participant_section(result, sid: str, matrix: pd.DataFrame, nodes: pd.DataFr
             panes.append((attr, name, figures.to_div(figures.ordered_heatmap(
                 M.to_numpy(float), list(M.index), [n.partition("_")[2] if hemi else n for n in M.index],
                 float(np.nanmax(np.abs(M.to_numpy(float)))) or 1.0, "Fisher z" if opts.get("apply_fisher_z") else "r"))))
-    steps.append(_step(f"{next(letter)}. Connectivity matrix", data=link("net_corr_df", "net_hemi_corr_df"), picker=True, html=_picker("matrix", panes, "Matrix"),
+    steps.append(_step(f"{next(letter)}. Connectivity matrix", data=link("net_corr_df", "net_hemi_corr_df"), html=_picker(panes),
                        desc="The input matrix ordered by network, and the mean connectivity within and between networks."))
 
     if result.node_df is not None:
@@ -85,15 +85,15 @@ def participant_section(result, sid: str, matrix: pd.DataFrame, nodes: pd.DataFr
                         [n for n, k in zip(nets or [""] * len(cols), shown) if k], values[shown], _metric_title(m),
                         meshes), f"brain_{m}")
                 brains.append((m, _metric_title(m), html_))
-            parts.append('<div class="option-label">On the brain</div>' + _picker("node-brain", brains, columns=1))
+            parts.append('<div class="option-label">On the brain</div>' + _picker(brains, columns=1))
         elif xyz is None:
             notes.append(_no_coordinates(nodes))
         if nets is not None:
             boxes = [(m, _metric_title(m), figures.to_div(figures.node_boxplot(
                 node[m], pd.Series(nets, index=node[m].index), palette, _metric_title(m)))) for m in metrics]
-            parts.append('<div class="option-label">By network</div>' + _picker("node-box", boxes, columns=1))
+            parts.append('<div class="option-label">By network</div>' + _picker(boxes, columns=1))
         if parts:
-            steps.append(_step(f"{next(letter)}. Node metrics", data=link("node_df"), picker=True, html="".join(parts),
+            steps.append(_step(f"{next(letter)}. Node metrics", data=link("node_df"), html="".join(parts),
                                desc="Each region's value; hover for its name."))
 
     tables = []
@@ -164,7 +164,7 @@ def save_participant_report(label: str, sections: list[dict], path) -> None:
     overview = pd.DataFrame({"": items} | {s["title"]: [dict(s["overview"]).get(i, "") for i in items] for s in sections})
     _write(path, f"sub-{label}", params, [(s["id"], s["title"]) for s in sections], summary,
            ("compute_graph_metrics", ["matrices", "atlas"], params["options"]), body, errors, notes,
-           graph_methods(params), f"sub-{label}", overview=_table(overview, sortable=False))
+           graph_methods(params), f"sub-{label}", quantities=_table(overview, sortable=False))
 
 
 def _overview(matrix: pd.DataFrame, graph, params: dict, errors: list[str]) -> pd.DataFrame:

@@ -16,7 +16,7 @@
   <a href="#{{ id }}">{{ name }}</a>
   {%- endfor %}
   <span class="sep"></span>
-  <a href="#Errors">Errors</a><a href="#Methods">Methods</a><a href="#Versions">Versions</a>
+  <a href="#Errors">Errors</a>{% if quantities %}<a href="#Quantities">Quantities</a>{% endif %}<a href="#Methods">Methods</a><a href="#Versions">Versions</a>
   <span class="chip">{{ chip }}</span>
 </nav>
 <main>
@@ -31,6 +31,11 @@
 {% if notes %}<h3>Notes</h3><ul class="note-list">{% for n in notes %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
 {% if errors %}<ul class="error-list">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
 {% else %}<p class="no-errors">No errors or warnings.</p>{% endif %}
+
+{% if quantities %}
+<h2 id="Quantities">Summary quantities</h2>
+{{ quantities }}
+{% endif %}
 
 <h2 id="Methods">Methods</h2>
 <p class="section-hint">Generated from the options this run recorded. Citations follow APA 7; switch tabs to copy as plain text, Markdown or LaTeX.</p>
@@ -59,19 +64,6 @@ function showTab(event, id) {
   document.getElementById(id).classList.add('active');
   event.target.classList.add('active');
 }
-// a picker shows one pane of its group; Plotly sizes a hidden plot wrongly, so resize on show
-function showPane(group, key) {
-  document.querySelectorAll(`.pane[data-group="${group}"]`).forEach(p => {
-    const on = p.dataset.key === key;
-    p.classList.toggle('on', on);
-    if (on) p.querySelectorAll('.js-plotly-plot').forEach(g => Plotly.Plots.resize(g));
-  });
-}
-document.querySelectorAll('select.picker').forEach(sel => sel.addEventListener('change', () => showPane(sel.dataset.group, sel.value)));
-document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => {
-  b.parentElement.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
-  showPane(b.parentElement.dataset.group, b.dataset.key);
-}));
 function copyOnClick(button, text) {
   button.addEventListener('click', e => {
     e.preventDefault(); e.stopPropagation();
