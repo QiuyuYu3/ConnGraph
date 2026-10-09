@@ -186,6 +186,16 @@ def test_graph_report_without_coordinates_skips_the_brain(dataset, tmp_path):
     assert "no x, y, z coordinates" in text
 
 
+def test_graph_report_leaves_dropped_nodes_off_the_brain(dataset, tmp_path):
+    gone = dataset.nodes_df["label"].iloc[0]
+    matrices = {sid: m.drop(index=gone, columns=gone) for sid, m in dataset.matrices.items()}
+    result = compute_graph_metrics(matrices, dataset.nodes_df, level="node", network_col="network",
+                                   metrics=["strength"], n_jobs=1, verbose=False)
+    assert result.node_df["strength.abs"][gone].isna().all()
+    result.save_report(tmp_path / "graph.html", static_brain=False)
+    assert "Option 2: interactive" in (tmp_path / "graph.html").read_text(encoding="utf-8")
+
+
 def test_graph_report_summary_names_the_time_series_measure(dataset, tmp_path):
     atlas = dataset.nodes_df.drop(columns=["x", "y", "z"])
     atlas.attrs["brainnet3d_input"] = {"source": "time series", "connectivity": "partial correlation", "shrinkage": True,

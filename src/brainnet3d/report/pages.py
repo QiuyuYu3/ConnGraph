@@ -236,9 +236,10 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
             t = _metric_title(m)
             if static_brain:
                 static.append((m, t, _img(_static_node_brain(result, nodes, label_col, labels, values, t, surfaces))))
+            shown = keep & ~np.isnan(values)
             interactive.append((m, t, figures.to_div(figures.brain_values(
-                xyz[keep], [lab for lab, k in zip(labels, keep) if k], [n for n, k in zip(nets, keep) if k],
-                values[keep], t, meshes))))
+                xyz[shown], [lab for lab, k in zip(labels, shown) if k], [n for n, k in zip(nets, shown) if k],
+                values[shown], t, meshes))))
         parts = (['<div class="option-label">Option 1: static</div>' + _picker("node-static", static)] if static else [])
         parts.append('<div class="option-label">Option 2: interactive</div>' + _picker("node-3d", interactive))
         steps.append(_step("a. Group mean on the brain", picker=True, hint="(static and interactive)", html="".join(parts),

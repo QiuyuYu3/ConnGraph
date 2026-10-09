@@ -211,7 +211,8 @@ def series_to_matrices(
         bad = set.union(*unusable) if mode == "union" else set.intersection(*unusable)
     if bad:
         warnings.warn(f"Dropping {len(bad)} node(s) with missing or constant time series: {sorted(bad)}", stacklevel=3)
-    return compute_connectivity({sid: ts.drop(columns=list(bad)) for sid, ts in series.items()}, kind, shrinkage)
+    kept = {sid: ts.drop(columns=list(bad), errors="ignore") for sid, ts in series.items()}
+    return compute_connectivity(kept, kind, shrinkage)
 
 
 def _read_timeseries(src, labels: list[str], mat_key: str | None) -> pd.DataFrame:

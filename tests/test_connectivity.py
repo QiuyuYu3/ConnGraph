@@ -151,6 +151,14 @@ def test_load_timeseries_drops_missing_regions_before_partial_correlation():
     assert ds.nodes_df["label"].tolist() == keep
 
 
+def test_load_timeseries_tolerates_a_region_only_some_files_have():
+    a, b = _series(seed=0), _series(seed=1)
+    a["extra"] = np.nan
+    with pytest.warns(UserWarning, match=r"\['extra'\]"):
+        ds = bnv.load_timeseries({"sub-a": a, "sub-b": b}, _nodes())
+    assert all(m.columns.tolist() == LABELS for m in ds.matrices.values())
+
+
 def test_load_timeseries_column_count_must_match_node_table():
     with pytest.raises(DataValidationError, match="node table"):
         bnv.load_timeseries({"sub-a": _series().to_numpy()}, _nodes().iloc[:5])
