@@ -90,7 +90,7 @@ def test_nbs_command_reports_groups_missing_from_the_data(xcpd, tmp_path):
     pd.DataFrame({"participant_id": ["sub-01", "sub-99"], "dx": ["A", "B"]}).to_csv(table, sep="\t", index=False)
     with pytest.raises(SystemExit, match="sub-99"):
         nbs_cli.main([str(root), str(tmp_path / "out"), "--atlas", "Toy", "--groups", str(table), "--group-column", "dx",
-                      "--contrast", "A", "B", "--quiet"])
+                      "--contrast", "A", "B", "--thresh", "1.0", "--quiet"])
 
 
 def test_fisher_z_is_applied_before_nbs(xcpd):

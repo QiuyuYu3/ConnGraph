@@ -200,9 +200,10 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
         body.append(dict(id="Edges", title="Significant edges", desc="", steps=steps))
         sections.append(("Edges", "Significant edges"))
 
+    names = (params.get("input") or {}).get("contrast") or ["", ""]
     summary = [
-        [("Group 1", f"{len(params['groups']['g1'])} participants"),
-         ("Group 2", f"{len(params['groups']['g2'])} participants"),
+        [("Group 1", f"{names[0] + ': ' if names[0] else ''}{len(params['groups']['g1'])} participants"),
+         ("Group 2", f"{names[1] + ': ' if names[1] else ''}{len(params['groups']['g2'])} participants"),
          ("Test", "paired t-test" if o["paired"] else "two-sample t-test"),
          ("Threshold", f"t > {o['thresh']} ({o['tail']} tail)"),
          ("Permutations", f"{k} (seed {o['seed']})")],
@@ -424,7 +425,9 @@ def _method_text(level: dict) -> str:
 def _column(nodes: pd.DataFrame | None, label_col: str, col: str) -> dict | None:
     if nodes is None or col not in nodes or label_col not in nodes:
         return None
-    return dict(zip(nodes[label_col], nodes[col].astype(str)))
+    # XCP-D atlas tables load the label "None" (no network) as missing
+    values = ["None" if pd.isna(v) else str(v) for v in nodes[col]]
+    return dict(zip(nodes[label_col], values))
 
 
 def _palette(networks: dict | None) -> dict:

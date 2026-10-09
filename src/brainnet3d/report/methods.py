@@ -98,7 +98,10 @@ def nbs_methods(params: dict) -> dict[str, str]:
         "thresh": o["thresh"], "k": o["k"],
         "shuffle": "the sign of each paired difference" if o["paired"] else "the group labels",
     }
-    return render([[("nbs", slots)]])
+    sentences = [("nbs_intro", slots)]
+    if (params.get("input") or {}).get("fisher_z"):
+        sentences.append(("nbs_fisher", {}))
+    return render([sentences + [("nbs", slots)]])
 
 
 def render(paragraphs: list[list[tuple[str, dict]]]) -> dict[str, str]:

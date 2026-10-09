@@ -2,11 +2,13 @@ import json
 import re
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from brainnet3d.graph_theory import compute_graph_metrics
 from brainnet3d.graph_theory.nbs import run_nbs
 from brainnet3d.report.methods import graph_methods, nbs_methods
+from brainnet3d.report.pages import _column
 
 pytest.importorskip("bct")
 
@@ -150,6 +152,17 @@ def test_nbs_report_lists_components_and_settings(nbs_result, dataset, surfaces,
     assert _sections(text)[:2] == ["Summary", "Components"]
     assert "network-based statistic" in text
     assert json.dumps(nbs_result.params["options"]["thresh"]) in text
+
+
+def test_reports_read_missing_network_labels_as_none(nbs_result, graph_result, dataset, tmp_path):
+    # XCP-D atlas tables load the label "None" as missing
+    nodes = dataset.nodes_df.copy()
+    nodes["network"] = nodes["network"].astype("string")
+    nodes.loc[[0, 5], "network"] = pd.NA
+    networks = _column(nodes, "label", "network")
+    assert networks[nodes["label"][0]] == "None" and all(isinstance(v, str) for v in networks.values())
+    nbs_result.save_report(tmp_path / "nbs.html", nodes=nodes, static_brain=False)
+    graph_result.save_report(tmp_path / "graph.html", nodes=nodes, static_brain=False)
 
 
 def test_nbs_report_works_without_a_node_table(nbs_result, tmp_path):

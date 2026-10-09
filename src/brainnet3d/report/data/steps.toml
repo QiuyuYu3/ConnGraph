@@ -178,5 +178,11 @@ plain = "Parcels labelled {labels} ({count} parcels) were excluded from the netw
 
 # ---- network-based statistic ----
 
+[nbs_intro]
+plain = "Group differences in connectivity were tested with the network-based statistic {todo:the network-based statistic}, performed with brainnet3d v{ver}."
+
+[nbs_fisher]
+plain = "Connectivity values were Fisher z-transformed before testing."
+
 [nbs]
-plain = "Group differences in connectivity were tested with the network-based statistic {todo:the network-based statistic}, performed with brainnet3d v{ver}. A {test} was computed for every edge ({n1} and {n2} participants); edges whose {tail} t-statistic exceeded {thresh} were retained, and each connected component of retained edges was sized by its number of edges. Family-wise error-corrected p-values were obtained from {k} permutations of {shuffle}, by comparing each component with the null distribution of the largest component size."
+plain = "A {test} was computed for every edge ({n1} and {n2} participants); edges whose {tail} t-statistic exceeded {thresh} were retained, and each connected component of retained edges was sized by its number of edges. Family-wise error-corrected p-values were obtained from {k} permutations of {shuffle}, by comparing each component with the null distribution of the largest component size."
