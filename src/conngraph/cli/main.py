@@ -8,7 +8,7 @@ import argparse
 import sys
 
 from conngraph.cli import _shared
-from conngraph.graph_theory.compare import COMPARISONS
+from conngraph.graph_theory.compare import COMPARISONS, CORRECTIONS
 from conngraph.graph_theory.metrics import PARTITIONS, SIGNED_FALLBACKS
 from conngraph.graph_theory.sparsify import GRAPH_METHODS, SIGNS
 
@@ -113,6 +113,10 @@ def build_parser() -> argparse.ArgumentParser:
                "edges (default: metrics blocks); give none to skip")
     t.add("--covariates", nargs="+", metavar="COL",
           help="columns of the groups table to adjust for; text columns become indicator columns (not used by NBS)")
+    t.add("--correction", choices=list(CORRECTIONS),
+          help="required for the comparisons: which p-value marks a result significant, FDR-corrected, family-wise "
+               "(max-T permutations) or uncorrected; the tables hold all three")
+    t.add("--alpha", type=float, help="significance level for the comparisons (default: 0.05)")
     t.add("--n-perms", type=int, default=5000, help="permutations for the comparisons and NBS (default: 5000)")
     t.add("--nbs-thresh", type=float, help="t-statistic threshold for keeping an edge; runs NBS")
     t.add("--nbs-tail", choices=["both", "left", "right"], default="both", help="tail of the test (default: both)")
@@ -129,9 +133,12 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, argparse.ArgumentPa
         parser.error("--nbs-thresh needs --groups, --group-column and --contrast")
     if args.groups and not (args.group_column and args.contrast):
         parser.error("--groups needs --group-column and --contrast")
-    for flag, value in (("--compare", args.compare), ("--covariates", args.covariates)):
+    for flag, value in (("--compare", args.compare), ("--covariates", args.covariates),
+                        ("--correction", args.correction), ("--alpha", args.alpha)):
         if value is not None and not args.groups:
             parser.error(f"{flag} needs --groups")
+    if args.alpha is None:
+        args.alpha = 0.05
     if args.n_perms < 1:
         parser.error("--n-perms must be at least 1")
     return args, parser

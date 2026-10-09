@@ -148,3 +148,25 @@ def test_participants_without_data_are_left_out_with_a_warning(dataset, graph_re
 def test_a_drawn_seed_is_recorded(dataset, graph_result):
     result = compare_groups(_labels(dataset), ("A", "B"), graph_result, compare=["metrics"], n_perms=10, verbose=False)
     assert isinstance(result.params["options"]["seed"], int)
+
+
+@pytest.mark.parametrize("correction, column", [("fdr", "p_fdr"), ("fwe", "p_fwe"), ("none", "p")])
+def test_the_chosen_correction_marks_the_significant_rows(correction, column):
+    values, group1 = _family()
+    values["c1"] = 1.0
+    table = permuted_t_test(values, group1, n_perms=50, seed=0, correction=correction, alpha=0.05)
+    assert table["significant"].tolist() == (table[column] < 0.05).tolist()
+    assert table.loc["c0", "significant"] and not table.loc["c1", "significant"]
+
+
+def test_compare_groups_records_the_correction(dataset, graph_result):
+    result = compare_groups(_labels(dataset), ("A", "B"), graph_result, compare=["metrics"], n_perms=10, seed=0,
+                            verbose=False, correction="fwe", alpha=0.01)
+    assert result.params["options"]["correction"] == "fwe" and result.params["options"]["alpha"] == 0.01
+    assert all("significant" in t for t in result.tables.values())
+    without = compare_groups(_labels(dataset), ("A", "B"), graph_result, compare=["metrics"], n_perms=10, seed=0,
+                             verbose=False)
+    assert not any("significant" in t for t in without.tables.values())
+    with pytest.raises(ValueError, match="correction"):
+        compare_groups(_labels(dataset), ("A", "B"), graph_result, compare=["metrics"], verbose=False,
+                       correction="bonferroni")

@@ -37,7 +37,7 @@ conngraph derivatives/xcpd results participant --input-type xcpd --atlases Gordo
 
 conngraph derivatives/xcpd results group --input-type xcpd --atlases Gordon \
     --groups participants.tsv --group-column group --contrast PT HC --covariates age sex \
-    --nbs-thresh 3.5 --random-seed 1
+    --correction fdr --nbs-thresh 3.5 --random-seed 1
 ```
 
 ## Input
@@ -102,6 +102,6 @@ OUTPUT/
 
 Without sessions the `ses-` folders are left out; matrix and time series input has no atlas folder. fNIRS channels have no networks, so only the node level is computed.
 
-Each `compare/` table has one row per test with the t statistic (positive when the first group of `--contrast` is higher), its p-value, FDR-corrected and family-wise (max-T, `--n-perms` permutations) p-values, and the group means and sizes. Corrections apply within a family: one metric at one level, the whole-graph metrics of one level, the network blocks of one level, or all edges. Values missing or constant across participants are not tested.
+Each `compare/` table has one row per test with the t statistic (positive when the first group of `--contrast` is higher), its p-value, FDR-corrected and family-wise (max-T, `--n-perms` permutations) p-values, the group means and sizes, and whether the result is significant under the `--correction` you chose (FDR, family-wise or uncorrected; required, with `--alpha`, default 0.05). Corrections apply within a family: one metric at one level, the whole-graph metrics of one level, the network blocks of one level, or all edges. Values missing or constant across participants are not tested.
 
 Nodes with too many missing values are dropped by looking at every participant in `INPUT`, so participants run one at a time get the same nodes as a single run. The group level checks that all participants were run with the same options. If one session or atlas fails, the others still run, and `OUTPUT/logs/` (participant) or the group folder holds `error.txt`.

@@ -26,6 +26,9 @@ def run(args: argparse.Namespace, parser: argparse.ArgumentParser, session: str 
     sidecars = _participant_results(args, session, variant)
     where = " ".join(x for x in (session, variant) if x)
     compare = _comparisons(args, parser, sidecars)
+    if compare and args.correction is None:
+        raise SystemExit(f"{parser.prog}: choose how to correct the group comparisons with --correction fdr, fwe or "
+                         "none (or skip them with an empty --compare)")
     if not sidecars and args.nbs_thresh is None and not compare:
         raise SystemExit(f"{parser.prog}: no participant-level results in {args.output_dir}"
                          + (f" for {where}" if where else "") + "; run the participant level first")
@@ -197,7 +200,7 @@ def _compare(args, parser, compare, result, matrices, groups, rows, missing, atl
         comparison = compare_groups(groups, args.contrast, result, matrices if "edges" in compare else None, compare,
                                     covariates=rows[args.covariates] if args.covariates else None,
                                     n_perms=args.n_perms, seed=args.random_seed, apply_fisher_z=not args.no_fisher_z,
-                                    verbose=not args.quiet)
+                                    verbose=not args.quiet, correction=args.correction, alpha=args.alpha)
     except ValueError as exc:
         raise SystemExit(f"{parser.prog}: {exc}") from None
     params = comparison.params

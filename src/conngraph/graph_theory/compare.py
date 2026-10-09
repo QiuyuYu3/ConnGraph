@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 
 COMPARISONS = ("metrics", "blocks", "edges")
+CORRECTIONS = {"fdr": "p_fdr", "fwe": "p_fwe", "none": "p"}
 # Result attribute, file label and row name of each level
 _METRIC_LEVELS = (("node_df", "node", "node"), ("network_df", "network", "network"),
                   ("net_hemi_df", "networkhemi", "network"))
@@ -30,8 +31,9 @@ class GroupComparisonResult:
 
 
 def permuted_t_test(values: pd.DataFrame, group1: pd.Series, covariates: pd.DataFrame | None = None,
-                    n_perms: int = 5000, seed: int = 0) -> pd.DataFrame:
-    """Group 1 vs group 2 for each column, one family: t, parametric p, FDR p and max-T permutation FWE p."""
+                    n_perms: int = 5000, seed: int = 0, correction: str | None = None,
+                    alpha: float = 0.05) -> pd.DataFrame:
+    """Group 1 vs group 2 per column, one family: t, p, FDR p, max-T FWE p, and "significant" under a correction."""
     from nilearn.mass_univariate import permuted_ols
     from scipy import stats
 
@@ -57,6 +59,8 @@ def permuted_t_test(values: pd.DataFrame, group1: pd.Series, covariates: pd.Data
         out.loc[tested, "p_fdr"] = stats.false_discovery_control(p)
         out.loc[tested, "p_fwe"] = 10 ** -res["logp_max_t"][0]
     out[["n_group1", "n_group2"]] = out[["n_group1", "n_group2"]].astype(int)
+    if correction is not None:
+        out["significant"] = (out[CORRECTIONS[correction]] < alpha).to_numpy()
     return out
 
 
@@ -71,6 +75,8 @@ def compare_groups(
     seed: int | None = None,
     apply_fisher_z: bool = True,
     verbose: bool = True,
+    correction: str | None = None,
+    alpha: float = 0.05,
 ) -> GroupComparisonResult:
     """
     Compare two groups on graph metrics, network blocks and edges, with each family corrected on its own.
@@ -88,6 +94,8 @@ def compare_groups(
     n_perms      : permutations for the family-wise p-values.
     seed         : random seed; when None, the seed drawn is recorded in ``result.params``.
     apply_fisher_z : Fisher z-transform the edges before testing.
+    correction   : "fdr", "fwe" or "none": adds a "significant" column marking p-values of that kind below alpha.
+                   Every table holds all three kinds of p-value whichever is chosen.
 
     Returns
     -------
@@ -100,6 +108,8 @@ def compare_groups(
     unknown = [c for c in compare if c not in COMPARISONS]
     if unknown or not compare:
         raise ValueError(f"compare must name some of {', '.join(COMPARISONS)}, got {compare}")
+    if correction is not None and correction not in CORRECTIONS:
+        raise ValueError(f"correction must be one of {', '.join(CORRECTIONS)}, got {correction!r}")
     if len(contrast) != 2 or contrast[0] == contrast[1]:
         raise ValueError(f"contrast must name two different groups, got {list(contrast)}")
     if {"metrics", "blocks"} & set(compare) and metrics is None:
@@ -153,7 +163,8 @@ def compare_groups(
     for name, rows, wide in families:
         if verbose:
             print(f"Comparing {name}: {wide.shape[1]} tests, {n_perms} permutations")
-        table = permuted_t_test(wide.loc[ids], group1, design, n_perms=n_perms, seed=seed)
+        table = permuted_t_test(wide.loc[ids], group1, design, n_perms=n_perms, seed=seed, correction=correction,
+                                alpha=alpha)
         skipped = rows[table["t"].isna().to_numpy()]
         if len(skipped):
             untested.setdefault(name, []).extend(" / ".join(map(str, r)) for r in skipped.itertuples(index=False))
@@ -166,6 +177,7 @@ def compare_groups(
         "python": platform.python_version(),
         "packages": _package_versions(),
         "options": {"compare": compare, "n_perms": n_perms, "seed": seed, "apply_fisher_z": apply_fisher_z,
+                    "correction": correction, "alpha": alpha,
                     "covariates": [] if covariates is None else list(map(str, covariates.columns))},
         "contrast": list(contrast),
         "groups": {"g1": list(group1.index[group1]), "g2": list(group1.index[~group1])},

@@ -569,7 +569,7 @@ NETWORK = ["--graph-method", "density", "--graph-param", "density=0.3", "--metri
 
 def _compare_args(groups, *extra):
     return ["--groups", str(groups), "--group-column", "dx", "--contrast", "A", "B", "--n-perms", "20",
-            "--random-seed", "0", "--no-report", *extra]
+            "--random-seed", "0", "--correction", "fdr", "--no-report", *extra]
 
 
 def test_a_groups_table_compares_metrics_and_blocks_by_default(dataset, xcpd, tmp_path):
@@ -581,7 +581,7 @@ def test_a_groups_table_compares_metrics_and_blocks_by_default(dataset, xcpd, tm
                                                              "metrics_node.tsv"]
     node = pd.read_csv(compare / "metrics_node.tsv", sep="\t")
     assert list(node.columns) == ["metric", "node", "t", "p", "p_fdr", "p_fwe", "mean_group1", "mean_group2",
-                                  "n_group1", "n_group2"]
+                                  "n_group1", "n_group2", "significant"]
     assert len(node) == len(dataset.nodes_df) and set(node["metric"]) == {"strength.abs"}
     params = _params(compare)
     assert params["groups"] == {"g1": ["01", "02", "03"], "g2": ["04", "05", "06"]}
@@ -637,7 +637,8 @@ def test_covariates_come_from_the_groups_table(xcpd, tmp_path):
         cli.main([str(root), str(out), "group", *XCPD, *_compare_args(table, "--covariates", "sex"), "--quiet"])
 
 
-@pytest.mark.parametrize("option", [["--compare", "edges"], ["--covariates", "age"], ["--groups", "g.tsv"]])
+@pytest.mark.parametrize("option", [["--compare", "edges"], ["--covariates", "age"], ["--groups", "g.tsv"],
+                                    ["--correction", "fdr"], ["--alpha", "0.01"]])
 def test_comparison_options_need_a_complete_groups_table(xcpd, tmp_path, capsys, option):
     root, _, _ = xcpd
     with pytest.raises(SystemExit):
@@ -655,3 +656,17 @@ def test_nbs_warns_that_it_ignores_covariates(xcpd, tmp_path):
         cli.main([str(root), str(tmp_path / "out"), "group", *XCPD, *_compare_args(table, "--covariates", "age"),
                   "--nbs-thresh", "1.0", "--n-jobs", "1", "--quiet"])
     assert (tmp_path / "out" / "group" / "ses-01" / "atlas-Toy" / "nbs" / "nbs_components.tsv").exists()
+
+
+def test_comparisons_need_a_chosen_correction(xcpd, tmp_path):
+    root, _, groups = xcpd
+    args = [a for a in _compare_args(groups, "--compare", "edges") if a not in ("--correction", "fdr")]
+    with pytest.raises(SystemExit, match="--correction"):
+        cli.main([str(root), str(tmp_path / "out"), "group", *XCPD, *args, "--quiet"])
+    out = tmp_path / "out2"
+    cli.main([str(root), str(out), "group", *XCPD, *_compare_args(groups, "--compare", "edges"), "--alpha", "0.2",
+              "--quiet"])
+    compare = out / "group" / "ses-01" / "atlas-Toy" / "compare"
+    edges = pd.read_csv(compare / "edges.tsv", sep="\t")
+    assert edges["significant"].tolist() == (edges["p_fdr"] < 0.2).tolist()
+    assert _params(compare)["options"]["alpha"] == 0.2
