@@ -179,10 +179,15 @@ def main(argv: list[str] | None = None) -> int:
     with tempfile.TemporaryDirectory(prefix="conngraph_report_") as work:
         # each session and atlas leaves its report section here; the pages are put together once all have run
         args.report_dir = work if reports else None
+        args.failed_reports = []
         code = _shared.run_all(args, parser, lambda session, variant: run(args, parser, session, variant, command),
                                "logs" if args.analysis_level == "participant" else "group")
         if reports:
             participant.write_reports(args, parser)
+        if args.failed_reports:
+            print(f"{parser.prog}: {len(args.failed_reports)} participant report(s) failed: "
+                  f"{', '.join(args.failed_reports)}", file=sys.stderr)
+            code = 1
     if not args.reports_only:
         _shared.write_description(args.output_dir, args.input_dir, command)
     return code

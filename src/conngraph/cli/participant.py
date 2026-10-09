@@ -6,7 +6,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
+import sys
+import traceback
+from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 import pandas as pd
@@ -69,11 +73,44 @@ def rebuild(args: argparse.Namespace, parser: argparse.ArgumentParser, session: 
 
 
 def _sections(args, parser, ids, matrices, atlas, session, variant) -> None:
+    """Each participant's report section, in parallel worker processes; a failure is logged and the rest go on."""
     nodes = _shared.report_nodes(args, atlas, variant)
     nodes = atlas if nodes is None else nodes
     meshes = _meshes(args, nodes)
-    for sid in ids:
-        _save_section(args, parser, sid, matrices[sid], nodes, session, variant, meshes)
+    jobs = {sid: (args, parser, sid, matrices[sid], nodes, session, variant, meshes) for sid in ids}
+    workers = max(1, (os.cpu_count() or 2) - 1) if args.n_jobs == -1 else max(1, args.n_jobs)
+    if min(workers, len(ids)) == 1:
+        errors = {sid: _try_section(*job) for sid, job in jobs.items()}
+    else:
+        with ProcessPoolExecutor(max_workers=min(workers, len(ids))) as pool:
+            futures = {sid: pool.submit(_try_section, *job) for sid, job in jobs.items()}
+            errors = {}
+            for sid, future in futures.items():
+                try:
+                    errors[sid] = future.result()
+                except Exception:  # a worker that died takes no traceback with it
+                    errors[sid] = traceback.format_exc()
+    for sid, error in errors.items():
+        if error:
+            _log_failed_report(args, parser, sid, session, variant, error)
+
+
+def _try_section(*job) -> str | None:
+    try:
+        _save_section(*job)
+    except Exception:
+        return traceback.format_exc()
+    return None
+
+
+def _log_failed_report(args, parser, sid, session, variant, error: str) -> None:
+    name = file_stem(sid, None, None)[1]
+    folder = _shared.run_folder(args.output_dir, "logs", session, variant)
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / f"report-{name}.err").write_text(error, encoding="utf-8")
+    where = " ".join(x for x in (name, session, variant) if x)
+    print(f"{parser.prog}: report for {where} failed; see {folder / f'report-{name}.err'}", file=sys.stderr)
+    args.failed_reports.append(where)
 
 
 def _sidecar(args: argparse.Namespace, sid: str, session: str | None, variant: str | None) -> pathlib.Path:

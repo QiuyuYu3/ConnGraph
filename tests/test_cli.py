@@ -760,6 +760,46 @@ def test_participant_level_writes_one_report_per_participant(dataset, xcpd, surf
     assert sorted(p.name for p in (out / "sub-01" / "figures").glob("*.html")) == [p[:-4] + ".html" for p in pngs]
 
 
+def test_participant_reports_built_in_parallel_match_those_built_one_by_one(xcpd, surfaces, tmp_path):
+    import re
+
+    root, coords, _ = xcpd
+    pages = {}
+    for n_jobs in ("1", "3"):
+        out = tmp_path / n_jobs
+        assert cli.main([str(root), str(out), "participant", *XCPD, "--graph-method", "density", "--graph-param",
+                         "density=0.3", "--level", "node", "--metrics", "strength", "--coords", str(coords),
+                         "--surfaces", *surfaces, "--n-jobs", n_jobs, "--quiet"]) == 0
+        # plotly ids, the time and the command line differ between any two runs
+        pages[n_jobs] = {p.name: re.sub(r"[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}|\d{4}-\d\d-\d\d \d\d:\d\d:\d\d"
+                                        r"|<pre>conngraph .*?</pre>", "", p.read_text(encoding="utf-8"))
+                         for p in out.glob("sub-*.html")}
+        assert sorted(p.name for p in out.glob("sub-*/figures/*.png")) == [
+            f"sub-{i:02d}_ses-01_atlas-Toy_brain_strength.abs.png" for i in range(1, 7)]
+    assert len(pages["1"]) == 6 and pages["1"] == pages["3"]
+
+
+def test_a_failed_participant_report_is_logged_and_the_others_are_written(xcpd, tmp_path, monkeypatch, capsys):
+    from conngraph.cli import participant
+
+    def fail_for_sub02(args, parser, sid, *rest):
+        if sid.removeprefix("sub-").startswith("02"):
+            raise RuntimeError("cannot draw sub-02")
+        save(args, parser, sid, *rest)
+
+    save = participant._save_section
+    monkeypatch.setattr(participant, "_save_section", fail_for_sub02)
+    root, _, _ = xcpd
+    out = tmp_path / "out"
+    code = cli.main([str(root), str(out), "participant", *XCPD, "--graph-method", "density", "--graph-param",
+                     "density=0.3", "--level", "node", "--metrics", "strength", "--n-jobs", "1", "--quiet"])
+    assert code == 1
+    assert sorted(p.name for p in out.glob("sub-*.html")) == [f"sub-{i:02d}.html" for i in (1, 3, 4, 5, 6)]
+    log = next(out.glob("logs/**/report-sub-02.err"))
+    assert "RuntimeError: cannot draw sub-02" in log.read_text(encoding="utf-8")
+    assert "1 participant report(s) failed: sub-02" in capsys.readouterr().err
+
+
 def test_participant_reports_can_be_skipped(xcpd, tmp_path):
     root, _, _ = xcpd
     out = tmp_path / "out"
