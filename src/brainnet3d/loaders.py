@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import glob
+import pathlib
 import warnings
 
 import numpy as np
@@ -55,14 +56,16 @@ def load(
     matrix : str | pd.DataFrame | np.ndarray
         A labelled square CSV/TSV (ROI labels as the first column and as
         column headers), an unlabelled square matrix (.csv, .tsv, .txt, .1D,
-        .npy, .mat or an array) whose rows follow the order of `nodes`, or a
-        CIFTI .pconn.nii, which carries its own parcel names.
+        .npy, .mat or an array) whose rows follow the order of `nodes`, a
+        CIFTI .pconn.nii or an AFNI 3dNetCorr .netcc, which carry their own region names.
     nodes : str | pd.DataFrame
         Path to a CSV/TSV with at minimum: label, x, y, z.
     subject_id : label for this subject inside the dataset.
     bad_node_threshold : drop ROIs where NaN fraction exceeds this (0–1).
-    values : "r" for correlations, "z" for Fisher z values (converted back to r).
-    mat_key : variable to read from a .mat file holding more than one square matrix.
+    values : "r" for correlations, "z" for Fisher z values (converted back to r);
+        for a .netcc file, "r" reads its CC matrix and "z" its FZ matrix.
+    mat_key : variable to read from a .mat file holding more than one square matrix,
+        or the .netcc matrix to read (CC, FZ, PC or PCB).
 
     Returns
     -------
@@ -89,17 +92,20 @@ def load_group(
     drop_mode: str = "union",
     values: str = "r",
     mat_key: str | None = None,
+    subject_ids: list[str] | None = None,
 ) -> ConnectivityDataset:
     """
     Load a multi-subject connectivity dataset.
 
     Parameters
     ----------
-    matrices : str | dict
+    matrices : str | dict | np.ndarray | list
         Directory path → scans for files matching `pattern`.
         Subject IDs are extracted from the file name, without its extension,
-        before the first underscore (e.g. ``sub-001_matrix.csv`` → ``sub-001``).
+        before the first underscore (e.g. ``sub-001_matrix.csv`` → ``sub-001``),
+        or, when `pattern` has a folder part (``*/corr_000.netcc``), are the folder names.
         Dict → ``{subject_id: path_DataFrame_or_array}``.
+        A subjects × nodes × nodes array or a list of arrays, as nilearn returns them, is named by `subject_ids`.
         Each matrix may be in any form :func:`load` accepts.
     nodes : str | pd.DataFrame
         Same as :func:`load`.
@@ -109,6 +115,7 @@ def load_group(
                 "intersection" removes only nodes bad in ALL subjects.
     values : same as :func:`load`.
     mat_key : same as :func:`load`.
+    subject_ids : names for an array or list input; defaults to sub-01, sub-02, ...
 
     Returns
     -------
@@ -117,21 +124,8 @@ def load_group(
     _check_values(values)
     nodes_df = _read_nodes(nodes)
     labels   = nodes_df["label"].tolist()
-    raw: dict[str, pd.DataFrame] = {}
-
-    if isinstance(matrices, str) and os.path.isdir(matrices):
-        paths = sorted(glob.glob(os.path.join(matrices, pattern)))
-        if not paths:
-            raise FileNotFoundError(
-                f"No files matching '{pattern}' found in {matrices}"
-            )
-        for p in paths:
-            raw[subject_id_from_path(p)] = _read_matrix(p, labels, mat_key, values)
-    elif isinstance(matrices, dict):
-        for sub_id, src in matrices.items():
-            raw[sub_id] = _read_matrix(src, labels, mat_key, values)
-    else:
-        raise TypeError("`matrices` must be a directory path (str) or a dict.")
+    sources  = _sources(matrices, pattern, subject_ids, "matrices")
+    raw = {sid: _read_matrix(src, labels, mat_key, values) for sid, src in sources.items()}
 
     before = raw
     raw = _drop_bad_nodes(raw, bad_node_threshold, drop_mode)
@@ -152,18 +146,21 @@ def load_timeseries(
     bad_node_threshold: float = 0.9,
     drop_mode: str = "union",
     mat_key: str | None = None,
+    subject_ids: list[str] | None = None,
 ) -> ConnectivityDataset:
     """
     Load regional time series and turn them into connectivity matrices.
 
     Parameters
     ----------
-    timeseries : str | dict
-        Directory path or ``{subject_id: source}``, as in :func:`load_group`.
+    timeseries : str | dict | np.ndarray | list
+        Directory path, ``{subject_id: source}``, a subjects × time × regions
+        array or a list of arrays, as in :func:`load_group`.
         Each source holds time points in rows and regions in columns: a CSV/TSV
         whose header names the regions, an unlabelled table (.csv, .tsv, .txt,
         .1D, .npy, .mat or an array) whose columns follow the order of `nodes`,
-        or a CIFTI .ptseries.nii, which carries its own parcel names.
+        a CIFTI .ptseries.nii, which carries its own parcel names, or an AFNI
+        3dNetCorr .netts file (one region per row, in the order of `nodes`).
     nodes : str | pd.DataFrame
         Same as :func:`load`.
     pattern : glob pattern used when `timeseries` is a directory.
@@ -171,6 +168,7 @@ def load_timeseries(
     bad_node_threshold : below 1, regions with missing or constant time series are dropped.
     drop_mode : "union" drops a region unusable in ANY subject, "intersection" only one unusable in ALL.
     mat_key : variable to read from a .mat file holding more than one 2-D array.
+    subject_ids : names for an array or list input; defaults to sub-01, sub-02, ...
 
     Returns
     -------
@@ -181,16 +179,8 @@ def load_timeseries(
     check_kind(kind)
     nodes_df = _read_nodes(nodes)
     labels   = nodes_df["label"].tolist()
-    if isinstance(timeseries, str) and os.path.isdir(timeseries):
-        paths = sorted(glob.glob(os.path.join(timeseries, pattern)))
-        if not paths:
-            raise FileNotFoundError(f"No files matching '{pattern}' found in {timeseries}")
-        sources = {subject_id_from_path(p): p for p in paths}
-    elif isinstance(timeseries, dict):
-        sources = timeseries
-    else:
-        raise TypeError("`timeseries` must be a directory path (str) or a dict.")
-    series = {sid: _read_timeseries(src, labels, mat_key) for sid, src in sources.items()}
+    sources  = _sources(timeseries, pattern, subject_ids, "timeseries")
+    series ={sid: _read_timeseries(src, labels, mat_key) for sid, src in sources.items()}
     matrices = series_to_matrices(series, kind, shrinkage, bad_node_threshold, drop_mode)
 
     nodes_df = _align_nodes(nodes_df, next(iter(matrices.values())))
@@ -229,6 +219,8 @@ def _read_timeseries(src, labels: list[str], mat_key: str | None) -> pd.DataFram
 
         img = nib.load(src)
         return pd.DataFrame(np.asarray(img.get_fdata()), columns=[str(n) for n in img.header.get_axis(1).name])
+    if src.endswith(".netts"):
+        return _read_netts(src, labels)
 
     delimiter = {".csv": ",", ".tsv": "\t"}.get(os.path.splitext(src)[1])
     if _first_row_is_header(src, delimiter, labels):
@@ -248,6 +240,42 @@ def _first_row_is_header(path: str, delimiter: str | None, labels: list[str]) ->
     return set(tokens) <= set(labels) and len(set(tokens)) == len(tokens)
 
 
+def _read_netts(path: str, labels: list[str]) -> pd.DataFrame:
+    """AFNI 3dNetCorr time series: one region per row, led by its ROI value when written with -ts_label."""
+    arr = np.loadtxt(path, ndmin=2)
+    with open(path, encoding="utf-8") as f:
+        first = f.readline().split()[0]
+    if "." not in first:
+        arr = arr[:, 1:]
+    return _labelled_series(arr.T, labels, path)
+
+
+def _read_netcc(path: str, block: str) -> pd.DataFrame:
+    """One matrix block (CC, FZ, PC or PCB) of an AFNI 3dNetCorr .netcc file, named by its ROI labels."""
+    with open(path, encoding="utf-8") as f:
+        lines = [ln.rstrip("\n") for ln in f if ln.strip()]
+    names, blocks, current, i = None, {}, None, 0
+    while i < len(lines):
+        line = lines[i]
+        head = line.lstrip("#").strip()
+        if line.startswith("# WITH_ROI_LABELS"):
+            names = [s.strip() for s in lines[i + 1].split("\t")]
+            i += 3
+            continue
+        if line.startswith("#"):
+            current = head if head.isalpha() else None
+            if current:
+                blocks[current] = []
+        elif current is not None:
+            blocks[current].append([float(x) for x in line.split()])
+        elif names is None:
+            names = line.split()
+        i += 1
+    if block not in blocks:
+        raise DataValidationError(f"No matrix '{block}' in '{path}'; it holds {list(blocks)}.")
+    return pd.DataFrame(np.array(blocks[block]), index=names, columns=names)
+
+
 def _labelled_series(arr: np.ndarray, labels: list[str], src: str) -> pd.DataFrame:
     arr = np.asarray(arr, dtype=float)
     if arr.ndim != 2 or arr.shape[1] != len(labels):
@@ -258,16 +286,50 @@ def _labelled_series(arr: np.ndarray, labels: list[str], src: str) -> pd.DataFra
     return pd.DataFrame(arr, columns=labels)
 
 
-_EXTENSIONS =(".pconn.nii", ".ptseries.nii", ".npy", ".mat", ".csv", ".tsv", ".txt", ".1D")
+_EXTENSIONS = (".pconn.nii", ".ptseries.nii", ".netcc", ".netts", ".npy", ".mat", ".csv", ".tsv", ".txt", ".1D")
 
 
-def subject_id_from_path(path: str) -> str:
+def subject_id_from_path(path: str, root: str | None = None) -> str:
+    """The folder name for files in per-subject folders under root, else the file name before its first underscore."""
+    if root is not None:
+        parts = pathlib.Path(os.path.relpath(path, root)).parts
+        if len(parts) > 1:
+            return parts[0]
     name = os.path.basename(path)
     for ext in _EXTENSIONS:
         if name.endswith(ext):
             name = name[: -len(ext)]
             break
     return name.split("_")[0]
+
+
+def subject_files(root: str, pattern: str) -> dict[str, str]:
+    paths = sorted(glob.glob(os.path.join(root, pattern)))
+    if not paths:
+        raise FileNotFoundError(f"No files matching '{pattern}' found in {root}")
+    files: dict[str, str] = {}
+    for p in paths:
+        sid = subject_id_from_path(p, root)
+        if sid in files:
+            raise DataValidationError(
+                f"Two files give subject ID '{sid}': {files[sid]} and {p}; narrow the pattern."
+            )
+        files[sid] = p
+    return files
+
+
+def _sources(given, pattern: str, subject_ids: list[str] | None, name: str) -> dict:
+    if isinstance(given, str) and os.path.isdir(given):
+        return subject_files(given, pattern)
+    if isinstance(given, dict):
+        return given
+    if isinstance(given, (np.ndarray, list, tuple)):
+        items = list(given)
+        ids = subject_ids if subject_ids is not None else [f"sub-{i:02d}" for i in range(1, len(items) + 1)]
+        if len(ids) != len(items):
+            raise ValueError(f"subject_ids has {len(ids)} names for {len(items)} subjects")
+        return dict(zip(ids, items))
+    raise TypeError(f"`{name}` must be a directory path, a dict, an array or a list of arrays.")
 
 
 def _check_values(values: str) -> None:
@@ -281,7 +343,7 @@ def _read_matrix(
     mat_key: str | None = None,
     values: str = "r",
 ) -> pd.DataFrame:
-    df = _read_square(src, labels, mat_key)
+    df = _read_square(src, labels, mat_key, values)
     if df.shape[0] != df.shape[1]:
         raise DataValidationError(
             f"Matrix in '{src}' is not square: {df.shape}. "
@@ -290,7 +352,7 @@ def _read_matrix(
     return np.tanh(df) if values == "z" else df
 
 
-def _read_square(src, labels: list[str] | None, mat_key: str | None) -> pd.DataFrame:
+def _read_square(src, labels: list[str] | None, mat_key: str | None, values: str = "r") -> pd.DataFrame:
     if isinstance(src, pd.DataFrame):
         return src.copy()
     if isinstance(src, np.ndarray):
@@ -301,6 +363,8 @@ def _read_square(src, labels: list[str] | None, mat_key: str | None) -> pd.DataF
         return _labelled(_read_mat(src, mat_key), labels, src)
     if src.endswith(".pconn.nii"):
         return _read_pconn(src)
+    if src.endswith(".netcc"):
+        return _read_netcc(src, mat_key or ("FZ" if values == "z" else "CC"))
 
     headerless = _read_headerless(src)
     if headerless is not None and labels is not None and headerless.shape == (len(labels), len(labels)):

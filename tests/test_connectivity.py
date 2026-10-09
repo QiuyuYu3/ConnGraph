@@ -162,3 +162,32 @@ def test_load_timeseries_tolerates_a_region_only_some_files_have():
 def test_load_timeseries_column_count_must_match_node_table():
     with pytest.raises(DataValidationError, match="node table"):
         bnv.load_timeseries({"sub-a": _series().to_numpy()}, _nodes().iloc[:5])
+
+
+def test_load_timeseries_takes_a_list_or_stack_of_arrays():
+    arrays = [_series(seed=s).to_numpy() for s in range(2)]
+    for given in (arrays, np.stack(arrays)):
+        ds = bnv.load_timeseries(given, _nodes(), subject_ids=["a", "b"])
+        assert list(ds.matrices) == ["a", "b"]
+        np.testing.assert_allclose(ds.matrices["b"].to_numpy(), np.corrcoef(arrays[1].T), atol=1e-12)
+    assert list(bnv.load_timeseries(arrays, _nodes()).matrices) == ["sub-01", "sub-02"]
+
+
+@pytest.mark.parametrize("with_labels", [False, True])
+def test_load_timeseries_reads_afni_netts_one_region_per_row(tmp_path, with_labels):
+    ts = _series()
+    with open(tmp_path / "corr_000.netts", "w", encoding="utf-8") as f:
+        for i, col in enumerate(LABELS):
+            values = "\t".join(f"{x:.3e}" for x in ts[col])
+            f.write((f"{10 * (i + 1)}\t" if with_labels else "") + values + "\n")
+    rounded = np.array([[float(f"{x:.3e}") for x in ts[col]] for col in LABELS]).T
+    mat = bnv.load_timeseries({"s115": str(tmp_path / "corr_000.netts")}, _nodes()).matrices["s115"]
+    np.testing.assert_allclose(mat.to_numpy(), np.corrcoef(rounded.T), atol=1e-12)
+
+
+def test_load_timeseries_names_subjects_after_their_folders(tmp_path):
+    for i, sid in enumerate(("s115", "s116")):
+        (tmp_path / sid).mkdir()
+        _series(seed=i).to_csv(tmp_path / sid / "ts.csv", index=False)
+    ds = bnv.load_timeseries(str(tmp_path), _nodes(), pattern="*/ts.csv")
+    assert sorted(ds.matrices) == ["s115", "s116"]

@@ -259,3 +259,66 @@ def test_load_group_subject_id_drops_the_extension(tmp_path):
         np.save(tmp_path / f"{sid}.npy", _matrix().to_numpy())
     ds = bnv.load_group(str(tmp_path), _nodes(), pattern="*.npy")
     assert sorted(ds.matrices) == ["sub01", "sub02"]
+
+
+def test_load_group_takes_a_stack_of_matrices():
+    stack = np.stack([_matrix(seed=s).to_numpy() for s in range(3)])
+    ds = bnv.load_group(stack, _nodes(), subject_ids=["a", "b", "c"])
+    assert list(ds.matrices) == ["a", "b", "c"]
+    np.testing.assert_array_equal(ds.matrices["c"].to_numpy(), stack[2])
+    assert list(bnv.load_group(stack, _nodes()).matrices) == ["sub-01", "sub-02", "sub-03"]
+    with pytest.raises(ValueError, match="subject_ids"):
+        bnv.load_group(stack, _nodes(), subject_ids=["a"])
+
+
+def test_load_group_names_subjects_after_their_folders(tmp_path):
+    for sid in ("s115", "s116"):
+        (tmp_path / sid).mkdir()
+        np.save(tmp_path / sid / "corr_000.npy", _matrix().to_numpy())
+    ds = bnv.load_group(str(tmp_path), _nodes(), pattern="*/corr_000.npy")
+    assert sorted(ds.matrices) == ["s115", "s116"]
+
+
+def test_load_group_refuses_two_files_for_one_subject(tmp_path):
+    for name in ("sub-01_run-1.npy", "sub-01_run-2.npy"):
+        np.save(tmp_path / name, _matrix().to_numpy())
+    with pytest.raises(bnv.exceptions.DataValidationError, match="sub-01"):
+        bnv.load_group(str(tmp_path), _nodes(), pattern="*.npy")
+
+
+AFNI_NAMES = [f"name_{lbl}" for lbl in LABELS]
+
+
+def _write_netcc(path, blocks, names=AFNI_NAMES):
+    # laid out as 3dNetCorr writes it
+    n = len(names)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(f"# {n}  # Number of network ROIs\n# {len(blocks)}  # Number of netcc matrices\n# WITH_ROI_LABELS\n")
+        f.write("".join(f" {s:>10s} \t" for s in names[:-1]) + f"  {names[-1]:>10s}\n")
+        values = [10 * (i + 1) for i in range(n)]
+        f.write("".join(f" {v:10d} \t" for v in values[:-1]) + f"  {values[-1]:10d}\n")
+        for name, mat in blocks.items():
+            f.write(f"# {name}\n")
+            for row in mat:
+                f.write("\t".join(f"{x:12.4f}" for x in row) + "\n")
+
+
+def _afni_nodes():
+    return pd.DataFrame({"label": AFNI_NAMES, "x": 0.0, "y": 0.0, "z": 0.0})
+
+
+def test_load_reads_afni_netcc_blocks(tmp_path):
+    r = np.round(_matrix().to_numpy(), 4)
+    np.fill_diagonal(r, 1.0)
+    z = np.round(np.arctanh(np.clip(r, -0.9999, 0.9999)), 4)
+    partial = np.round(r / 2, 4)
+    _write_netcc(tmp_path / "corr_000.netcc", {"CC": r, "FZ": z, "PC": partial})
+    cc = bnv.load(str(tmp_path / "corr_000.netcc"), _afni_nodes()).matrices["single"]
+    assert cc.columns.tolist() == AFNI_NAMES
+    np.testing.assert_array_equal(cc.to_numpy(), r)
+    fz = bnv.load(str(tmp_path / "corr_000.netcc"), _afni_nodes(), values="z").matrices["single"]
+    np.testing.assert_allclose(fz.to_numpy(), np.tanh(z))
+    pc = bnv.load(str(tmp_path / "corr_000.netcc"), _afni_nodes(), mat_key="PC").matrices["single"]
+    np.testing.assert_array_equal(pc.to_numpy(), partial)
+    with pytest.raises(bnv.exceptions.DataValidationError, match=r"'PCB'[\s\S]*CC"):
+        bnv.load(str(tmp_path / "corr_000.netcc"), _afni_nodes(), mat_key="PCB")
