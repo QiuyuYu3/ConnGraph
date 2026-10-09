@@ -53,7 +53,9 @@ def test_graph_methods_follow_the_users_text_for_the_default_run(graph_result):
     assert "(van den Heuvel et al., 2017)" in plain and "(Jiang et al., 2023)" in plain
     assert "following the Brain Connectivity Toolbox (BCT; Rubinov & Sporns, 2010)" in plain
     assert "signed-weight generalization (Costantini & Perugini, 2014)" in plain
-    assert "The remaining three metrics were computed on the absolute values of the edge weights." in plain
+    assert "Metrics without a signed form were computed on the absolute values of the edge weights." in plain
+    assert "Modules were given by the networks of the node table." in plain
+    assert "run 100 times on each graph, keeping the partition with the highest modularity" in plain
     assert "Analyses were conducted at three levels." in plain
     assert "At the hemisphere-separated network level, left- and right-hemisphere ROIs" in plain
     assert "Network-level graphs were constructed with the full method instead." in plain
@@ -61,6 +63,14 @@ def test_graph_methods_follow_the_users_text_for_the_default_run(graph_result):
     assert [r.split(",")[0] for r in refs] == ["Costantini", "van den Heuvel", "Jiang", "Rubinov"]
     assert "\\cite{vandenHeuvel2017}" in text["latex"] and "TODO" in text["latex"]
     assert 'class="todo"' in text["html"]
+
+
+def test_graph_methods_keep_the_users_sentence_for_the_first_four_metrics(dataset):
+    result = compute_graph_metrics(dataset.matrices, dataset.nodes_df, level="node", network_col="network",
+                                   metrics=["clust_coeff", "btwn_cent", "strength", "ge_local"], n_jobs=1, verbose=False)
+    plain = graph_methods(result.params)["plain"]
+    assert "The remaining three metrics were computed on the absolute values of the edge weights." in plain
+    assert "Metrics without a signed form" not in plain
 
 
 def test_graph_methods_describe_an_xcpd_input(dataset):
@@ -161,7 +171,7 @@ def test_graph_report_has_every_section_and_the_methods(graph_result, surfaces, 
     path = tmp_path / "graph.html"
     graph_result.save_report(path, surfaces=surfaces, static_brain=False)
     text = path.read_text(encoding="utf-8")
-    assert _sections(text) == ["Summary", "Network", "NetworkHemi", "Node", "Errors", "Methods", "Versions"]
+    assert _sections(text) == ["Summary", "Network", "NetworkHemi", "Node", "Global", "Errors", "Methods", "Versions"]
     assert "https://cdn.plot.ly/" in text
     assert "Triangulated Maximally Filtered Graph" in text
     assert "Option 2: interactive" in text and "Option 1: static" not in text
