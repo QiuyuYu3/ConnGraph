@@ -176,7 +176,9 @@ def test_graph_report_has_every_section_and_the_methods(graph_result, surfaces, 
     assert _sections(text) == ["Summary", "Network", "NetworkHemi", "Node", "Global", "Errors", "Methods", "Versions"]
     assert "https://cdn.plot.ly/" in text
     assert "Triangulated Maximally Filtered Graph" in text
-    assert "scatter3d" in text and "Option 1: static" not in text
+    pages = sorted((tmp_path / "figures").glob("graph_brain_*.html"))
+    assert pages and "scatter3d" in pages[0].read_text(encoding="utf-8") and "scatter3d" not in text
+    assert f'href="figures/{pages[0].name}"' in text
     assert text.count('class="plotly-graph-div"') >= 8
 
 
@@ -244,7 +246,18 @@ def test_graph_report_leaves_dropped_nodes_off_the_brain(dataset, tmp_path):
                                    metrics=["strength"], n_jobs=1, verbose=False)
     assert result.node_df["strength.abs"][gone].isna().all()
     result.save_report(tmp_path / "graph.html", static_brain=False, interactive_brain=True)
-    assert "scatter3d" in (tmp_path / "graph.html").read_text(encoding="utf-8")
+    assert "scatter3d" in next((tmp_path / "figures").glob("graph_brain_*.html")).read_text(encoding="utf-8")
+
+
+def test_static_brain_draws_regions_around_ones_without_a_value(dataset, surfaces, tmp_path):
+    nodes = dataset.nodes_df.copy()
+    nodes.loc[nodes.index[:3], "network"] = "None"
+    result = compute_graph_metrics(dataset.matrices, nodes, level="node", network_col="network",
+                                   metrics=["participation"], partitions=("networks",), n_jobs=1, verbose=False)
+    assert result.node_df["participation.pos.networks"].iloc[:, :3].isna().all().all()
+    result.save_report(tmp_path / "graph.html", surfaces=surfaces)
+    brain = plt.imread(next((tmp_path / "figures").glob("graph_brain_*.png")))[..., :3]
+    assert (brain.min(axis=2) < 0.9).mean() > 0.05
 
 
 def test_graph_report_summary_names_the_time_series_measure(dataset, tmp_path):

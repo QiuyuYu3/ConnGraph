@@ -123,7 +123,7 @@ table.flat td.num, table.flat th.num { text-align: right; }
 .tab-bar > .copy { margin-left: auto; }
 .tab-content { display: none; padding-top: 1rem; }
 .tab-content.active { display: block; }
-.boilerplate-html { max-width: 100ch; font-family: var(--font-methods); font-size: 0.98rem; line-height: 1.7; }
+.boilerplate-html { font-family: var(--font-methods); font-size: 0.98rem; line-height: 1.7; }
 .boilerplate-html p { margin: 0 0 0.8rem; }
 .boilerplate-refs-title { font-size: 0.95rem; margin: 1rem 0 0.3rem; }
 .boilerplate-refs { font-size: 0.86rem; padding-left: 1.3rem; }

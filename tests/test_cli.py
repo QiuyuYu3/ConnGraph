@@ -703,13 +703,14 @@ def test_participant_level_writes_one_report_per_participant(dataset, xcpd, surf
     text = (out / "sub-01.html").read_text(encoding="utf-8")
     assert re.findall(r'<h2 id="([^"]+)"', text)[:3] == ["Summary", "ses-01_atlas-Toy", "ses-02_atlas-Toy"]
     for words in ("Overview", "Connectivity matrix", "Node metrics", "Network metrics", "Whole graph", "Graph",
-                  "scatter3d", "Methods"):
+                  "Open the rotatable 3-D view", "Methods"):
         assert words in text, words
     leftovers = [p.name for p in out.rglob("*.json") if not p.name.endswith(("_metrics.json", "description.json"))]
     assert not leftovers
     pngs = sorted(p.name for p in (out / "sub-01" / "figures").glob("*.png"))
     assert pngs == [f"sub-01_{ses}_atlas-Toy_brain_strength.abs.png" for ses in ("ses-01", "ses-02")]
-    assert all(f'src="sub-01/figures/{name}"' in text for name in pngs) and "On the brain: static" in text
+    assert all(f'src="sub-01/figures/{name}"' in text for name in pngs) and "scatter3d" not in text
+    assert sorted(p.name for p in (out / "sub-01" / "figures").glob("*.html")) == [p[:-4] + ".html" for p in pngs]
 
 
 def test_participant_reports_can_be_skipped(xcpd, tmp_path):

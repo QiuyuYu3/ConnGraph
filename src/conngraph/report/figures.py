@@ -18,7 +18,7 @@ _AXIS = dict(showline=True, linecolor="#b8c2cc", gridcolor="#eef0f3", zeroline=F
 _LEVEL_NAMES = {"node": "Node level", "network": "Network level", "network_hemi": "Network level (hemispheres)"}
 _FADED = 0.25
 # smallest plot height ordered_heatmap is laid out for, and the spacing its network names need there
-_HEATMAP_PLOT_PX = 400
+_HEATMAP_PLOT_PX = 320
 _TICK_GAP_PX = 13
 
 
@@ -102,7 +102,7 @@ def node_boxplot(values: pd.Series, networks: pd.Series, palette: dict, title: s
     for i, net in enumerate(nets):
         fig.add_traces(_box(values[networks == net], i, palette.get(net), 0.6, net, seed=i, size=5))
     _category_axis(fig, nets)
-    return style(fig, 2.2, yaxis_title=title, showlegend=False)
+    return style(fig, 3.2, yaxis_title=title, showlegend=False)
 
 
 def ordered_heatmap(M: np.ndarray, names: list[str], groups: list[str] | None, zmax: float, value: str,

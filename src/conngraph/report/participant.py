@@ -83,13 +83,13 @@ def participant_section(result, sid: str, matrix: pd.DataFrame, nodes: pd.DataFr
                         [n for n, k in zip(nets or [""] * len(cols), shown) if k], values[shown], _metric_title(m),
                         meshes), f"brain_{m}")
                 brains.append((m, _metric_title(m), html_))
-            parts.append('<div class="option-label">On the brain</div>' + _picker("node-brain", brains))
+            parts.append('<div class="option-label">On the brain</div>' + _picker("node-brain", brains, columns=1))
         elif xyz is None:
             notes.append(_no_coordinates(nodes))
         if nets is not None:
             boxes = [(m, _metric_title(m), figures.to_div(figures.node_boxplot(
                 node[m], pd.Series(nets, index=node[m].index), palette, _metric_title(m)))) for m in metrics]
-            parts.append('<div class="option-label">By network</div>' + _picker("node-box", boxes))
+            parts.append('<div class="option-label">By network</div>' + _picker("node-box", boxes, columns=1))
         if parts:
             steps.append(_step(f"{next(letter)}. Node metrics", picker=True, html="".join(parts),
                                desc="Each region's value; hover for its name."))

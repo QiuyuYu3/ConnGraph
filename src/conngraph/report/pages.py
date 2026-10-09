@@ -193,23 +193,11 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
                                desc=f"All {n_sig} significant edges with regions grouped by network: coloured by the "
                                     "group difference, then bundled through their networks and coloured by the "
                                     "networks they join."))
-        marks = [(labels[i], labels[j]) for i, j in iu] + [(labels[j], labels[i]) for i, j in iu]
-        steps.append(_step(f"{next(letter)}. Group difference", html=figures.to_div(figures.ordered_heatmap(
-            diff, labels, nets, float(np.abs(diff).max()) or 1.0, "G1 − G2", marks)),
-            desc="Group 1 minus group 2 for every edge" + (", ordered by network" if nets else "")
-                 + "; significant edges keep their colour and the others are faded."))
-        steps.append(_step(f"{next(letter)}. Group means", picker=True,
-                           html=_nbs_matrices(result, adj_sig, labels, nets, (g1, g2)),
-                           desc="Mean connectivity of each group; switch between them to compare. Significant edges "
-                                "keep their colour and the others are faded."))
-        rows = []
-        for i, j in iu:
-            row = {"ROI A": labels[i], "ROI B": labels[j]}
-            if nets:
-                row |= {"Network A": nets[i], "Network B": nets[j]}
-            rows.append(row | {"Group 1": result.mean_g1[i, j], "Group 2": result.mean_g2[i, j],
-                               "Difference": diff[i, j], "Component": int(result.adj[i, j])})
-        edges = pd.DataFrame(rows).sort_values("Difference", key=np.abs, ascending=False)
+        steps.append(_step(f"{next(letter)}. Group means and difference", picker=True,
+                           html=_nbs_matrices(result, adj_sig, labels, nets, (g1, g2), diff),
+                           desc="Mean connectivity of each group, then group 1 minus group 2"
+                                + (", ordered by network" if nets else "")
+                                + "; significant edges keep their colour and the others are faded."))
         if nets:
             names = sorted(set(nets))
             names = [names[i] for i in figures.network_order(names, names)]
@@ -221,10 +209,8 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
             keep = [n for n in names if counts.loc[n].sum() > 0]
             steps.append(_step(f"{next(letter)}. By network pair", html=figures.to_div(figures.count_heatmap(counts.loc[keep, keep])),
                                desc="Number of significant edges within and between networks."))
-        steps.append(_step(f"{next(letter)}. Edge list", open=False,
-                           html=f'<div class="scroll">{_table(edges)}</div>',
-                           desc=f"All {n_sig} significant edges, largest difference first; click a column to sort."))
-        body.append(dict(id="Edges", title="Significant edges", desc="", steps=steps))
+        body.append(dict(id="Edges", title="Significant edges",
+                         desc=f"{n_sig} significant edges, each listed in nbs_edges.tsv.", steps=steps))
         sections.append(("Edges", "Significant edges"))
 
     loaded = params.get("input") or {}
@@ -266,7 +252,15 @@ def save_compare_report(result, path, nodes: pd.DataFrame | None = None, label_c
         for name in names:
             table = result.tables[name]
             sig = table[table["significant"]].sort_values(kind)
-            counts.append((_COMPARE_TITLES[name], _flag(f"{len(sig)} of {int(table['t'].notna().sum())}", True, "")))
+            tested = int(table['t'].notna().sum())
+            counts.append((_COMPARE_TITLES[name], _flag(f"{len(sig)} of {tested}", True, "")))
+            if name == "edges":
+                # too many rows to read on the page; the heatmap shows them and the file lists them
+                desc = (f"{len(sig)} of {tested} edges significant at {_P_NAMES[o['correction']]} p < {alpha}; "
+                        f"every test is listed in {name}.tsv.")
+                steps.append(_step(f"{next(letter)}. {_COMPARE_TITLES[name]}",
+                                   html=_compare_heatmap(name, table, kind, networks), desc=desc))
+                continue
             if len(sig):
                 shown = sig.head(_MAX_COMPARE_ROWS)
                 desc = (f"{len(sig)} significant at {_P_NAMES[o['correction']]} p < {alpha}, smallest p first"
@@ -385,7 +379,7 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
                     xyz[shown], [lab for lab, k in zip(labels, shown) if k], [n for n, k in zip(nets, shown) if k],
                     values[shown], t, meshes), f"brain_{m}")
             panes.append((m, t, html_))
-        steps.append(_step("a. Group mean on the brain", picker=True, html=_picker("node-brain", panes),
+        steps.append(_step("a. Group mean on the brain", picker=True, html=_picker("node-brain", panes, columns=1),
                            desc="Colour and size both show the mean over participants."
                                 + (" Each link opens a view that can be rotated, with region names on hover."
                                    if interactive_brain else "")))
@@ -398,7 +392,7 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
             values = result.node_df[m].mean(axis=0)
             nets = pd.Series([networks.get(lab, "None") for lab in values.index], index=values.index)
             boxes.append((m, _metric_title(m), figures.to_div(figures.node_boxplot(values, nets, palette, _metric_title(m)))))
-        steps.append(_step(f"{next(letter)}. Values by network", picker=True, html=_picker("node-box", boxes),
+        steps.append(_step(f"{next(letter)}. Values by network", picker=True, html=_picker("node-box", boxes, columns=1),
                            desc="Mean over participants of each region; hover for its name."))
     tops = []
     for m in metrics:
@@ -473,13 +467,16 @@ def _circos_images(G, labels, nets, palette, colorbar_title) -> list[str]:
                 figures.circos_figure(G, labels, nets, palette, colorbar_title, bundled=True)))]
 
 
-def _nbs_matrices(result, adj_sig, labels, nets, group_names) -> str:
+def _nbs_matrices(result, adj_sig, labels, nets, group_names, diff) -> str:
     off = ~np.eye(len(labels), dtype=bool)
     lim = float(max(np.abs(result.mean_g1[off]).max(), np.abs(result.mean_g2[off]).max())) or 1.0
     marks = [(labels[i], labels[j]) for i, j in np.argwhere(adj_sig)]
     panes = [(f"g{k}", name, figures.to_div(figures.ordered_heatmap(M, labels, nets, lim, name, marks)))
              for k, (name, M) in enumerate(zip(group_names, (result.mean_g1, result.mean_g2)), 1)]
-    return _picker("nbs-means", panes, "Group")
+    name = " − ".join(group_names)
+    panes.append(("diff", name, figures.to_div(figures.ordered_heatmap(
+        diff, labels, nets, float(np.abs(diff).max()) or 1.0, name, marks))))
+    return _picker("nbs-means", panes, "Group", columns=3)
 
 
 def _figure_block(label: str, img: str) -> str:
@@ -496,10 +493,13 @@ def _figure_row(*blocks: str) -> str:
 def _static_node_brain(result, nodes, label_col, labels, values, title, surfaces, figs, metric) -> str:
     import conngraph as bnv
 
+    # a region without a value (e.g. no network for a partition-based metric) would blank the whole render
+    shown = [lab for lab, v in zip(labels, values) if not np.isnan(v)]
     nd = nodes.rename(columns={label_col: "label"}).copy()
     nd[title] = nd["label"].map(dict(zip(labels, values)))
-    nd = nd[nd["label"].isin(labels)]
-    M = result.mean_matrix if result.mean_matrix is not None else pd.DataFrame(0.0, index=labels, columns=labels)
+    nd = nd[nd["label"].isin(shown)]
+    M = (result.mean_matrix.loc[shown, shown] if result.mean_matrix is not None
+         else pd.DataFrame(0.0, index=shown, columns=shown))
     left, right = _surfaces(surfaces) or (None, None)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
