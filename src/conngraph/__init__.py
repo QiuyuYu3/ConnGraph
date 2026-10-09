@@ -17,7 +17,7 @@ from conngraph.graph_theory             import compute_graph_metrics, GraphMetri
 from conngraph.graph_theory.nbs         import run_nbs, NBSResult
 from conngraph.graph_theory.compare     import compare_groups, GroupComparisonResult
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __all__ = [
     "load", "load_group", "load_timeseries", "load_gordon_atlas",
     "compute_connectivity",

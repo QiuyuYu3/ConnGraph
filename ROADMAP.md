@@ -6,6 +6,13 @@ Turn a connectivity matrix and a node table into graph-theory metrics and an int
 
 ## Completed Features
 
+### 0.3.0
+
+- A `conngraph` command in BIDS App style for XCP-D, fnirs-pipe, matrix and time series input, with a participant level and a group level.
+- HTML reports for each participant, for the group's graph metrics, for group comparisons and for NBS, built from the result files they link to and rebuilt with `--reports-only`.
+- Two-group comparisons of graph metrics, network connectivity and edges with permutation t-tests and covariates.
+- Brain figures on any template, given as surfaces or a brain volume.
+
 ### 0.2.0
 
 - Graph metrics built in ten ways, with several variants of each metric, four ways to treat negative weights, integration over a range of densities or thresholds, normalization by random networks, and a parameters file saved with every run.

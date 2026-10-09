@@ -192,9 +192,9 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
                                desc=f"All {n_sig} significant edges with regions grouped by network: coloured by the "
                                     "group difference, then bundled through their networks and coloured by the "
                                     "networks they join."))
-        steps.append(_step(f"{next(letter)}. Group means and difference", data=link("means"),
+        steps.append(_step(f"{next(letter)}. Group difference and means", data=link("means"),
                            html=_nbs_matrices(result, adj_sig, labels, nets, (g1, g2), diff),
-                           desc="Mean connectivity of each group, then group 1 minus group 2"
+                           desc="Group 1 minus group 2, then the mean connectivity of each group"
                                 + (", ordered by network" if nets else "")
                                 + "; significant edges keep their colour and the others are faded."))
         if nets:
@@ -420,8 +420,8 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
         nets = [networks.get(n, "None") for n in names]
         spring = figures.to_div(figures.spring_figure(G, names, nets, palette))
         steps.append(_step(f"{next(letter)}. Group network", data=link("mean_matrix"),
-                           html=_figure_row(*_circos_images(G, names, nets, palette, "group mean r"),
-                                            _figure_block("Spring layout", spring)),
+                           html=_figure_row(*_circos_images(G, names, nets, palette, "group mean r"))
+                                + _figure_block("Spring layout", spring),
                            desc=f"The group mean connectivity turned into a graph the way each participant's was "
                                 f"({how}); the metrics above come from each participant's own graph. The circle "
                                 "groups regions by network; the bundled version routes edges through their networks "
@@ -477,9 +477,9 @@ def _nbs_matrices(result, adj_sig, labels, nets, group_names, diff) -> str:
     panes = [(f"g{k}", name, figures.to_div(figures.ordered_heatmap(M, labels, nets, lim, name, marks)))
              for k, (name, M) in enumerate(zip(group_names, (result.mean_g1, result.mean_g2)), 1)]
     name = " − ".join(group_names)
-    panes.append(("diff", name, figures.to_div(figures.ordered_heatmap(
-        diff, labels, nets, float(np.abs(diff).max()) or 1.0, name, marks))))
-    return _picker(panes, columns=3)
+    # the difference gets a row of its own, the two means share the next
+    return _figure_block(name, figures.to_div(figures.ordered_heatmap(
+        diff, labels, nets, float(np.abs(diff).max()) or 1.0, name, marks))) + _picker(panes)
 
 
 def _figure_block(label: str, img: str) -> str:

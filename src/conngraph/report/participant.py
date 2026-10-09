@@ -118,8 +118,8 @@ def participant_section(result, sid: str, matrix: pd.DataFrame, nodes: pd.DataFr
     if graph is not None and nets is not None:
         G, names, how = graph
         spring = figures.to_div(figures.spring_figure(G, names, nets, palette))
-        steps.append(_step(f"{next(letter)}. Graph", html=_figure_row(*_circos_images(G, names, nets, palette, "r"),
-                                                                      _figure_block("Spring layout", spring)),
+        steps.append(_step(f"{next(letter)}. Graph", html=_figure_row(*_circos_images(G, names, nets, palette, "r"))
+                           + _figure_block("Spring layout", spring),
                            desc=f"This participant's node-level graph ({how}). Hover a region for its name."))
 
     if result.curves is not None:

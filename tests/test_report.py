@@ -236,7 +236,8 @@ def test_graph_report_renders_the_static_brain(graph_result, surfaces, tmp_path)
     assert all(f'src="figures/{name}"' in text for name in pngs)
     brain = plt.imread(next((tmp_path / "figures").glob("graph_brain_*.png")))
     assert brain.shape[1] / 10.5 > 250  # about 300 dpi at the figure's 10.5 inches
-    assert '<div class="figure-row" style="--columns:3">' in text
+    circles = text.index('<div class="figure-row" style="--columns:2"><div><div class="option-label">Circos</div>')
+    assert text.index('<div class="option-label">Spring layout</div>', circles) > circles
     stale = tmp_path / "figures" / "graph_old.png"
     stale.write_bytes(b"")
     graph_result.save_report(path, surfaces=surfaces, static_brain=False)
@@ -416,7 +417,7 @@ def test_nbs_report_adds_circos_and_group_matrices(dataset, tmp_path, monkeypatc
     result = run_nbs(*_two_groups_with_a_difference(dataset), thresh=3.0, k=50, seed=0, verbose=False)
     result.save_report(tmp_path / "nbs.html", nodes=dataset.nodes_df, static_brain=False)
     text = (tmp_path / "nbs.html").read_text(encoding="utf-8")
-    assert "On a circle" in text and "Group means" in text and "<img" not in text
+    assert "On a circle" in text and "Group difference and means" in text and "<img" not in text
     assert not (tmp_path / "figures").exists()
     palette = _report_palette(dataset.nodes_df)
     circos = [(args, kw) for name, args, kw in calls if name == "circos_figure"]
