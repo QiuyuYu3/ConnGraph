@@ -51,14 +51,14 @@ All figures below come from a mock dataset of 30 participants on the Gordon atla
 <p align="center"><img src="https://raw.githubusercontent.com/QiuyuYu3/brainnet3d/main/docs/images/nbs_brain.png" alt="Group difference on the brain" width="100%"></p>
 <p align="center"><em>Network-based statistic: the edges that differ between groups</em></p>
 
+<p align="center"><img src="https://raw.githubusercontent.com/QiuyuYu3/brainnet3d/main/docs/images/fc_participant.png" alt="One participant's connectivity matrix" width="49%"> <img src="https://raw.githubusercontent.com/QiuyuYu3/brainnet3d/main/docs/images/fc_group_network_hemi.png" alt="Group mean connectivity by network and hemisphere" width="49%"></p>
+<p align="center"><em>Connectivity matrices: one participant by region (left) and the group mean by network and hemisphere (right)</em></p>
+
 <p align="center"><img src="https://raw.githubusercontent.com/QiuyuYu3/brainnet3d/main/docs/images/nbs_matrices.png" alt="Group means and difference" width="100%"></p>
 <p align="center"><em>Group mean matrices and their difference</em></p>
 
 <p align="center"><img src="https://raw.githubusercontent.com/QiuyuYu3/brainnet3d/main/docs/images/circos_bundled.png" alt="Circos plot bundled by network" width="49%"> <img src="https://raw.githubusercontent.com/QiuyuYu3/brainnet3d/main/docs/images/spring_plain.png" alt="Spring layout" width="49%"></p>
 <p align="center"><em>The group network: edges bundled through their networks (left) and a spring layout (right)</em></p>
-
-<p align="center"><img src="https://raw.githubusercontent.com/QiuyuYu3/brainnet3d/main/docs/images/report_group_network.png" alt="Group network in the report" width="100%"></p>
-<p align="center"><em>Group report: the same network as interactive figures; hover a region for its name</em></p>
 
 <p align="center"><img src="https://raw.githubusercontent.com/QiuyuYu3/brainnet3d/main/docs/images/report_boxplot.png" alt="Metric distributions in the report" width="100%"></p>
 <p align="center"><em>Group report: a metric across network nodes, one point per participant</em></p>
