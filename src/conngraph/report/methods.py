@@ -168,7 +168,7 @@ def node_word(params: dict) -> str:
 
 def mne_details(loaded: dict) -> str:
     """Measure, band and epoch count of MNE-Connectivity input as one phrase, for the Methods and the summary."""
-    parts = [loaded["measure_name"]]
+    parts = [loaded["measure_name"]] + ([_CHROMO[loaded["chromophore"]]] if loaded.get("chromophore") else [])
     if loaded.get("band"):
         parts.append("{:g}–{:g} Hz".format(*loaded["band"]))
     if loaded.get("epochs"):

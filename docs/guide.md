@@ -61,7 +61,7 @@ With several sessions, the session label follows the participant: `sub-01_ses-01
 ## fNIRS
 
 - **NIRSPipe**: `--input-type nirspipe` analyses HbO and HbR separately (`--chromophore` picks one); `--task-id` matches the file names. Channels have no networks, so only the node level is computed, and the brain figures need channel MNI coordinates given with `--coords`.
-- **MNE-NIRS**: connectivity computed with MNE-Connectivity is read as `mne-connectivity` input with `--modality fnirs`, laid out as in [EEG and MEG](#eeg-and-meg).
+- **MNE-NIRS**: connectivity computed with MNE-Connectivity is read as `mne-connectivity` input with `--modality fnirs`, laid out as in [EEG and MEG](#eeg-and-meg). Channels named like `S1_D1 hbo` and `S1_D1 hbr` are split by chromophore, each in its own result folder (`meas-coh/chromo-hbo/...`), whether a file holds both or only one; pairs across HbO and HbR are left out, and `--chromophore` picks one. The `hbo` and `hbr` endings are dropped from the node names, so `nodes.tsv` and `--coords` name each channel once (`S1_D1`).
 - **Other pipelines**: a `matrix` or `timeseries` folder with `--modality fnirs`.
 
 ## EEG and MEG

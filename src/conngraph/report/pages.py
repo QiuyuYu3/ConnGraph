@@ -753,7 +753,8 @@ def _input_row(loaded: dict) -> list[tuple[str, str]]:
                         + ([mne_details(loaded)] if loaded.get("measure_name") else [])
                         + ([f"electrode positions from MNE's {loaded['electrodes']} template"]
                            if loaded.get("electrodes") else [])
-                        + [f"{k} {loaded[k]}" for k in ("atlas", "space", "chromophore", "task", "session") if loaded.get(k)]
+                        + [f"{k} {loaded[k]}" for k in ("atlas", "space", "chromophore", "task", "session")
+                           if loaded.get(k) and not (k == "chromophore" and loaded.get("measure_name"))]
                         + ([loaded["connectivity"]] if loaded.get("connectivity") else [])
                         + (["Ledoit-Wolf shrinkage"] if loaded.get("shrinkage") else [])
                         + (["Fisher z input"] if loaded.get("values") == "z" else [])

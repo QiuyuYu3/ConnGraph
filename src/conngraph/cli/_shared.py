@@ -59,7 +59,8 @@ def add_input_arguments(parser: argparse.ArgumentParser) -> None:
     g.add_argument("--atlases", nargs="+", metavar="ATLAS",
                    help="xcpd: atlas names as in the file names, e.g. Gordon; each gets its own result folder")
     g.add_argument("--chromophore", nargs="+", choices=["hbo", "hbr"], default=["hbo", "hbr"],
-                   help="nirspipe: chromophores to analyse, each in its own result folder (default: hbo hbr)")
+                   help="nirspipe and fNIRS mne-connectivity input: chromophores to analyse, each in its own result "
+                        "folder (default: hbo hbr)")
     g.add_argument("--session-id", nargs="+", metavar="LABEL",
                    help="sessions to analyse, with or without ses-, each in its own result folder (default: every "
                         "session in the input)")
@@ -90,12 +91,18 @@ def input_variants(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
             raise SystemExit(f"{parser.prog}: no files matching sub-*_{FOLDER_FILES['mne-connectivity']} in "
                              f"{args.input_dir}")
         variants = []
-        for label, first in {measure_label(_mne_method(p)): p for p in reversed(paths)}.items():
+        for label in dict.fromkeys(measure_label(_mne_method(p)) for p in paths):
+            same = [p for p in paths if measure_label(_mne_method(p)) == label]
             try:
-                bands = conngraph.mne_connectivity_bands(first)
+                bands = conngraph.mne_connectivity_bands(same[0])
             except ValueError as exc:
                 raise SystemExit(f"{parser.prog}: {exc}") from None
-            variants += [f"meas-{label}_{band_folder(b)}" for b in bands] if bands else [f"meas-{label}"]
+            found = sorted({c for p in same for c in _mne_chromophores(p)})
+            if found and args.modality != "fnirs":
+                raise SystemExit(f"{parser.prog}: channels named hbo and hbr are fNIRS; use --modality fnirs")
+            chromos = [f"chromo-{c}" for c in found if c in args.chromophore] if found else [None]
+            variants += ["_".join(x for x in (f"meas-{label}", c, band_folder(b) if b else None) if x)
+                         for c in chromos for b in (bands or [None])]
         return sorted(variants)
     return [None]
 
@@ -105,11 +112,23 @@ def measure_label(method: str) -> str:
     return "".join(c for c in method if c.isalnum())
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _mne_method(path: str) -> str:
     from conngraph.derivatives import mne_connectivity_method
 
     return mne_connectivity_method(path)
+
+
+@functools.cache
+def _mne_chromophores(path: str) -> list[str]:
+    from conngraph.derivatives import mne_connectivity_chromophores
+
+    return mne_connectivity_chromophores(path)
+
+
+def _entities(variant: str | None) -> dict[str, str]:
+    """{"meas": "wpli", "band": "8to13Hz"} from a variant such as meas-wpli_band-8to13Hz."""
+    return dict(part.split("-", 1) for part in (variant or "").split("_") if part)
 
 
 def band_folder(band: tuple[float, float]) -> str:
@@ -230,10 +249,11 @@ def _load_mne(args: argparse.Namespace, files: dict[str, str], variant: str | No
     from conngraph.derivatives import MNE_MEASURES
 
     bands = conngraph.mne_connectivity_bands(next(iter(files.values()))) or []
-    band = next((b for b in bands if band_folder(b) == variant.partition("_")[2]), None)
+    entities = _entities(variant)
+    band = next((b for b in bands if band_folder(b) == f"band-{entities.get('band')}"), None)
     matrices, table = conngraph.load_mne_connectivity(files, band, nodes, bad_node_threshold=args.bad_node_threshold,
                                                        drop_mode=args.drop_mode, verbose=not args.quiet,
-                                                       montage=_montage(args))
+                                                       montage=_montage(args), chromophore=entities.get("chromo"))
     # phase-based and coherence measures are averaged and compared as they are, not as Fisher z
     if not MNE_MEASURES[table.attrs[INPUT_ATTR]["measure"]][2]:
         args.no_fisher_z = True
@@ -261,8 +281,9 @@ def load_input(args: argparse.Namespace, parser: argparse.ArgumentParser,
         pattern = f"sub-*_{session}_{ending}" if session else f"sub-*_{ending}"
         paths = _input_files(args.input_dir, pattern)
         if args.input_type == "mne-connectivity":
-            measure = variant.partition("_")[0].removeprefix("meas-")
-            paths = [p for p in paths if measure_label(_mne_method(p)) == measure]
+            entities = _entities(variant)
+            paths = [p for p in paths if measure_label(_mne_method(p)) == entities["meas"]
+                     and ("chromo" not in entities or entities["chromo"] in _mne_chromophores(p))]
         files: dict[str, str] = {}
         for p in paths:
             sid = subject_id_from_path(p)

@@ -16,13 +16,15 @@ mne_connectivity = pytest.importorskip("mne_connectivity")
 
 CHANNELS = ["Fz", "Cz", "Pz", "Oz", "C3", "C4", "P3", "P4"]
 BANDS = dict(fmin=(8, 13), fmax=(13, 30), faverage=True)
+OPTODES = ["S1_D1", "S1_D2", "S2_D1", "S2_D2"]
+NIRS = dict(channels=[f"{o} {c}" for c in ("hbo", "hbr") for o in OPTODES], types=["hbo"] * 4 + ["hbr"] * 4)
 
 
-def _epochs(seed, n_epochs):
+def _epochs(seed, n_epochs, channels=CHANNELS, types="eeg"):
     rng = np.random.default_rng(seed)
-    data = rng.standard_normal((n_epochs, len(CHANNELS), 250))
+    data = rng.standard_normal((n_epochs, len(channels), 250))
     data[:, 1] += 0.5 * data[:, 0]
-    return mne.EpochsArray(data, mne.create_info(CHANNELS, 125.0, "eeg"), verbose=False)
+    return mne.EpochsArray(data, mne.create_info(channels, 125.0, types), verbose=False)
 
 
 def _save(conn, path):
@@ -32,11 +34,11 @@ def _save(conn, path):
     return str(path)
 
 
-def _files(folder, method="wpli", n=3, tag="", **options):
+def _files(folder, method="wpli", n=3, tag="", channels=CHANNELS, types="eeg", **options):
     folder.mkdir(exist_ok=True)
     return {f"sub-{s:02d}": _save(mne_connectivity.spectral_connectivity_epochs(
-        _epochs(s, 10 + s), method=method, verbose=False, **(options or BANDS)), folder / f"sub-{s:02d}{tag}_connectivity.nc")
-        for s in range(1, n + 1)}
+        _epochs(s, 10 + s, channels, types), method=method, verbose=False, **(options or BANDS)),
+        folder / f"sub-{s:02d}{tag}_connectivity.nc") for s in range(1, n + 1)}
 
 
 def test_each_band_is_read_as_a_symmetric_matrix(tmp_path):
@@ -250,6 +252,46 @@ def test_two_files_of_one_measure_for_a_participant_are_refused(tmp_path):
     for run in (1, 2):
         _files(folder, n=1, tag=f"_run-{run}", fmin=(8,), fmax=(13,), faverage=True)
     with pytest.raises(SystemExit, match="two files for sub-01"):
+        cli.main([str(folder), str(tmp_path / "out"), "participant", "--input-type", "mne-connectivity", "--modality",
+                  "eeg", "--graph-method", "density", "--graph-param", "density=0.5", "--n-jobs", "1", "--no-report",
+                  "--quiet"])
+
+
+def test_hbo_and_hbr_channels_are_read_one_chromophore_at_a_time(tmp_path):
+    files = _files(tmp_path, n=1, **NIRS)
+    with pytest.raises(DataValidationError, match="HbO and HbR"):
+        bnv.load_mne_connectivity(files, (8.0, 13.0), verbose=False)
+    matrices, nodes = bnv.load_mne_connectivity(files, (8.0, 13.0), chromophore="hbr", verbose=False)
+    assert nodes["label"].tolist() == OPTODES and list(matrices["sub-01"].columns) == OPTODES
+    full = mne_connectivity.read_connectivity(files["sub-01"]).get_data("dense")[..., 0]
+    np.testing.assert_allclose(np.tril(matrices["sub-01"].to_numpy(), -1), np.tril(full[4:, 4:], -1))
+    assert nodes.attrs["conngraph_input"]["chromophore"] == "hbr"
+
+
+def test_cli_analyses_each_chromophore_of_fnirs_files_in_its_own_folder(tmp_path):
+    folder = tmp_path / "in"
+    _files(folder, n=6, fmin=(8,), fmax=(13,), faverage=True, **NIRS)
+    out = tmp_path / "out"
+    nirs = ["--input-type", "mne-connectivity", "--modality", "fnirs", "--quiet"]
+    assert cli.main([str(folder), str(out), "participant", *nirs, "--graph-method", "density", "--graph-param",
+                     "density=0.5", "--metrics", "strength", "--n-jobs", "1", "--no-report"]) == 0
+    assert cli.main([str(folder), str(out), "group", *nirs, "--no-report"]) == 0
+    for chromo in ("hbo", "hbr"):
+        params = json.loads((out / "group" / "meas-wpli" / f"chromo-{chromo}" / "band-8to13Hz" / "parameters.json")
+                            .read_text(encoding="utf-8"))
+        assert params["input"]["chromophore"] == chromo and params["input"]["modality"] == "fnirs"
+    assert (out / "sub-01" / "sub-01_meas-wpli_chromo-hbo_band-8to13Hz_metrics.json").exists()
+    only = tmp_path / "only"
+    assert cli.main([str(folder), str(only), "participant", *nirs, "--chromophore", "hbr", "--graph-method",
+                     "density", "--graph-param", "density=0.5", "--metrics", "strength", "--n-jobs", "1",
+                     "--no-report"]) == 0
+    assert [p.name for p in (only / "sub-01").glob("*_metrics.json")] == ["sub-01_meas-wpli_chromo-hbr_band-8to13Hz_metrics.json"]
+
+
+def test_cli_refuses_hbo_and_hbr_channels_without_fnirs_modality(tmp_path):
+    folder = tmp_path / "in"
+    _files(folder, n=1, fmin=(8,), fmax=(13,), faverage=True, **NIRS)
+    with pytest.raises(SystemExit, match="--modality fnirs"):
         cli.main([str(folder), str(tmp_path / "out"), "participant", "--input-type", "mne-connectivity", "--modality",
                   "eeg", "--graph-method", "density", "--graph-param", "density=0.5", "--n-jobs", "1", "--no-report",
                   "--quiet"])

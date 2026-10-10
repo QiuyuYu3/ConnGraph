@@ -394,6 +394,21 @@ def mne_connectivity_method(path: str) -> str:
         return str(data.attrs["method"])
 
 
+def mne_connectivity_chromophores(path: str) -> list[str]:
+    """The fNIRS chromophores (hbo, hbr) among the channels of an MNE-Connectivity file, read without loading data."""
+    import xarray as xr
+
+    with xr.open_dataarray(path, engine="h5netcdf") as data:
+        names = np.atleast_1d(data.attrs["node_names"])
+    return sorted({_chromophore(n) for n in names} - {None})
+
+
+def _chromophore(name) -> str | None:
+    """hbo or hbr for an MNE-NIRS channel name such as "S1_D1 hbo"."""
+    tail = str(name).lower().rpartition(" ")[2]
+    return tail if tail in ("hbo", "hbr") else None
+
+
 def mne_connectivity_bands(path: str) -> list[tuple[float, float]] | None:
     """Frequency bands of an MNE-Connectivity file as (low, high) Hz; None when it has no frequency axis."""
     return _mne_bands(_read_mne(path), path)
@@ -407,11 +422,13 @@ def load_mne_connectivity(
     drop_mode: str = "union",
     verbose: bool = True,
     montage: str | None = "auto",
+    chromophore: str | None = None,
 ) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
     """One band's matrices from MNE-Connectivity files ({subject_id: path}), with the node table in file order."""
     # montage: "auto" (colin27_1005), a template from MNI_MONTAGES, or None; used only when the table lacks x, y, z
+    # chromophore: which of HbO and HbR to keep from fNIRS channels named "S1_D1 hbo"; their suffix is dropped
     matrices: dict[str, pd.DataFrame] = {}
-    methods, epochs = set(), []
+    methods, epochs, chromophores = set(), [], set()
     for sid, path in files.items():
         conn = _read_mne(path)
         methods.add(conn.method)
@@ -425,7 +442,11 @@ def load_mne_connectivity(
             full = full[..., bands.index(tuple(band))]
         elif full.ndim == 3:
             full = full[..., 0]
-        matrices[sid] = pd.DataFrame(full, index=list(conn.names), columns=list(conn.names))
+        matrix = pd.DataFrame(full, index=list(conn.names), columns=list(conn.names))
+        matrices[sid], picked = _pick_chromophore(matrix, chromophore, path)
+        chromophores.update([picked] if picked else [])
+    if len(chromophores) > 1:
+        raise DataValidationError(f"The files mix chromophores: {sorted(chromophores)}; pass chromophore to pick one.")
     if len(methods) > 1:
         raise DataValidationError(f"The files mix connectivity methods: {sorted(methods)}.")
     method = methods.pop()
@@ -444,7 +465,8 @@ def load_mne_connectivity(
     record_input(table, before, matrices, bad_node_threshold, drop_mode, source="MNE-Connectivity",
                  measure=method, measure_name=name, measure_label=label, band=list(band) if band else None,
                  epochs=[min(epochs), max(epochs)] if epochs else None,
-                 **({"electrodes": electrodes} if electrodes else {}))
+                 **({"electrodes": electrodes} if electrodes else {}),
+                 **({"chromophore": chromophores.pop()} if chromophores else {}))
     return matrices, table
 
 
@@ -494,6 +516,24 @@ def _electrode_positions(table: pd.DataFrame, montage: str | None, verbose: bool
     placed = table.merge(coords, on="label", how="left")
     placed.attrs = dict(table.attrs)
     return placed, template
+
+
+def _pick_chromophore(matrix: pd.DataFrame, chromophore: str | None, path: str) -> tuple[pd.DataFrame, str | None]:
+    found = {_chromophore(n) for n in matrix.columns}
+    if found == {None}:
+        if chromophore:
+            raise DataValidationError(f"'{path}' has no {chromophore} channels.")
+        return matrix, None
+    if None in found:
+        raise DataValidationError(f"'{path}' mixes fNIRS channels (hbo, hbr) with other channels.")
+    if chromophore is None and len(found) > 1:
+        raise DataValidationError(f"'{path}' holds HbO and HbR channels; pass chromophore='hbo' or 'hbr' to read one.")
+    picked = chromophore or found.pop()
+    keep = [n for n in matrix.columns if _chromophore(n) == picked]
+    if not keep:
+        raise DataValidationError(f"'{path}' has no {picked} channels.")
+    labels = [str(n).rpartition(" ")[0] for n in keep]
+    return pd.DataFrame(matrix.loc[keep, keep].to_numpy(), index=labels, columns=labels), picked
 
 
 def _read_mne(path: str):
