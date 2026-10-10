@@ -7,8 +7,8 @@ Install the package, then run both levels on simulated data to see what `conngra
 `conngraph` needs Python 3.10 or later. Clone the repository, then install it from its root and check that the command is found:
 
 ```bash
-git clone https://github.com/QiuyuYu3/brainnet3d.git
-cd brainnet3d
+git clone https://github.com/QiuyuYu3/ConnGraph.git
+cd ConnGraph
 pip install .
 conngraph --version
 ```

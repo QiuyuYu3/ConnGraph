@@ -27,7 +27,7 @@ smartquotes_action = "qe"
 html_theme = "pydata_sphinx_theme"
 html_title = "ConnGraph"
 html_theme_options = {
-    "github_url": "https://github.com/QiuyuYu3/brainnet3d",
+    "github_url": "https://github.com/QiuyuYu3/ConnGraph",
     "navbar_align": "left",
     "secondary_sidebar_items": ["page-toc", "sg_download_links", "sg_launcher_links"],
 }

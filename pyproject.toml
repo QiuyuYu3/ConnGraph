@@ -43,6 +43,10 @@ dependencies = [
     "h5py>=3.0",
 ]
 
+[project.urls]
+Documentation = "https://qiuyuyu3.github.io/ConnGraph/"
+Repository    = "https://github.com/QiuyuYu3/ConnGraph"
+
 [project.scripts]
 conngraph = "conngraph.cli.main:main"
 
