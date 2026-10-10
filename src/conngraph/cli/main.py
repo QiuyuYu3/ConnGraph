@@ -65,6 +65,8 @@ def build_parser() -> argparse.ArgumentParser:
     s = parser.add_argument_group("both levels")
     s.add_argument("--no-fisher-z", action="store_true",
                    help="participant: average raw r instead of Fisher z at the network level; group: test raw r")
+    s.add_argument("--fisher-z", action="store_true",
+                   help="the default, except for EEG and MEG matrix input, which needs --fisher-z or --no-fisher-z")
     s.add_argument("--random-seed", type=int,
                    help="participant: seed for the random networks; group: seed for the permutations; a drawn "
                         "seed is recorded when omitted")
@@ -164,8 +166,7 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, argparse.ArgumentPa
             parser.error(f"{flag} needs --groups")
     if args.alpha is None:
         args.alpha = 0.05
-    if args.montage and args.input_type != "mne":
-        parser.error("--montage is for --input-type mne")
+    _check_modality(args, parser)
     if args.montage and args.coords:
         parser.error("give electrode positions either with --montage or with --coords")
     if args.surfaces is not None and len(args.surfaces) > 2:
@@ -175,6 +176,30 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, argparse.ArgumentPa
     if args.mem is not None and args.mem < 1:
         parser.error("--mem must be at least 1")
     return args, parser
+
+
+def _check_modality(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    fixed = _shared.FIXED_MODALITY.get(args.input_type)
+    if fixed:
+        if args.modality:
+            parser.error(f"{args.input_type} input is {fixed}; leave out --modality")
+        args.modality = fixed
+    elif args.modality is None:
+        parser.error(f"--modality is required for {args.input_type} input: {', '.join(_shared.MODALITIES)}")
+    elif args.input_type == "mne-connectivity" and args.modality == "fmri":
+        parser.error("mne-connectivity input is eeg, meg or fnirs")
+    if args.montage and args.modality != "eeg":
+        parser.error("--montage needs --modality eeg")
+    if args.fisher_z and args.no_fisher_z:
+        parser.error("give --fisher-z or --no-fisher-z, not both")
+    if args.input_type == "mne-connectivity" and (args.fisher_z or args.no_fisher_z):
+        parser.error("Fisher z for mne-connectivity input is set by the measure in the files; leave out --fisher-z "
+                     "and --no-fisher-z")
+    if (args.input_type == "matrix" and args.modality in ("eeg", "meg") and args.values == "r"
+            and not (args.fisher_z or args.no_fisher_z or args.reports_only)):
+        parser.error("choose --fisher-z or --no-fisher-z for EEG and MEG matrices: --no-fisher-z for phase and "
+                     "coherence measures such as PLV, wPLI or coherence, --fisher-z for correlations such as envelope "
+                     "correlation")
 
 
 def main(argv: list[str] | None = None) -> int:

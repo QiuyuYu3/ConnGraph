@@ -26,7 +26,9 @@ Graph options (method, metrics, random networks) belong to the participant level
 | `nirspipe` | a NIRSPipe derivatives folder; HbO and HbR are analysed separately (`--chromophore` picks one) |
 | `matrix` | a folder of connectivity matrices, laid out as below |
 | `timeseries` | a folder of regional time series, laid out as below; connectivity is computed first (`--connectivity`) |
-| `mne` | a folder of EEG or MEG connectivity files saved by MNE-Connectivity; each frequency band is analysed separately (see [EEG and MEG](#eeg-and-meg)) |
+| `mne-connectivity` | a folder of connectivity files saved by MNE-Connectivity; each frequency band is analysed separately (see [EEG and MEG](#eeg-and-meg)) |
+
+`--modality` (`fmri`, `fnirs`, `eeg` or `meg`) is required for `matrix`, `timeseries` and `mne-connectivity` input, since the files do not say where the data came from; `xcpd` is fMRI and `nirspipe` is fNIRS. It sets what the report calls a node (region, channel, electrode or sensor), and with `eeg` electrodes with standard names get positions for the brain figures (see [Nodes](#nodes)).
 
 ### Matrix and time series folders
 
@@ -45,7 +47,7 @@ With several sessions, the session label follows the participant: `sub-01_ses-01
 - `<ext>` is `.tsv`, `.csv`, `.txt`, `.1D`, `.npy` or `.mat`, a CIFTI `.pconn.nii` (matrices) or `.ptseries.nii` (time series), or AFNI `3dNetCorr` output: `.netcc` (matrices) or `.netts` (time series, one region per row).
 - A matrix is square and symmetric, one row and one column per node; directed connectivity is not supported. A time series has one column per node and one row per time point.
 - Tables may carry the node labels as headers; without them, rows and columns follow the order of `nodes.tsv`.
-- Matrices hold Pearson correlations; add `--values z` if they hold Fisher z values, or `--no-fisher-z` if they hold a measure that is not a correlation.
+- Matrices hold Pearson correlations; add `--values z` if they hold Fisher z values, or `--no-fisher-z` if they hold a measure that is not a correlation. EEG and MEG matrices need either `--no-fisher-z` (phase and coherence measures such as PLV, wPLI or coherence) or `--fisher-z` (correlations such as envelope correlation).
 
 ### The node table
 
@@ -69,7 +71,7 @@ A participant with several runs left after filtering has each run analysed on it
 
 ## EEG and MEG
 
-`mne` input reads connectivity computed with [MNE-Connectivity](https://mne.tools/mne-connectivity/) and saved with `conn.save()`, one file per participant:
+`mne-connectivity` input reads connectivity computed with [MNE-Connectivity](https://mne.tools/mne-connectivity/) and saved with `conn.save()`, one file per participant. `--modality` says whether it is `eeg`, `meg` or `fnirs` (MNE-NIRS data analysed with MNE-Connectivity):
 
 ```text
 INPUT/
@@ -95,13 +97,13 @@ conn.save("INPUT/sub-01_connectivity.nc")
 ### Nodes
 
 - Node names come from the files. `nodes.tsv` adds networks (lobes or regions, for example), hemispheres and coordinates; without a network column only the node level is computed.
-- Without x, y, z in `nodes.tsv`, electrodes with standard names (Fp1, Cz, O2 and so on) are placed at the positions of MNE's `colin27_1005` template, which is in MNI space, and drawn on the scalp around the brain. `--montage` picks another MNE template in MNI space (`colin27_1020`, `mgh60`, `mgh70` and the other `colin27` templates). Other caps (EGI, BioSemi 128 with A1, B2 and so on) or measured positions need MNI coordinates given with `--coords`. Regions of a source-space atlas need their coordinates in `nodes.tsv` or `--coords` too.
+- With `--modality eeg` and no x, y, z in `nodes.tsv` (for `matrix` and `timeseries` input too), electrodes with standard names (Fp1, Cz, O2 and so on) are placed at the positions of MNE's `colin27_1005` template, which is in MNI space, and drawn on the scalp around the brain. `--montage` picks another MNE template in MNI space (`colin27_1020`, `mgh60`, `mgh70` and the other `colin27` templates). Other caps (EGI, BioSemi 128 with A1, B2 and so on) or measured positions need MNI coordinates given with `--coords`. Regions of a source-space atlas need their coordinates in `nodes.tsv` or `--coords` too.
 
 :::{important}
 The phase-locking value and coherence are biased upward when there are few epochs. If epoch counts differ between groups, prefer a debiased measure such as `wpli2_debiased` or `ppc`; the report gives the range of epoch counts.
 :::
 
-Matrices of these measures computed elsewhere can be given as `matrix` input with `--no-fisher-z`.
+Matrices of these measures computed elsewhere can be given as `matrix` input with `--modality eeg` (or `meg`) and `--no-fisher-z`.
 
 ## Output files
 

@@ -17,7 +17,8 @@ import numpy as np
 import pandas as pd
 
 from conngraph.report import figures
-from conngraph.report.methods import compare_methods, graph_methods, mne_details, nbs_methods, participant_count
+from conngraph.report.methods import (compare_methods, graph_methods, mne_details, nbs_methods, node_word,
+                                      participant_count)
 
 PLOTLY_CDN = "https://cdn.plot.ly/plotly-3.5.0.min.js"
 _METRIC_TITLES = {"clust_coeff": "Clustering coefficient", "btwn_cent": "Betweenness centrality",
@@ -127,6 +128,7 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
     figs = _FigureFolder(path)
     link = _linker(result.files, path)
     labels = list(result.labels) if result.labels is not None else [str(i) for i in range(len(result.adj))]
+    unit = node_word(params)
     networks = _column(nodes, label_col, network_col)
     nets = [networks.get(lab, "None") for lab in labels] if networks is not None else None
     palette = _palette(networks)
@@ -180,7 +182,7 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
                     ("Group 1 > Group 2", "Group 1 < Group 2")), "brain_edges")
             steps.append(_step(f"{next(letter)}. On the brain", data=link("edges"), html=html_,
                                desc=f"Showing {what}, coloured by the sign of the group difference (group 1 − group 2); "
-                                    "node size is the number of significant edges at each region."))
+                                    f"node size is the number of significant edges at each {unit}."))
         elif xyz is None:
             notes.append(_no_coordinates(nodes))
         if nets:
@@ -190,7 +192,7 @@ def save_nbs_report(result, path, nodes: pd.DataFrame | None = None, surfaces: t
             G.add_nodes_from(range(len(labels)))
             G.add_weighted_edges_from((int(i), int(j), diff[i, j]) for i, j in iu)
             steps.append(_step(f"{next(letter)}. On a circle", data=link("edges"), html=_figure_row(*_circos_images(G, labels, nets, palette, f"{g1} − {g2}")),
-                               desc=f"All {n_sig} significant edges with regions grouped by network: coloured by the "
+                               desc=f"All {n_sig} significant edges with {unit}s grouped by network: coloured by the "
                                     "group difference, then bundled through their networks and coloured by the "
                                     "networks they join."))
         steps.append(_step(f"{next(letter)}. Group difference and means", data=link("means"),
@@ -364,6 +366,7 @@ def _compare_heatmap(name: str, table: pd.DataFrame, kind: str, networks: dict |
 def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, static_brain, interactive_brain,
                 notes, figs, link) -> list[dict]:
     steps = []
+    unit = node_word(result.params)
     labels = list(result.node_df.columns.get_level_values(1).unique())
     xyz = _coordinates(nodes, label_col, labels)
     if xyz is not None and (static_brain or interactive_brain):
@@ -376,7 +379,7 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
             t = _metric_title(m)
             shown = keep & ~np.isnan(values)
             if not shown.any():
-                panes.append((m, t, NO_VALUES))
+                panes.append((m, t, NO_VALUES.format(unit)))
                 continue
             html_ = ""
             if static_brain:
@@ -388,7 +391,7 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
             panes.append((m, t, html_))
         steps.append(_step("a. Group mean on the brain", data=link("node_df"), html=_picker(panes, columns=1),
                            desc="Colour and size both show the mean over participants."
-                                + (" Each link opens a view that can be rotated, with region names on hover."
+                                + (f" Each link opens a view that can be rotated, with {unit} names on hover."
                                    if interactive_brain else "")))
     elif xyz is None:
         notes.append(_no_coordinates(nodes))
@@ -400,7 +403,7 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
             nets = pd.Series([networks.get(lab, "None") for lab in values.index], index=values.index)
             boxes.append((m, _metric_title(m), figures.to_div(figures.node_boxplot(values, nets, palette, _metric_title(m)))))
         steps.append(_step(f"{next(letter)}. Values by network", data=link("node_df"), html=_picker(boxes, columns=1),
-                           desc="Mean over participants of each region; hover for its name."))
+                           desc=f"Mean over participants of each {unit}; hover for its name."))
     tops = []
     for m in metrics:
         top = result.node_df[m].mean(axis=0).sort_values(ascending=False).head(15)
@@ -409,15 +412,15 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
             table["Network"] = [networks.get(lab, "None") for lab in top.index]
         table["Group mean"] = top.values
         tops.append((m, _metric_title(m), _table(table)))
-    steps.append(_step(f"{next(letter)}. Highest regions", data=link("node_df"), html=_picker(tops, columns=3),
-                       desc="The 15 regions with the highest mean over participants."))
+    steps.append(_step(f"{next(letter)}. Highest {unit}s", data=link("node_df"), html=_picker(tops, columns=3),
+                       desc=f"The 15 {unit}s with the highest mean over participants."))
     if result.mean_matrix is not None:
         M = result.mean_matrix
         names = list(M.index)
         groups = [networks.get(n, "None") for n in names] if networks is not None else None
         steps.append(_step(f"{next(letter)}. Connectivity", data=link("mean_matrix"), html=figures.to_div(figures.ordered_heatmap(
             M.to_numpy(float), names, groups, 1.0, value_label(result.params))),
-            desc="Group mean connectivity between all regions" + (", ordered by network" if groups else "") + "."))
+            desc=f"Group mean connectivity between all {unit}s" + (", ordered by network" if groups else "") + "."))
     group = _group_graph(result) if networks is not None else None
     if group is not None:
         G, names, how = group
@@ -428,8 +431,8 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
                                 + _figure_block("Spring layout", spring),
                            desc=f"The group mean connectivity turned into a graph the way each participant's was "
                                 f"({how}); the metrics above come from each participant's own graph. The circle "
-                                "groups regions by network; the bundled version routes edges through their networks "
-                                "and colours them by the networks they join. Hover a region for its name."))
+                                f"groups {unit}s by network; the bundled version routes edges through their networks "
+                                f"and colours them by the networks they join. Hover a {unit} for its name."))
     return steps
 
 
@@ -742,8 +745,12 @@ def _coordinates(nodes: pd.DataFrame | None, label_col: str, labels: list[str]) 
     return nodes.set_index(label_col)[["x", "y", "z"]].reindex(labels).to_numpy(float)
 
 
+_MODALITY_NAMES = {"fmri": "fMRI", "fnirs": "fNIRS", "eeg": "EEG", "meg": "MEG"}
+
+
 def _input_row(loaded: dict) -> list[tuple[str, str]]:
-    details = ", ".join(([mne_details(loaded)] if loaded.get("measure_name") else [])
+    details = ", ".join(([_MODALITY_NAMES[loaded["modality"]]] if loaded.get("modality") in _MODALITY_NAMES else [])
+                        + ([mne_details(loaded)] if loaded.get("measure_name") else [])
                         + ([f"electrode positions from MNE's {loaded['electrodes']} template"]
                            if loaded.get("electrodes") else [])
                         + [f"{k} {loaded[k]}" for k in ("atlas", "space", "chromophore", "task", "session") if loaded.get(k)]
@@ -790,7 +797,7 @@ def _participants(n: int, text: str) -> str:
     return f"{n} participant{'' if n == 1 else 's'} " + text.format("was" if n == 1 else "were")
 
 
-NO_VALUES = "<p>No region has a value for this metric.</p>"
+NO_VALUES = "<p>No {} has a value for this metric.</p>"
 
 
 def _no_coordinates(nodes) -> str:

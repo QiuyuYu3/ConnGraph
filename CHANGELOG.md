@@ -12,7 +12,7 @@
 
 ### Added
 
-- A `conngraph` command in BIDS App style: the participant level computes graph metrics per participant, the group level collects them into tables and a report and compares groups. It reads XCP-D, NIRSPipe or MNE-Connectivity outputs, or a folder of matrix or time series files.
+- A `conngraph` command in BIDS App style: the participant level computes graph metrics per participant, the group level collects them into tables and a report and compares groups. It reads XCP-D, NIRSPipe or MNE-Connectivity outputs, or a folder of matrix or time series files; `--modality` is required where the input does not say whether it is fMRI, fNIRS, EEG or MEG, and sets the report's wording.
 - EEG and MEG input from MNE-Connectivity files: the method is read from the files, each frequency band is analysed separately, and phase and coherence measures are averaged and compared without Fisher z. Electrodes with standard names are drawn at the positions of an MNE template in MNI space.
 - HTML reports for each participant, for graph metrics and for NBS, built from the result files they link to and rebuilt with `--reports-only`, with interactive figures, static figures saved beside the report (and rotatable 3-D brain pages with `--interactive-brain`), and a Methods section written from the run's settings.
 - More input formats (unlabelled matrices, CIFTI, AFNI, nilearn), and connectivity computed from regional time series.

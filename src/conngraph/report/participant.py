@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from conngraph.report import figures
-from conngraph.report.methods import graph_methods
+from conngraph.report.methods import graph_methods, node_word
 from conngraph.report.pages import (
     NO_VALUES,
     _SWEEP_LABELS,
@@ -42,6 +42,7 @@ def participant_section(result, sid: str, matrix: pd.DataFrame, nodes: pd.DataFr
                         title: str, meshes: list | None, figs=None, surfaces: tuple[str, str] | None = None) -> dict:
     """One participant's results in one session and atlas as plain data; figs saves the static brain views."""
     opts = params["options"]
+    unit = node_word(params)
     networks = _column(nodes, opts["label_col"], opts["network_col"])
     palette = _palette(networks)
     cols = list(matrix.columns)
@@ -56,7 +57,7 @@ def participant_section(result, sid: str, matrix: pd.DataFrame, nodes: pd.DataFr
     overview = _overview(matrix, graph, params, errors).to_numpy().tolist()
     steps = []
 
-    panes = [("regions", "Regions", figures.to_div(figures.ordered_heatmap(
+    panes = [("regions", f"{unit.capitalize()}s", figures.to_div(figures.ordered_heatmap(
         np.nan_to_num(matrix.to_numpy(float)), labels, nets, 1.0, value_label(params))))]
     for attr, name in (("net_corr_df", "Networks"), ("net_hemi_corr_df", "Networks (hemispheres)")):
         wide = getattr(result, attr)
@@ -80,7 +81,7 @@ def participant_section(result, sid: str, matrix: pd.DataFrame, nodes: pd.DataFr
                 values = node[m].reindex(cols).to_numpy(float)
                 shown = ~np.isnan(xyz).any(axis=1) & ~np.isnan(values)
                 if not shown.any():
-                    brains.append((m, _metric_title(m), NO_VALUES))
+                    brains.append((m, _metric_title(m), NO_VALUES.format(unit)))
                     continue
                 html_ = _static_node_brain(result, nodes, opts["label_col"], cols, values, _metric_title(m), surfaces,
                                            figs, m)
@@ -99,7 +100,7 @@ def participant_section(result, sid: str, matrix: pd.DataFrame, nodes: pd.DataFr
             parts.append('<div class="option-label">By network</div>' + _picker(boxes, columns=1))
         if parts:
             steps.append(_step(f"{next(letter)}. Node metrics", data=link("node_df"), html="".join(parts),
-                               desc="Each region's value; hover for its name."))
+                               desc=f"Each {unit}'s value; hover for its name."))
 
     tables = []
     for attr, level in (("network_df", "network"), ("net_hemi_df", "network_hemi")):
@@ -125,7 +126,7 @@ def participant_section(result, sid: str, matrix: pd.DataFrame, nodes: pd.DataFr
         spring = figures.to_div(figures.spring_figure(G, names, nets, palette))
         steps.append(_step(f"{next(letter)}. Graph", html=_figure_row(*_circos_images(G, names, nets, palette, value_label(params)))
                            + _figure_block("Spring layout", spring),
-                           desc=f"This participant's node-level graph ({how}). Hover a region for its name."))
+                           desc=f"This participant's node-level graph ({how}). Hover a {unit} for its name."))
 
     if result.curves is not None:
         curves = result.curves[result.curves["ID"] == sid]

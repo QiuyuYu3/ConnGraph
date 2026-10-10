@@ -45,6 +45,7 @@ This writes a `matrix` input folder: `nodes.tsv`, one `sub-<label>_matrix.tsv` p
 ```bash
 conngraph mock_input results participant \
     --input-type matrix \
+    --modality fmri \
     --graph-method tmfg
 ```
 
@@ -55,6 +56,7 @@ This builds a TMFG graph from each matrix, computes the default metrics at the n
 ```bash
 conngraph mock_input results group \
     --input-type matrix \
+    --modality fmri \
     --groups mock_input/participants.tsv \
     --group-column group \
     --contrast B A \

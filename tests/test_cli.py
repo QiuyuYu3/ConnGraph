@@ -138,7 +138,7 @@ def test_group_tables_match_the_python_api(dataset, tmp_path):
     for sid, mat in dataset.matrices.items():
         mat.to_csv(folder / f"{sid}_matrix.tsv", sep="\t")
     out = tmp_path / "out"
-    _both(folder, out, ["--input-type", "matrix", *FAST], common=["--input-type", "matrix"])
+    _both(folder, out, ["--input-type", "matrix", "--modality", "fmri", *FAST], common=["--input-type", "matrix", "--modality", "fmri"])
     table = pd.read_csv(out / "group" / "node" / "strength.abs.tsv", sep="\t", index_col="ID")
     api = compute_graph_metrics(dataset.matrices, dataset.nodes_df, level="node", metrics="strength",
                                 graph_method="density", graph_params={"density": 0.2}, network_col="network",
@@ -150,7 +150,7 @@ def test_participants_run_one_at_a_time_match_a_single_run(dataset, tmp_path):
     folder = _layout(dataset, tmp_path / "in")
     for sid, mat in dataset.matrices.items():
         mat.to_csv(folder / f"{sid}_matrix.tsv", sep="\t")
-    opts = ["--input-type", "matrix", "--level", "node", "--graph-method", "density", "--graph-param", "density=0.3",
+    opts = ["--input-type", "matrix", "--modality", "fmri", "--level", "node", "--graph-method", "density", "--graph-param", "density=0.3",
             "--metrics", "clust_coeff", "--n-random", "3", "--random-seed", "7", "--n-jobs", "1", "--no-report",
             "--quiet"]
     together, apart = tmp_path / "together", tmp_path / "apart"
@@ -176,7 +176,7 @@ def test_nodes_are_dropped_by_looking_at_every_participant(dataset, tmp_path):
         mat.to_csv(folder / f"{sid}_matrix.tsv", sep="\t")
     out = tmp_path / "out"
     with pytest.warns(UserWarning, match="Dropping"):
-        cli.main([str(folder), str(out), "participant", "--input-type", "matrix", *FAST, "--participant-label", ids[0]])
+        cli.main([str(folder), str(out), "participant", "--input-type", "matrix", "--modality", "fmri", *FAST, "--participant-label", ids[0]])
     node = pd.read_csv(out / ids[0] / f"{ids[0]}_level-node_metrics.tsv", sep="\t", index_col=0)
     assert bad not in node.index and len(node) == len(dataset.nodes_df) - 1
     assert sorted(p.name for p in out.glob("sub-*")) == [ids[0]]
@@ -188,11 +188,11 @@ def test_group_level_refuses_participants_run_with_different_options(dataset, tm
         mat.to_csv(folder / f"{sid}_matrix.tsv", sep="\t")
     ids = sorted(dataset.matrices)
     out = tmp_path / "out"
-    cli.main([str(folder), str(out), "participant", "--input-type", "matrix", *FAST, "--participant-label", ids[0]])
+    cli.main([str(folder), str(out), "participant", "--input-type", "matrix", "--modality", "fmri", *FAST, "--participant-label", ids[0]])
     other = [a if a != "density=0.2" else "density=0.3" for a in FAST]
-    cli.main([str(folder), str(out), "participant", "--input-type", "matrix", *other, "--participant-label", ids[1]])
+    cli.main([str(folder), str(out), "participant", "--input-type", "matrix", "--modality", "fmri", *other, "--participant-label", ids[1]])
     with pytest.raises(SystemExit, match="different options"):
-        cli.main([str(folder), str(out), "group", "--input-type", "matrix", "--no-report", "--quiet"])
+        cli.main([str(folder), str(out), "group", "--input-type", "matrix", "--modality", "fmri", "--no-report", "--quiet"])
 
 
 def test_group_level_needs_participant_results_or_a_test(xcpd, tmp_path):
@@ -228,9 +228,9 @@ def test_group_matrix_folder_records_graph_options_and_skips_the_report(dataset,
     for sid, mat in dataset.matrices.items():
         mat.to_csv(folder / f"{sid}_matrix.tsv", sep="\t")
     out = tmp_path / "out"
-    _both(folder, out, ["--input-type", "matrix", "--level", "node", "--graph-method", "density", "--graph-param",
+    _both(folder, out, ["--input-type", "matrix", "--modality", "fmri", "--level", "node", "--graph-method", "density", "--graph-param",
                         "density=0.2,0.3", "--metrics", "strength", "--n-jobs", "1", "--no-report", "--quiet"],
-          common=["--input-type", "matrix"])
+          common=["--input-type", "matrix", "--modality", "fmri"])
     params = _params(out / "group")
     assert params["levels"]["node"]["graph_params"] == {"density": [0.2, 0.3]}
     assert params["input"]["source"] == "matrix files"
@@ -352,7 +352,7 @@ def test_matrix_folder_is_read_by_fixed_names(dataset, tmp_path):
             mat.to_csv(folder / f"{sid}_matrix.csv")
     (folder / "notes_matrix.txt").write_text("not a participant")
     out = tmp_path / "out"
-    _both(folder, out, ["--input-type", "matrix", *FAST], common=["--input-type", "matrix"])
+    _both(folder, out, ["--input-type", "matrix", "--modality", "fmri", *FAST], common=["--input-type", "matrix", "--modality", "fmri"])
     params = _params(out / "group")
     assert params["subjects"] == sids
     assert params["input"]["source"] == "matrix files"
@@ -364,7 +364,7 @@ def test_matrix_folder_refuses_two_files_for_one_participant(dataset, tmp_path):
     mat.to_csv(folder / f"{sid}_matrix.tsv", sep="\t")
     np.save(folder / f"{sid}_matrix.npy", mat.to_numpy())
     with pytest.raises(SystemExit, match=sid):
-        cli.main([str(folder), str(tmp_path / "out"), "participant", "--input-type", "matrix"] + FAST)
+        cli.main([str(folder), str(tmp_path / "out"), "participant", "--input-type", "matrix", "--modality", "fmri"] + FAST)
 
 
 def test_matrix_folder_runs_without_coordinates(dataset, tmp_path):
@@ -374,7 +374,7 @@ def test_matrix_folder_runs_without_coordinates(dataset, tmp_path):
     for sid, mat in dataset.matrices.items():
         mat.to_csv(folder / f"{sid}_matrix.tsv", sep="\t")
     out = tmp_path / "out"
-    _both(folder, out, ["--input-type", "matrix", *FAST], group_args=(), common=["--input-type", "matrix"])
+    _both(folder, out, ["--input-type", "matrix", "--modality", "fmri", *FAST], group_args=(), common=["--input-type", "matrix", "--modality", "fmri"])
     assert "no x, y, z coordinates" in (out / "group" / "graph_report.html").read_text(encoding="utf-8")
 
 
@@ -385,7 +385,7 @@ def test_matrix_folder_without_networks_computes_the_node_level(dataset, tmp_pat
     for sid, mat in dataset.matrices.items():
         mat.to_csv(folder / f"{sid}_matrix.tsv", sep="\t")
     out = tmp_path / "out"
-    _both(folder, out, ["--input-type", "matrix", *FAST[2:]], common=["--input-type", "matrix"])
+    _both(folder, out, ["--input-type", "matrix", "--modality", "fmri", *FAST[2:]], common=["--input-type", "matrix", "--modality", "fmri"])
     assert list(_params(out / "group")["levels"]) == ["node"]
 
 
@@ -395,7 +395,7 @@ def test_matrix_folder_needs_nodes_tsv(dataset, tmp_path):
     sid, mat = next(iter(dataset.matrices.items()))
     mat.to_csv(folder / f"{sid}_matrix.tsv", sep="\t")
     with pytest.raises(SystemExit, match="nodes.tsv"):
-        cli.main([str(folder), str(tmp_path / "out"), "participant", "--input-type", "matrix"] + FAST)
+        cli.main([str(folder), str(tmp_path / "out"), "participant", "--input-type", "matrix", "--modality", "fmri"] + FAST)
 
 
 def _toy_series(dataset, seed):
@@ -409,7 +409,7 @@ def test_time_series_folder(dataset, tmp_path):
     for i in range(3):
         np.savetxt(folder / f"sub-{i:02d}_timeseries.txt", _toy_series(dataset, i).to_numpy())
     out = tmp_path / "out"
-    common = ["--input-type", "timeseries", "--connectivity", "partial-correlation", "--shrinkage"]
+    common = ["--input-type", "timeseries", "--modality", "fmri", "--connectivity", "partial-correlation", "--shrinkage"]
     _both(folder, out, FAST, common=common)
     params = _params(out / "group")
     assert params["input"]["source"] == "time series"
@@ -440,7 +440,7 @@ def test_unlabelled_fisher_z_matrices(dataset, tmp_path):
         z = np.arctanh(np.clip(mat.to_numpy(float), -0.999, 0.999))
         np.save(folder / f"{sid}_matrix.npy", z)
     out = tmp_path / "out"
-    _both(folder, out, FAST, common=["--input-type", "matrix", "--values", "z"])
+    _both(folder, out, FAST, common=["--input-type", "matrix", "--modality", "fmri", "--values", "z"])
     params = _params(out / "group")
     assert params["input"]["values"] == "z"
     assert params["subjects"] == sorted(dataset.matrices)
@@ -449,7 +449,7 @@ def test_unlabelled_fisher_z_matrices(dataset, tmp_path):
 def test_connectivity_options_need_time_series(dataset, tmp_path):
     folder = _layout(dataset, tmp_path / "in")
     with pytest.raises(SystemExit):
-        cli.main([str(folder), str(tmp_path / "out"), "participant", "--input-type", "matrix", "--connectivity",
+        cli.main([str(folder), str(tmp_path / "out"), "participant", "--input-type", "matrix", "--modality", "fmri", "--connectivity",
                   "correlation"] + FAST)
 
 
@@ -535,7 +535,7 @@ def test_matrix_folder_with_sessions(dataset, tmp_path):
         for ses in ("ses-01", "ses-02"):
             mat.to_csv(folder / f"{sid}_{ses}_matrix.tsv", sep="\t")
     out = tmp_path / "out"
-    _both(folder, out, FAST, common=["--input-type", "matrix"])
+    _both(folder, out, FAST, common=["--input-type", "matrix", "--modality", "fmri"])
     for ses in ("ses-01", "ses-02"):
         params = _params(out / "group" / ses)
         assert params["subjects"] == sorted(dataset.matrices) and params["input"]["session"] == ses
@@ -547,7 +547,7 @@ def test_matrix_folder_mixing_files_with_and_without_session_is_refused(dataset,
     ma.to_csv(folder / f"{a}_ses-01_matrix.tsv", sep="\t")
     mb.to_csv(folder / f"{b}_matrix.tsv", sep="\t")
     with pytest.raises(SystemExit, match="session"):
-        cli.main([str(folder), str(tmp_path / "out"), "participant", "--input-type", "matrix"] + FAST)
+        cli.main([str(folder), str(tmp_path / "out"), "participant", "--input-type", "matrix", "--modality", "fmri"] + FAST)
 
 
 def test_a_failed_session_leaves_an_error_file_and_the_others_still_run(dataset, tmp_path, capsys):
@@ -556,7 +556,7 @@ def test_a_failed_session_leaves_an_error_file_and_the_others_still_run(dataset,
         mat.to_csv(folder / f"{sid}_ses-01_matrix.tsv", sep="\t")
         np.save(folder / f"{sid}_ses-02_matrix.npy", np.ones((2, 3)))
     out = tmp_path / "out"
-    assert cli.main([str(folder), str(out), "participant", "--input-type", "matrix"] + FAST) == 1
+    assert cli.main([str(folder), str(out), "participant", "--input-type", "matrix", "--modality", "fmri"] + FAST) == 1
     sid = sorted(dataset.matrices)[0]
     assert (out / sid / "ses-01" / f"{sid}_ses-01_metrics.json").exists()
     assert "not square" in (out / "logs" / "ses-02" / "error.txt").read_text(encoding="utf-8")

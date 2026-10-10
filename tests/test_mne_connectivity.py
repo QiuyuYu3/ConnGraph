@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 
 import conngraph as bnv
+from conngraph.cli import _shared
 from conngraph.cli import main as cli
 from conngraph.derivatives import MNE_MEASURES
 from conngraph.exceptions import DataValidationError
@@ -124,31 +125,97 @@ def test_template_coordinates_match_names_in_any_case_and_skip_unknown_names():
         bnv.montage_coordinates(["Cz"], "biosemi64")
 
 
-def test_cli_montage_needs_mne_input_and_excludes_coords(tmp_path, capsys):
-    base = [str(tmp_path), str(tmp_path / "out"), "group", "--no-report"]
+@pytest.mark.parametrize("options, message", [
+    (["--input-type", "xcpd", "--modality", "fmri"], "xcpd input is fmri"),
+    (["--input-type", "nirspipe", "--modality", "eeg"], "nirspipe input is fnirs"),
+    (["--input-type", "matrix"], "--modality is required for matrix input"),
+    (["--input-type", "mne-connectivity", "--modality", "fmri"], "mne-connectivity input is eeg, meg or fnirs"),
+    (["--input-type", "matrix", "--modality", "fmri", "--montage", "colin27_1020"], "--montage needs --modality eeg"),
+    (["--input-type", "mne-connectivity", "--modality", "eeg", "--montage", "colin27_1020", "--coords", "c.tsv"],
+     "either with --montage or with --coords"),
+    (["--input-type", "matrix", "--modality", "eeg"], "choose --fisher-z or --no-fisher-z"),
+    (["--input-type", "matrix", "--modality", "meg"], "choose --fisher-z or --no-fisher-z"),
+    (["--input-type", "matrix", "--modality", "fmri", "--fisher-z", "--no-fisher-z"], "not both"),
+    (["--input-type", "mne-connectivity", "--modality", "eeg", "--no-fisher-z"], "set by the measure"),
+])
+def test_cli_modality_rules(options, message, capsys):
     with pytest.raises(SystemExit):
-        cli.main([*base, "--input-type", "matrix", "--montage", "colin27_1020"])
-    assert "--montage is for --input-type mne" in capsys.readouterr().err
-    with pytest.raises(SystemExit):
-        cli.main([*base, "--input-type", "mne", "--montage", "colin27_1020", "--coords", "c.tsv"])
-    assert "either with --montage or with --coords" in capsys.readouterr().err
+        cli.parse_args(["in", "out", "group", *options])
+    assert message in capsys.readouterr().err
+
+
+def test_cli_modality_is_inferred_or_given_and_eeg_matrices_may_choose_fisher_z():
+    assert cli.parse_args(["in", "out", "group", "--input-type", "xcpd"])[0].modality == "fmri"
+    assert cli.parse_args(["in", "out", "group", "--input-type", "nirspipe"])[0].modality == "fnirs"
+    args, _ = cli.parse_args(["in", "out", "group", "--input-type", "matrix", "--modality", "eeg", "--fisher-z"])
+    assert args.no_fisher_z is False
+    args, _ = cli.parse_args(["in", "out", "group", "--input-type", "matrix", "--modality", "eeg", "--values", "z"])
+    assert args.no_fisher_z is False
+
+
+def _matrix_folder(folder):
+    folder.mkdir()
+    rng = np.random.default_rng(0)
+    for s in range(1, 7):
+        m = rng.uniform(0.1, 0.9, (len(CHANNELS), len(CHANNELS)))
+        m = (m + m.T) / 2
+        np.fill_diagonal(m, 0)
+        pd.DataFrame(m, index=CHANNELS, columns=CHANNELS).to_csv(folder / f"sub-{s:02d}_matrix.tsv", sep="	")
+    pd.DataFrame({"label": CHANNELS, "network": ["front", "front", "back", "back"] * 2}).to_csv(
+        folder / "nodes.tsv", sep="	", index=False)
+    return folder
+
+
+@pytest.mark.parametrize("modality, placed", [("eeg", True), ("fmri", False)])
+def test_only_eeg_matrix_input_gets_template_electrode_positions(tmp_path, modality, placed):
+    folder = _matrix_folder(tmp_path / "in")
+    args, parser = cli.parse_args([str(folder), str(tmp_path / "out"), "group", "--input-type", "matrix",
+                                   "--modality", modality, "--no-fisher-z", "--quiet"])
+    _, nodes = _shared.load_input(args, parser)
+    record = nodes.attrs["conngraph_input"]
+    assert record["modality"] == modality
+    assert ({"x", "y", "z"} <= set(nodes.columns)) is placed and ("electrodes" in record) is placed
+
+
+def test_mne_connectivity_input_places_electrodes_only_for_eeg(tmp_path):
+    folder = tmp_path / "in"
+    _files(folder, n=1)
+    for modality, placed in (("eeg", True), ("fnirs", False)):
+        args, parser = cli.parse_args([str(folder), str(tmp_path / "out"), "group", "--input-type", "mne-connectivity",
+                                       "--modality", modality, "--quiet"])
+        _, nodes = _shared.load_input(args, parser, "band-8to13Hz")
+        assert ("x" in nodes) is placed and nodes.attrs["conngraph_input"]["modality"] == modality
+
+
+def test_eeg_reports_speak_of_electrodes(tmp_path):
+    folder = _matrix_folder(tmp_path / "in")
+    out = tmp_path / "out"
+    common = ["--input-type", "matrix", "--modality", "eeg", "--no-fisher-z", "--quiet"]
+    assert cli.main([str(folder), str(out), "participant", *common, "--graph-method", "density", "--graph-param",
+                     "density=0.5", "--metrics", "strength", "--level", "node", "--n-jobs", "1"]) == 0
+    assert cli.main([str(folder), str(out), "group", *common]) == 0
+    html = (out / "group" / "graph_report.html").read_text(encoding="utf-8")
+    assert "Mean over participants of each electrode" in html and "highest electrodes" in html.lower()
+    assert "electrode" in (out / "sub-01.html").read_text(encoding="utf-8")
+    assert "matrix files (EEG, electrode positions from MNE's colin27_1005 template" in html
 
 
 def test_cli_runs_each_band_without_fisher_z(tmp_path):
     folder = tmp_path / "in"
     _files(folder, n=6)
     pd.DataFrame({"label": CHANNELS, "network": ["front", "front", "back", "back"] * 2}).to_csv(
-        folder / "nodes.tsv", sep="\t", index=False)
+        folder / "nodes.tsv", sep="	", index=False)
     out = tmp_path / "out"
-    fast = ["--input-type", "mne", "--graph-method", "density", "--graph-param", "density=0.5", "--metrics", "strength",
+    mne_input = ["--input-type", "mne-connectivity", "--modality", "eeg"]
+    fast = [*mne_input, "--graph-method", "density", "--graph-param", "density=0.5", "--metrics", "strength",
             "--n-jobs", "1", "--no-report", "--quiet"]
     assert cli.main([str(folder), str(out), "participant", *fast]) == 0
-    assert cli.main([str(folder), str(out), "group", "--input-type", "mne", "--no-report", "--quiet"]) == 0
+    assert cli.main([str(folder), str(out), "group", *mne_input, "--no-report", "--quiet"]) == 0
     for band in ("band-8to13Hz", "band-13to30Hz"):
         params = json.loads((out / "group" / band / "parameters.json").read_text(encoding="utf-8"))
         assert params["options"]["apply_fisher_z"] is False
         assert (params["input"]["measure"], params["input"]["source"]) == ("wpli", "MNE-Connectivity")
         assert "node" in params["levels"]
-        assert params["input"]["electrodes"] == "colin27_1005"
-        saved = pd.read_csv(out / "group" / band / "nodes.tsv", sep="\t")
+        assert (params["input"]["electrodes"], params["input"]["modality"]) == ("colin27_1005", "eeg")
+        saved = pd.read_csv(out / "group" / band / "nodes.tsv", sep="	")
         assert not saved[["x", "y", "z"]].isna().any().any()

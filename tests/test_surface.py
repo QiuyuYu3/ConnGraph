@@ -41,11 +41,11 @@ def test_the_cli_takes_one_volume_or_two_surfaces(tmp_path, monkeypatch, capsys)
     volume = tmp_path / "template.nii.gz"
     _ellipsoid(volume)
     monkeypatch.setenv("CONNGRAPH_DATA", str(tmp_path / "cache"))
-    args, _ = cli.parse_args(["in", "out", "group", "--input-type", "matrix", "--surfaces", str(volume)])
+    args, _ = cli.parse_args(["in", "out", "group", "--input-type", "matrix", "--modality", "fmri", "--surfaces", str(volume)])
     left, right = _shared.surfaces(args)
     assert left.endswith("hemi-L.surf.gii") and right.endswith("hemi-R.surf.gii")
-    args, _ = cli.parse_args(["in", "out", "group", "--input-type", "matrix", "--surfaces", "l.surf.gii", "r.surf.gii"])
+    args, _ = cli.parse_args(["in", "out", "group", "--input-type", "matrix", "--modality", "fmri", "--surfaces", "l.surf.gii", "r.surf.gii"])
     assert _shared.surfaces(args) == ("l.surf.gii", "r.surf.gii")
     with pytest.raises(SystemExit):
-        cli.parse_args(["in", "out", "group", "--input-type", "matrix", "--surfaces", "a", "b", "c"])
+        cli.parse_args(["in", "out", "group", "--input-type", "matrix", "--modality", "fmri", "--surfaces", "a", "b", "c"])
     assert "--surfaces" in capsys.readouterr().err

@@ -62,7 +62,7 @@ def graph_methods(params: dict) -> dict[str, str]:
         ver = params["packages"].get("mne-connectivity")
         source = f" computed with MNE-Connectivity{f' v{ver}' if ver else ''} ({mne_details(loaded)})"
     elif series:
-        source = " computed from regional time series"
+        source = f" computed from {'regional' if node_word(params) == 'region' else node_word(params)} time series"
 
     para1 = [("input", {"source": source, "ver": params["packages"]["conngraph"]})]
     para1 += _input_sentences(params)
@@ -156,6 +156,14 @@ def compare_methods(params: dict) -> dict[str, str]:
     if params.get("untested"):
         sentences.append(("compare_untested", {}))
     return render([sentences])
+
+
+_NODE_WORDS = {"fmri": "region", "fnirs": "channel", "eeg": "electrode", "meg": "sensor"}
+
+
+def node_word(params: dict) -> str:
+    """What the reports call a node: region, unless the input names another modality."""
+    return _NODE_WORDS.get((params.get("input") or {}).get("modality"), "region")
 
 
 def mne_details(loaded: dict) -> str:

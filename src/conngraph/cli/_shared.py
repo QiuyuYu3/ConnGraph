@@ -20,7 +20,10 @@ from conngraph.loaders import _EXTENSIONS, INPUT_ATTR, subject_id_from_path
 
 NODES_FILE = "nodes.tsv"
 # file name endings of the folder input types, after sub-<label>[_ses-<label>]_
-FOLDER_FILES = {"matrix": "matrix.*", "timeseries": "timeseries.*", "mne": "connectivity.nc"}
+FOLDER_FILES = {"matrix": "matrix.*", "timeseries": "timeseries.*", "mne-connectivity": "connectivity.nc"}
+MODALITIES = ("fmri", "fnirs", "eeg", "meg")
+# input types whose modality is known from the input itself
+FIXED_MODALITY = {"xcpd": "fmri", "nirspipe": "fnirs"}
 
 
 def add_input_arguments(parser: argparse.ArgumentParser) -> None:
@@ -31,12 +34,17 @@ def add_input_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--quiet", action="store_true", help="print nothing but errors")
 
     g = parser.add_argument_group("input")
-    g.add_argument("--input-type", choices=["xcpd", "nirspipe", "matrix", "timeseries", "mne"], required=True,
+    g.add_argument("--input-type", choices=["xcpd", "nirspipe", "matrix", "timeseries", "mne-connectivity"],
+                   required=True,
                    help="xcpd: XCP-D derivatives tree, one result folder per atlas; nirspipe: NIRSPipe "
                         "derivatives tree, one result folder per chromophore; matrix: a folder with nodes.tsv and one "
                         "sub-<label>_matrix.<ext> per participant; timeseries: the same with "
-                        "sub-<label>_timeseries.<ext>; mne: a folder with one sub-<label>_connectivity.nc saved by "
-                        "MNE-Connectivity per participant and an optional nodes.tsv, one result folder per band")
+                        "sub-<label>_timeseries.<ext>; mne-connectivity: a folder with one sub-<label>_connectivity.nc "
+                        "saved by MNE-Connectivity per participant and an optional nodes.tsv, one result folder per "
+                        "band")
+    g.add_argument("--modality", choices=MODALITIES,
+                   help="required for matrix, timeseries and mne-connectivity input (xcpd is fmri, nirspipe is "
+                        "fnirs); sets the report's wording, and eeg places electrodes with standard names")
     g.add_argument("--connectivity", choices=["correlation", "partial-correlation"],
                    help="measure computed from time series: for timeseries input (default: correlation); for XCP-D "
                         "input, compute it from the time series files instead of reading XCP-D's matrices")
@@ -63,7 +71,7 @@ def add_input_arguments(parser: argparse.ArgumentParser) -> None:
     g.add_argument("--bad-node-threshold", type=float, default=0.9,
                    help="drop nodes with more than this fraction of missing values (default: 0.9)")
     g.add_argument("--drop-mode", choices=["union", "intersection"], default="union",
-                   help="matrix, timeseries, nirspipe and mne input: drop a node missing in any participant (union, "
+                   help="matrix, timeseries, nirspipe and mne-connectivity input: drop a node missing in any participant (union, "
                         "default) or in all (intersection)")
 
 
@@ -75,10 +83,11 @@ def input_variants(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
         return [f"atlas-{a}" for a in dict.fromkeys(args.atlases)]
     if args.input_type == "nirspipe":
         return [f"chromo-{c}" for c in dict.fromkeys(args.chromophore)]
-    if args.input_type == "mne":
-        paths = _input_files(args.input_dir, f"sub-*_{FOLDER_FILES['mne']}")
+    if args.input_type == "mne-connectivity":
+        paths = _input_files(args.input_dir, f"sub-*_{FOLDER_FILES['mne-connectivity']}")
         if not paths:
-            raise SystemExit(f"{parser.prog}: no files matching sub-*_{FOLDER_FILES['mne']} in {args.input_dir}")
+            raise SystemExit(f"{parser.prog}: no files matching sub-*_{FOLDER_FILES['mne-connectivity']} in "
+                             f"{args.input_dir}")
         try:
             bands = conngraph.mne_connectivity_bands(paths[0])
         except ValueError as exc:
@@ -140,7 +149,7 @@ def _read_json(path: str) -> dict:
 def run_all(args: argparse.Namespace, parser: argparse.ArgumentParser, run, error_folder: str) -> int:
     """Call run(session, variant) for each session and variant; with several, a failure is noted and the rest run."""
     kind = args.connectivity
-    if args.input_type in ("matrix", "nirspipe", "mne") and (kind or args.shrinkage):
+    if args.input_type in ("matrix", "nirspipe", "mne-connectivity") and (kind or args.shrinkage):
         parser.error("--connectivity and --shrinkage need timeseries or XCP-D input")
     if args.shrinkage and not kind and args.input_type != "timeseries":
         parser.error("--shrinkage needs --connectivity")
@@ -207,7 +216,7 @@ def _load_mne(args: argparse.Namespace, files: dict[str, str], variant: str | No
     band = next((b for b in bands if band_folder(b) == variant), None)
     matrices, table = conngraph.load_mne_connectivity(files, band, nodes, bad_node_threshold=args.bad_node_threshold,
                                                        drop_mode=args.drop_mode, verbose=not args.quiet,
-                                                       montage=None if args.coords else args.montage or "auto")
+                                                       montage=_montage(args))
     # phase-based and coherence measures are averaged and compared as they are, not as Fisher z
     if not MNE_MEASURES[table.attrs[INPUT_ATTR]["measure"]][2]:
         args.no_fisher_z = True
@@ -224,13 +233,12 @@ def load_input(args: argparse.Namespace, parser: argparse.ArgumentParser,
     if "ses" in filters:
         filters["ses"] = [session.removeprefix("ses-") if session else None]
     if args.input_type == "nirspipe":
-        return conngraph.load_nirspipe(args.input_dir, variant.removeprefix("chromo-"), session=session,
-                                          task=args.task_id,
-                                          bad_node_threshold=args.bad_node_threshold, drop_mode=args.drop_mode,
-                                          verbose=verbose, bids_filters=filters)
+        return _with_modality(args, conngraph.load_nirspipe(
+            args.input_dir, variant.removeprefix("chromo-"), session=session, task=args.task_id,
+            bad_node_threshold=args.bad_node_threshold, drop_mode=args.drop_mode, verbose=verbose, bids_filters=filters))
     if args.input_type in FOLDER_FILES:
         nodes = os.path.join(args.input_dir, NODES_FILE)
-        if not os.path.isfile(nodes) and args.input_type != "mne":
+        if not os.path.isfile(nodes) and args.input_type != "mne-connectivity":
             raise SystemExit(f"{parser.prog}: {args.input_dir} has no {NODES_FILE}")
         ending = FOLDER_FILES[args.input_type]
         pattern = f"sub-*_{session}_{ending}" if session else f"sub-*_{ending}"
@@ -243,8 +251,9 @@ def load_input(args: argparse.Namespace, parser: argparse.ArgumentParser,
             files[sid] = p
         if not files:
             raise SystemExit(f"{parser.prog}: no files matching {pattern} in {args.input_dir}")
-        if args.input_type == "mne":
-            return _load_mne(args, files, variant, nodes if os.path.isfile(nodes) else None, session)
+        if args.input_type == "mne-connectivity":
+            return _with_modality(args, _load_mne(args, files, variant, nodes if os.path.isfile(nodes) else None,
+                                                  session))
         common = dict(bad_node_threshold=args.bad_node_threshold, drop_mode=args.drop_mode, mat_key=args.mat_key)
         if args.input_type == "matrix":
             ds = conngraph.load_group(files, nodes, values=args.values, **common)
@@ -252,11 +261,28 @@ def load_input(args: argparse.Namespace, parser: argparse.ArgumentParser,
             ds = conngraph.load_timeseries(files, nodes, kind=kind or "correlation", shrinkage=args.shrinkage,
                                             **common)
         ds.nodes_df.attrs[INPUT_ATTR].update(path=os.path.abspath(args.input_dir), session=session)
-        return ds.matrices, ds.nodes_df
-    return conngraph.load_xcpd(args.input_dir, variant.removeprefix("atlas-"), session=session, task=args.task_id,
-                                space=args.space, bad_node_threshold=args.bad_node_threshold,
-                                verbose=verbose, connectivity=kind, shrinkage=args.shrinkage, bids_filters=filters,
-                                combine_runs=args.combine_runs)
+        return _with_modality(args, (ds.matrices, ds.nodes_df))
+    return _with_modality(args, conngraph.load_xcpd(
+        args.input_dir, variant.removeprefix("atlas-"), session=session, task=args.task_id, space=args.space,
+        bad_node_threshold=args.bad_node_threshold, verbose=verbose, connectivity=kind, shrinkage=args.shrinkage,
+        bids_filters=filters, combine_runs=args.combine_runs))
+
+
+def _montage(args: argparse.Namespace) -> str | None:
+    """Template for electrode positions: only for EEG, and not when --coords gives them."""
+    return None if args.coords or args.modality != "eeg" else args.montage or "auto"
+
+
+def _with_modality(args: argparse.Namespace, loaded: tuple[dict, pd.DataFrame]) -> tuple[dict, pd.DataFrame]:
+    from conngraph.derivatives import _electrode_positions
+
+    matrices, table = loaded
+    if args.input_type in ("matrix", "timeseries"):
+        table, electrodes = _electrode_positions(table, _montage(args), not args.quiet)
+        if electrodes:
+            table.attrs[INPUT_ATTR]["electrodes"] = electrodes
+    table.attrs[INPUT_ATTR]["modality"] = args.modality
+    return matrices, table
 
 
 def node_columns(args: argparse.Namespace) -> tuple[str, str]:

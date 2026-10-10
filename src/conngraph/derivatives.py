@@ -481,9 +481,11 @@ def _electrode_positions(table: pd.DataFrame, montage: str | None, verbose: bool
         return table, None
     missing = [n for n in table["label"] if n not in set(coords["label"])]
     if verbose:
-        print(f"[load_mne_connectivity] Electrode positions from MNE's {template} template for {len(coords)} of "
-              f"{len(table)} nodes" + (f"; not in it: {', '.join(map(str, missing))}" if missing else ""))
-    return table.merge(coords, on="label", how="left"), template
+        print(f"[electrodes] Positions from MNE's {template} template for {len(coords)} of {len(table)} nodes"
+              + (f"; not in it: {', '.join(map(str, missing))}" if missing else ""))
+    placed = table.merge(coords, on="label", how="left")
+    placed.attrs = dict(table.attrs)
+    return placed, template
 
 
 def _read_mne(path: str):
