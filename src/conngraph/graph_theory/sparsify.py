@@ -179,6 +179,10 @@ def _graph_mask(graph, n: int) -> np.ndarray:
 
 
 def _tmfg(W: np.ndarray, S: np.ndarray) -> np.ndarray:
+    # TMFG grows from a tetrahedron
+    if len(W) < 4:
+        raise ValueError(f"TMFG needs at least 4 nodes, and this graph has {len(W)}; use another graph method for it, "
+                         "such as full (--network-graph-method full for the network levels).")
     graph = _topcorr().tmfg(S, absolute=False, threshold_mean=True)
     return _keep(W, _graph_mask(graph, len(W)))
 

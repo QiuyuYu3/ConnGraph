@@ -64,6 +64,13 @@ def test_tmfg_is_planar_with_3n_minus_6_edges():
     assert nx.check_planarity(nx.from_numpy_array(A))[0]
 
 
+@pytest.mark.parametrize("n", [2, 3])
+def test_tmfg_with_fewer_than_four_nodes_says_so(n):
+    pytest.importorskip("topcorr")
+    with pytest.raises(ValueError, match=f"at least 4 nodes, and this graph has {n}"):
+        build_adjacency(_corr(n), "tmfg")
+
+
 def test_absolute_keeps_edges_at_or_above_threshold():
     pytest.importorskip("bct")
     W = _corr(20)
