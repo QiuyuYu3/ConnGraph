@@ -80,6 +80,9 @@ def build_parser() -> argparse.ArgumentParser:
                         "analysis options are read from those results")
     s.add_argument("--coords", help="table with label, x, y, z for the brain figures; Gordon coordinates are added "
                                     "automatically")
+    s.add_argument("--montage", help="mne input: MNE template in MNI space giving electrode positions by channel name "
+                                     "when nodes.tsv has none (default: colin27_1005; also colin27_1020, mgh60, "
+                                     "mgh70 and the other colin27 templates); other caps need --coords")
     s.add_argument("--surfaces", nargs="+", metavar="FILE",
                    help="brain for the figures: left and right .surf.gii, or one skull-stripped brain volume (NIfTI or "
                         "AFNI BRIK/HEAD) whose smoothed outline is cut at x = 0 into hemispheres (default: fsLR 32k "
@@ -161,6 +164,10 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, argparse.ArgumentPa
             parser.error(f"{flag} needs --groups")
     if args.alpha is None:
         args.alpha = 0.05
+    if args.montage and args.input_type != "mne":
+        parser.error("--montage is for --input-type mne")
+    if args.montage and args.coords:
+        parser.error("give electrode positions either with --montage or with --coords")
     if args.surfaces is not None and len(args.surfaces) > 2:
         parser.error("--surfaces takes a left and a right .surf.gii, or one brain volume")
     if args.n_perms < 1:

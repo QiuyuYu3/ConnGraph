@@ -206,7 +206,8 @@ def _load_mne(args: argparse.Namespace, files: dict[str, str], variant: str | No
     bands = conngraph.mne_connectivity_bands(next(iter(files.values()))) or []
     band = next((b for b in bands if band_folder(b) == variant), None)
     matrices, table = conngraph.load_mne_connectivity(files, band, nodes, bad_node_threshold=args.bad_node_threshold,
-                                                       drop_mode=args.drop_mode, verbose=not args.quiet)
+                                                       drop_mode=args.drop_mode, verbose=not args.quiet,
+                                                       montage=None if args.coords else args.montage or "auto")
     # phase-based and coherence measures are averaged and compared as they are, not as Fisher z
     if not MNE_MEASURES[table.attrs[INPUT_ATTR]["measure"]][2]:
         args.no_fisher_z = True

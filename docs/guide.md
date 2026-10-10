@@ -95,7 +95,7 @@ conn.save("INPUT/sub-01_connectivity.nc")
 ### Nodes
 
 - Node names come from the files. `nodes.tsv` adds networks (lobes or regions, for example), hemispheres and coordinates; without a network column only the node level is computed.
-- Brain figures need x, y, z in the template's space. Regions of a source-space atlas have them; scalp electrode positions lie outside the brain surface.
+- Without x, y, z in `nodes.tsv`, electrodes with standard names (Fp1, Cz, O2 and so on) are placed at the positions of MNE's `colin27_1005` template, which is in MNI space, and drawn on the scalp around the brain. `--montage` picks another MNE template in MNI space (`colin27_1020`, `mgh60`, `mgh70` and the other `colin27` templates). Other caps (EGI, BioSemi 128 with A1, B2 and so on) or measured positions need MNI coordinates given with `--coords`. Regions of a source-space atlas need their coordinates in `nodes.tsv` or `--coords` too.
 
 :::{important}
 The phase-locking value and coherence are biased upward when there are few epochs. If epoch counts differ between groups, prefer a debiased measure such as `wpli2_debiased` or `ppc`; the report gives the range of epoch counts.

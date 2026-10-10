@@ -93,6 +93,47 @@ def test_envelope_correlation_must_be_averaged_over_epochs(tmp_path):
     assert MNE_MEASURES[nodes.attrs["conngraph_input"]["measure"]][2]  # a correlation keeps Fisher z
 
 
+def test_standard_electrode_names_get_template_coordinates(tmp_path):
+    files = _files(tmp_path, n=1)
+    _, nodes = bnv.load_mne_connectivity(files, (8.0, 13.0), verbose=False)
+    assert nodes["label"].tolist() == CHANNELS and not nodes[["x", "y", "z"]].isna().any().any()
+    np.testing.assert_allclose(nodes.set_index("label").loc["Cz", ["x", "y", "z"]].to_numpy(float), [0.4, -9.2, 100.2],
+                               atol=1.0)
+    assert nodes.attrs["conngraph_input"]["electrodes"] == "colin27_1005"
+    _, bare = bnv.load_mne_connectivity(files, (8.0, 13.0), montage=None, verbose=False)
+    assert "x" not in bare and "electrodes" not in bare.attrs["conngraph_input"]
+
+
+def test_given_coordinates_are_kept_and_not_mixed_with_a_template(tmp_path):
+    files = _files(tmp_path, n=1)
+    table = pd.DataFrame({"label": CHANNELS, "x": 1.0, "y": 2.0, "z": 3.0})
+    _, nodes = bnv.load_mne_connectivity(files, (8.0, 13.0), nodes=table, verbose=False)
+    assert (nodes["x"] == 1.0).all() and "electrodes" not in nodes.attrs["conngraph_input"]
+    with pytest.raises(DataValidationError, match="already has x, y, z"):
+        bnv.load_mne_connectivity(files, (8.0, 13.0), nodes=table, montage="colin27_1020", verbose=False)
+
+
+def test_template_coordinates_match_names_in_any_case_and_skip_unknown_names():
+    coords = bnv.montage_coordinates(["CZ", "EXG1", "oz"])
+    assert coords["label"].tolist() == ["CZ", "oz"] and list(coords.columns) == ["label", "x", "y", "z"]
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # old template names are mapped without MNE's renaming warning
+        old = bnv.montage_coordinates(["Cz"], "standard_1020")
+    np.testing.assert_allclose(old[["x", "y", "z"]], bnv.montage_coordinates(["Cz"], "colin27_1020")[["x", "y", "z"]])
+    with pytest.raises(DataValidationError, match="--coords"):
+        bnv.montage_coordinates(["Cz"], "biosemi64")
+
+
+def test_cli_montage_needs_mne_input_and_excludes_coords(tmp_path, capsys):
+    base = [str(tmp_path), str(tmp_path / "out"), "group", "--no-report"]
+    with pytest.raises(SystemExit):
+        cli.main([*base, "--input-type", "matrix", "--montage", "colin27_1020"])
+    assert "--montage is for --input-type mne" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        cli.main([*base, "--input-type", "mne", "--montage", "colin27_1020", "--coords", "c.tsv"])
+    assert "either with --montage or with --coords" in capsys.readouterr().err
+
+
 def test_cli_runs_each_band_without_fisher_z(tmp_path):
     folder = tmp_path / "in"
     _files(folder, n=6)
@@ -108,3 +149,6 @@ def test_cli_runs_each_band_without_fisher_z(tmp_path):
         assert params["options"]["apply_fisher_z"] is False
         assert (params["input"]["measure"], params["input"]["source"]) == ("wpli", "MNE-Connectivity")
         assert "node" in params["levels"]
+        assert params["input"]["electrodes"] == "colin27_1005"
+        saved = pd.read_csv(out / "group" / band / "nodes.tsv", sep="\t")
+        assert not saved[["x", "y", "z"]].isna().any().any()

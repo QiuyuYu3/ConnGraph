@@ -744,6 +744,8 @@ def _coordinates(nodes: pd.DataFrame | None, label_col: str, labels: list[str]) 
 
 def _input_row(loaded: dict) -> list[tuple[str, str]]:
     details = ", ".join(([mne_details(loaded)] if loaded.get("measure_name") else [])
+                        + ([f"electrode positions from MNE's {loaded['electrodes']} template"]
+                           if loaded.get("electrodes") else [])
                         + [f"{k} {loaded[k]}" for k in ("atlas", "space", "chromophore", "task", "session") if loaded.get(k)]
                         + ([loaded["connectivity"]] if loaded.get("connectivity") else [])
                         + (["Ledoit-Wolf shrinkage"] if loaded.get("shrinkage") else [])

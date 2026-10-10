@@ -398,8 +398,10 @@ def load_mne_connectivity(
     bad_node_threshold: float = 0.9,
     drop_mode: str = "union",
     verbose: bool = True,
+    montage: str | None = "auto",
 ) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
     """One band's matrices from MNE-Connectivity files ({subject_id: path}), with the node table in file order."""
+    # montage: "auto" (colin27_1005), a template from MNI_MONTAGES, or None; used only when the table lacks x, y, z
     matrices: dict[str, pd.DataFrame] = {}
     methods, epochs = set(), []
     for sid, path in files.items():
@@ -430,10 +432,58 @@ def load_mne_connectivity(
         matrices = _drop_bad_nodes(matrices, bad_node_threshold, drop_mode)
     kept = list(next(iter(matrices.values())).columns)
     table = pd.DataFrame({"label": kept}) if nodes is None else _mne_nodes(nodes, kept)
+    table, electrodes = _electrode_positions(table, montage, verbose)
     record_input(table, before, matrices, bad_node_threshold, drop_mode, source="MNE-Connectivity",
                  measure=method, measure_name=name, measure_label=label, band=list(band) if band else None,
-                 epochs=[min(epochs), max(epochs)] if epochs else None)
+                 epochs=[min(epochs), max(epochs)] if epochs else None,
+                 **({"electrodes": electrodes} if electrodes else {}))
     return matrices, table
+
+
+# MNE templates with positions in MNI space; MNE 1.13 renamed the standard_* ones to colin27_*
+MNI_MONTAGES = ("colin27_1005", "colin27_1020", "colin27_alphabetic", "colin27_postfixed", "colin27_prefixed",
+                "colin27_primed", "mgh60", "mgh70")
+
+
+def montage_coordinates(names: list[str], montage: str = "colin27_1005") -> pd.DataFrame:
+    """MNI x, y, z in mm of the named electrodes in an MNE template, matched in any case; unknown names are left out."""
+    import mne
+
+    template = _mni_montage(montage)
+    installed = template if template in mne.channels.get_builtin_montages() else template.replace("colin27_", "standard_")
+    positions = mne.channels.make_standard_montage(installed).get_positions()["ch_pos"]
+    lookup = {k.lower(): 1000 * np.asarray(v) for k, v in positions.items()}
+    rows = [(n, *lookup[str(n).lower()]) for n in names if str(n).lower() in lookup]
+    return pd.DataFrame(rows, columns=["label", "x", "y", "z"])
+
+
+def _mni_montage(montage: str) -> str:
+    template = "colin27_" + montage.removeprefix("standard_") if montage.startswith("standard_") else montage
+    if template not in MNI_MONTAGES:
+        raise DataValidationError(f"{montage!r} is not an MNE template in MNI space; use one of "
+                                  f"{', '.join(MNI_MONTAGES)}, or give the positions as x, y, z in the node table "
+                                  "(--coords on the command line).")
+    return template
+
+
+def _electrode_positions(table: pd.DataFrame, montage: str | None, verbose: bool) -> tuple[pd.DataFrame, str | None]:
+    if montage is None:
+        return table, None
+    if {"x", "y", "z"} <= set(table.columns):
+        if montage != "auto":
+            raise DataValidationError("The node table already has x, y, z; leave out the montage.")
+        return table, None
+    template = "colin27_1005" if montage == "auto" else _mni_montage(montage)
+    coords = montage_coordinates(list(table["label"]), template)
+    if coords.empty:
+        if montage != "auto":
+            raise DataValidationError(f"None of the node names are in the {template} template.")
+        return table, None
+    missing = [n for n in table["label"] if n not in set(coords["label"])]
+    if verbose:
+        print(f"[load_mne_connectivity] Electrode positions from MNE's {template} template for {len(coords)} of "
+              f"{len(table)} nodes" + (f"; not in it: {', '.join(map(str, missing))}" if missing else ""))
+    return table.merge(coords, on="label", how="left"), template
 
 
 def _read_mne(path: str):
