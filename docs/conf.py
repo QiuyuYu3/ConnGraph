@@ -1,9 +1,13 @@
 import argparse
 import os
 import pathlib
+import sys
 
 import conngraph
 from conngraph.cli.main import build_parser
+
+sys.path.insert(0, str(pathlib.Path(__file__).parent / "_ext"))
+from gallery_scraper import GalleryScraper
 
 os.environ.setdefault("VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN", "1")
 
@@ -32,7 +36,8 @@ html_sidebars = {"index": [], "getting-started": [], "auto_examples/index": []}
 sphinx_gallery_conf = {
     "examples_dirs": "../examples",
     "gallery_dirs": "auto_examples",
-    "image_scrapers": ("matplotlib",),
+    "subsection_order": ["../examples/graph_metrics", "../examples/figures", "../examples/group_comparisons"],
+    "image_scrapers": (GalleryScraper(),),
     "within_subsection_order": "FileNameSortKey",
     "download_all_examples": False,
     "remove_config_comments": True,
@@ -78,7 +83,10 @@ def write_cli_tables() -> None:
     out = pathlib.Path(__file__).parent / "cli" / "_generated"
     out.mkdir(parents=True, exist_ok=True)
     for name, rows in tables.items():
-        (out / f"{name}.md").write_text("\n".join(rows) + "\n", encoding="utf-8")
+        path, text = out / f"{name}.md", "\n".join(rows) + "\n"
+        # rewriting an unchanged table would make Sphinx reread the pages that include it
+        if not path.exists() or path.read_text(encoding="utf-8") != text:
+            path.write_text(text, encoding="utf-8")
 
 
 write_cli_tables()

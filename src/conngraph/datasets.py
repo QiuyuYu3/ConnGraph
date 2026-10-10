@@ -105,17 +105,21 @@ def make_mock_dataset(
     labels = nodes["label"].tolist()
     idx = nodes["network"].map(nets.index).to_numpy()
     rng = np.random.default_rng(seed)
+    # the network signals share three common signals, which correlates some networks positively, some negatively
+    mix = rng.normal(0, 1.0, (len(nets), 3))
+    scale = np.sqrt(1 + (mix ** 2).sum(axis=1))
     matrices, rows = {}, []
     for s in range(2 * n_per_group):
         group = "A" if s < n_per_group else "B"
-        # each network shares one signal; its loading sets the within-network connectivity
+        # each network has one signal; its loading sets the within-network connectivity
         load = rng.uniform(0.55, 0.8, len(nets))
         if "None" in nets:
             load[nets.index("None")] = 0
         if group == "B":
             load[nets.index(stronger)] += 0.25
             load[nets.index(weaker)] -= 0.2
-        ts = rng.standard_normal((400, len(nets)))[:, idx] * load[idx] + rng.standard_normal((400, len(labels)))
+        signals = (rng.standard_normal((400, len(nets))) + rng.standard_normal((400, 3)) @ mix.T) / scale
+        ts = signals[:, idx] * load[idx] + rng.standard_normal((400, len(labels)))
         sid = f"sub-{s + 1:02d}"
         matrices[sid] = pd.DataFrame(np.corrcoef(ts.T), index=labels, columns=labels)
         rows.append({"participant_id": sid, "group": group, "age": round(float(rng.uniform(20, 40)), 1)})

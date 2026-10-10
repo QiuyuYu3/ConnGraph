@@ -92,6 +92,16 @@ def test_mock_dataset_groups_differ_within_the_named_networks(mock_nodes):
         assert np.sign(round(b - a, 1)) == sign, network
 
 
+def test_mock_dataset_connects_some_networks(mock_nodes):
+    matrices, nodes, _ = datasets.make_mock_dataset(n_per_group=8, nodes=mock_nodes)
+
+    mean = np.mean([m.to_numpy() for m in matrices.values()], axis=0)
+    nets = nodes["network"].to_numpy()
+    between = [abs(mean[np.ix_(nets == a, nets == b)].mean())
+               for a, b in [("Default", "Salience"), ("Default", "Visual"), ("Salience", "Visual")]]
+    assert max(between) > 0.02
+
+
 def test_mock_dataset_writes_a_matrix_folder(mock_nodes, tmp_path):
     matrices, _, _ = datasets.make_mock_dataset(n_per_group=2, nodes=mock_nodes, out_dir=tmp_path)
 
