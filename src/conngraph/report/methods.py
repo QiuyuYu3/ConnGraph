@@ -58,6 +58,9 @@ def graph_methods(params: dict) -> dict[str, str]:
                   else f" derived from XCP-D ({loaded['atlas']} atlas; {loaded['space']} space; Pearson's r)")
     elif loaded.get("source") == "NIRSPipe":
         source = f" derived from NIRSPipe ({_CHROMO[loaded['chromophore']]}; Pearson's r)"
+    elif loaded.get("source") == "MNE-Connectivity":
+        ver = params["packages"].get("mne-connectivity")
+        source = f" computed with MNE-Connectivity{f' v{ver}' if ver else ''} ({mne_details(loaded)})"
     elif series:
         source = " computed from regional time series"
 
@@ -153,6 +156,17 @@ def compare_methods(params: dict) -> dict[str, str]:
     if params.get("untested"):
         sentences.append(("compare_untested", {}))
     return render([sentences])
+
+
+def mne_details(loaded: dict) -> str:
+    """Measure, band and epoch count of MNE-Connectivity input as one phrase, for the Methods and the summary."""
+    parts = [loaded["measure_name"]]
+    if loaded.get("band"):
+        parts.append("{:g}–{:g} Hz".format(*loaded["band"]))
+    if loaded.get("epochs"):
+        low, high = loaded["epochs"]
+        parts.append(f"{low} epochs per participant" if low == high else f"{low} to {high} epochs per participant")
+    return ", ".join(parts)
 
 
 def _input_sentences(params: dict) -> list[tuple[str, dict]]:

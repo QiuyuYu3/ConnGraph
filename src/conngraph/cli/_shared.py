@@ -19,21 +19,24 @@ import conngraph
 from conngraph.loaders import _EXTENSIONS, INPUT_ATTR, subject_id_from_path
 
 NODES_FILE = "nodes.tsv"
+# file name endings of the folder input types, after sub-<label>[_ses-<label>]_
+FOLDER_FILES = {"matrix": "matrix.*", "timeseries": "timeseries.*", "mne": "connectivity.nc"}
 
 
 def add_input_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("input_dir", help="XCP-D or NIRSPipe derivatives folder, or a folder of matrix or time "
-                                          "series files (see --input-type)")
+    parser.add_argument("input_dir", help="XCP-D or NIRSPipe derivatives folder, or a folder of matrix, time series "
+                                          "or MNE-Connectivity files (see --input-type)")
     parser.add_argument("output_dir", help="folder for the results; created if missing")
     parser.add_argument("--version", action="version", version=f"%(prog)s {conngraph.__version__}")
     parser.add_argument("--quiet", action="store_true", help="print nothing but errors")
 
     g = parser.add_argument_group("input")
-    g.add_argument("--input-type", choices=["xcpd", "nirspipe", "matrix", "timeseries"], required=True,
+    g.add_argument("--input-type", choices=["xcpd", "nirspipe", "matrix", "timeseries", "mne"], required=True,
                    help="xcpd: XCP-D derivatives tree, one result folder per atlas; nirspipe: NIRSPipe "
                         "derivatives tree, one result folder per chromophore; matrix: a folder with nodes.tsv and one "
                         "sub-<label>_matrix.<ext> per participant; timeseries: the same with "
-                        "sub-<label>_timeseries.<ext>")
+                        "sub-<label>_timeseries.<ext>; mne: a folder with one sub-<label>_connectivity.nc saved by "
+                        "MNE-Connectivity per participant and an optional nodes.tsv, one result folder per band")
     g.add_argument("--connectivity", choices=["correlation", "partial-correlation"],
                    help="measure computed from time series: for timeseries input (default: correlation); for XCP-D "
                         "input, compute it from the time series files instead of reading XCP-D's matrices")
@@ -60,7 +63,7 @@ def add_input_arguments(parser: argparse.ArgumentParser) -> None:
     g.add_argument("--bad-node-threshold", type=float, default=0.9,
                    help="drop nodes with more than this fraction of missing values (default: 0.9)")
     g.add_argument("--drop-mode", choices=["union", "intersection"], default="union",
-                   help="matrix, timeseries and nirspipe input: drop a node missing in any participant (union, "
+                   help="matrix, timeseries, nirspipe and mne input: drop a node missing in any participant (union, "
                         "default) or in all (intersection)")
 
 
@@ -72,7 +75,21 @@ def input_variants(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
         return [f"atlas-{a}" for a in dict.fromkeys(args.atlases)]
     if args.input_type == "nirspipe":
         return [f"chromo-{c}" for c in dict.fromkeys(args.chromophore)]
+    if args.input_type == "mne":
+        paths = _input_files(args.input_dir, f"sub-*_{FOLDER_FILES['mne']}")
+        if not paths:
+            raise SystemExit(f"{parser.prog}: no files matching sub-*_{FOLDER_FILES['mne']} in {args.input_dir}")
+        try:
+            bands = conngraph.mne_connectivity_bands(paths[0])
+        except ValueError as exc:
+            raise SystemExit(f"{parser.prog}: {exc}") from None
+        return [band_folder(b) for b in bands] if bands else [None]
     return [None]
+
+
+def band_folder(band: tuple[float, float]) -> str:
+    """Result folder of a frequency band, e.g. band-8to13Hz; decimals are written with p (12p5)."""
+    return "band-" + "to".join(f"{f:g}".replace(".", "p") for f in band) + "Hz"
 
 
 def input_sessions(args: argparse.Namespace, parser: argparse.ArgumentParser) -> list[str | None]:
@@ -84,8 +101,8 @@ def input_sessions(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
         return [f"ses-{v}" if v else None for v in dict.fromkeys(filters["ses"])]
     if args.session_id:
         return [f"ses-{s.removeprefix('ses-')}" for s in dict.fromkeys(args.session_id)]
-    if args.input_type in ("matrix", "timeseries"):
-        found = {_file_session(p) for p in _input_files(args.input_dir, f"sub-*_{args.input_type}.*")}
+    if args.input_type in FOLDER_FILES:
+        found = {_file_session(p) for p in _input_files(args.input_dir, f"sub-*_{FOLDER_FILES[args.input_type]}")}
         if None in found and len(found) > 1:
             raise SystemExit(f"{parser.prog}: {args.input_dir} mixes files with and without a session (ses-) label")
     else:
@@ -123,7 +140,7 @@ def _read_json(path: str) -> dict:
 def run_all(args: argparse.Namespace, parser: argparse.ArgumentParser, run, error_folder: str) -> int:
     """Call run(session, variant) for each session and variant; with several, a failure is noted and the rest run."""
     kind = args.connectivity
-    if args.input_type in ("matrix", "nirspipe") and (kind or args.shrinkage):
+    if args.input_type in ("matrix", "nirspipe", "mne") and (kind or args.shrinkage):
         parser.error("--connectivity and --shrinkage need timeseries or XCP-D input")
     if args.shrinkage and not kind and args.input_type != "timeseries":
         parser.error("--shrinkage needs --connectivity")
@@ -173,12 +190,28 @@ def chosen(matrices: dict, args: argparse.Namespace) -> list[str]:
 
 
 def _input_files(folder: str, pattern: str) -> list[str]:
-    return sorted(p for p in glob.glob(os.path.join(folder, pattern)) if p.endswith(_EXTENSIONS))
+    extensions = (".nc",) if pattern.endswith(".nc") else _EXTENSIONS
+    return sorted(p for p in glob.glob(os.path.join(folder, pattern)) if p.endswith(extensions))
 
 
 def _file_session(path: str) -> str | None:
     parts = os.path.basename(path).split("_")
     return parts[1] if len(parts) > 2 and parts[1].startswith("ses-") else None
+
+
+def _load_mne(args: argparse.Namespace, files: dict[str, str], variant: str | None, nodes: str | None,
+              session: str | None) -> tuple[dict, pd.DataFrame]:
+    from conngraph.derivatives import MNE_MEASURES
+
+    bands = conngraph.mne_connectivity_bands(next(iter(files.values()))) or []
+    band = next((b for b in bands if band_folder(b) == variant), None)
+    matrices, table = conngraph.load_mne_connectivity(files, band, nodes, bad_node_threshold=args.bad_node_threshold,
+                                                       drop_mode=args.drop_mode, verbose=not args.quiet)
+    # phase-based and coherence measures are averaged and compared as they are, not as Fisher z
+    if not MNE_MEASURES[table.attrs[INPUT_ATTR]["measure"]][2]:
+        args.no_fisher_z = True
+    table.attrs[INPUT_ATTR].update(path=os.path.abspath(args.input_dir), session=session)
+    return matrices, table
 
 
 def load_input(args: argparse.Namespace, parser: argparse.ArgumentParser,
@@ -194,11 +227,12 @@ def load_input(args: argparse.Namespace, parser: argparse.ArgumentParser,
                                           task=args.task_id,
                                           bad_node_threshold=args.bad_node_threshold, drop_mode=args.drop_mode,
                                           verbose=verbose, bids_filters=filters)
-    if args.input_type in ("matrix", "timeseries"):
+    if args.input_type in FOLDER_FILES:
         nodes = os.path.join(args.input_dir, NODES_FILE)
-        if not os.path.isfile(nodes):
+        if not os.path.isfile(nodes) and args.input_type != "mne":
             raise SystemExit(f"{parser.prog}: {args.input_dir} has no {NODES_FILE}")
-        pattern = f"sub-*_{session}_{args.input_type}.*" if session else f"sub-*_{args.input_type}.*"
+        ending = FOLDER_FILES[args.input_type]
+        pattern = f"sub-*_{session}_{ending}" if session else f"sub-*_{ending}"
         paths = _input_files(args.input_dir, pattern)
         files: dict[str, str] = {}
         for p in paths:
@@ -208,6 +242,8 @@ def load_input(args: argparse.Namespace, parser: argparse.ArgumentParser,
             files[sid] = p
         if not files:
             raise SystemExit(f"{parser.prog}: no files matching {pattern} in {args.input_dir}")
+        if args.input_type == "mne":
+            return _load_mne(args, files, variant, nodes if os.path.isfile(nodes) else None, session)
         common = dict(bad_node_threshold=args.bad_node_threshold, drop_mode=args.drop_mode, mat_key=args.mat_key)
         if args.input_type == "matrix":
             ds = conngraph.load_group(files, nodes, values=args.values, **common)

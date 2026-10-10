@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name            = "conngraph"
 version         = "0.3.0"
-description     = "Graph-theory metrics, group statistics and reports for brain connectivity matrices from fMRI and fNIRS pipelines"
+description     = "Graph-theory metrics, group statistics and reports for brain connectivity matrices from fMRI, fNIRS, EEG and MEG pipelines"
 readme          = "README.md"
 requires-python = ">=3.10"
 license         = "Apache-2.0"
@@ -38,6 +38,9 @@ dependencies = [
     "openpyxl>=3.0",
     "k3d>=3.0",
     "psutil>=5.9",
+    "mne-connectivity>=0.9",
+    "h5netcdf>=1.0",
+    "h5py>=3.0",
 ]
 
 [project.scripts]

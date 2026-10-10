@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 
 from conngraph.report import figures
-from conngraph.report.methods import compare_methods, graph_methods, nbs_methods, participant_count
+from conngraph.report.methods import compare_methods, graph_methods, mne_details, nbs_methods, participant_count
 
 PLOTLY_CDN = "https://cdn.plot.ly/plotly-3.5.0.min.js"
 _METRIC_TITLES = {"clust_coeff": "Clustering coefficient", "btwn_cent": "Betweenness centrality",
@@ -61,7 +61,7 @@ def save_graph_report(result, path, nodes: pd.DataFrame | None = None, surfaces:
         M = _wide_to_matrix(corr)
         zmax = float(np.nanmax(np.abs(M.values))) or 1.0
         heat = figures.ordered_heatmap(M.values, list(M.index), [net_of(n) for n in M.index], zmax,
-                                       "Fisher z" if opts.get("apply_fisher_z", True) else "r")
+                                       "Fisher z" if opts.get("apply_fisher_z", True) else value_label(params))
         body.append(dict(id=sid, title=title, desc=_level_desc(params, level), steps=[
             _step("a. Metric distributions", data=link(values), html=_picker(boxes),
                   desc="One box per network node" + (", left hemisphere darker than right" if hemi else "")
@@ -416,7 +416,7 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
         names = list(M.index)
         groups = [networks.get(n, "None") for n in names] if networks is not None else None
         steps.append(_step(f"{next(letter)}. Connectivity", data=link("mean_matrix"), html=figures.to_div(figures.ordered_heatmap(
-            M.to_numpy(float), names, groups, 1.0, "r")),
+            M.to_numpy(float), names, groups, 1.0, value_label(result.params))),
             desc="Group mean connectivity between all regions" + (", ordered by network" if groups else "") + "."))
     group = _group_graph(result) if networks is not None else None
     if group is not None:
@@ -424,7 +424,7 @@ def _node_steps(result, metrics, nodes, label_col, networks, palette, surfaces, 
         nets = [networks.get(n, "None") for n in names]
         spring = figures.to_div(figures.spring_figure(G, names, nets, palette))
         steps.append(_step(f"{next(letter)}. Group network", data=link("mean_matrix"),
-                           html=_figure_row(*_circos_images(G, names, nets, palette, "group mean r"))
+                           html=_figure_row(*_circos_images(G, names, nets, palette, f"group mean {value_label(result.params)}"))
                                 + _figure_block("Spring layout", spring),
                            desc=f"The group mean connectivity turned into a graph the way each participant's was "
                                 f"({how}); the metrics above come from each participant's own graph. The circle "
@@ -466,6 +466,11 @@ def _rebuilt_graph(matrix: pd.DataFrame, params: dict, is_z: bool):
         M = M / np.abs(M).max()
     A = build_adjacency(M, method, graph_params, level["sign"] == "signed")
     return nx.from_numpy_array(A), list(matrix.index), f"{how}, {level['sign']} weights"
+
+
+def value_label(params: dict) -> str:
+    """Colour bar name of the connectivity values: r, or the measure read from MNE-Connectivity files."""
+    return (params.get("input") or {}).get("measure_label") or "r"
 
 
 def _circos_images(G, labels, nets, palette, colorbar_title) -> list[str]:
@@ -738,7 +743,8 @@ def _coordinates(nodes: pd.DataFrame | None, label_col: str, labels: list[str]) 
 
 
 def _input_row(loaded: dict) -> list[tuple[str, str]]:
-    details = ", ".join([f"{k} {loaded[k]}" for k in ("atlas", "space", "chromophore", "task", "session") if loaded.get(k)]
+    details = ", ".join(([mne_details(loaded)] if loaded.get("measure_name") else [])
+                        + [f"{k} {loaded[k]}" for k in ("atlas", "space", "chromophore", "task", "session") if loaded.get(k)]
                         + ([loaded["connectivity"]] if loaded.get("connectivity") else [])
                         + (["Ledoit-Wolf shrinkage"] if loaded.get("shrinkage") else [])
                         + (["Fisher z input"] if loaded.get("values") == "z" else [])

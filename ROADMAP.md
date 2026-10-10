@@ -8,7 +8,8 @@ Turn a connectivity matrix and a node table into graph-theory metrics and an int
 
 ### 0.3.0
 
-- A `conngraph` command in BIDS App style for XCP-D, NIRSPipe, matrix and time series input, with a participant level and a group level.
+- A `conngraph` command in BIDS App style for XCP-D, NIRSPipe, MNE-Connectivity, matrix and time series input, with a participant level and a group level.
+- EEG and MEG connectivity from MNE-Connectivity, analysed band by band with each measure handled by name.
 - HTML reports for each participant, for the group's graph metrics, for group comparisons and for NBS, built from the result files they link to and rebuilt with `--reports-only`.
 - Two-group comparisons of graph metrics, network connectivity and edges with permutation t-tests and covariates.
 - Brain figures on any template, given as surfaces or a brain volume.
@@ -33,7 +34,3 @@ Turn a connectivity matrix and a node table into graph-theory metrics and an int
 - Loaders for XCP-D correlation matrices.
 - Network-based statistic (NBS) group comparison, with significant edges highlighted in the 3-D plot.
 - 2-D spring and circos plots, 3-D spring layout, threshold and density graph filtering.
-
-## Milestones
-
-- **EEG and MEG input**: read MNE-Connectivity output, handle each connectivity measure (phase-locking value, weighted phase lag index, coherence and others) by name, and analyse frequency bands side by side.

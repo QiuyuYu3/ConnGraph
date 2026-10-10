@@ -458,7 +458,8 @@ def _package_versions() -> dict[str, str | None]:
     import conngraph
 
     versions: dict[str, str | None] = {"conngraph": conngraph.__version__}
-    for name in ("numpy", "scipy", "pandas", "networkx", "bctpy", "topcorr", "nilearn", "scikit-learn"):
+    for name in ("numpy", "scipy", "pandas", "networkx", "bctpy", "topcorr", "nilearn", "scikit-learn",
+                 "mne-connectivity"):
         try:
             versions[name] = version(name)
         except PackageNotFoundError:

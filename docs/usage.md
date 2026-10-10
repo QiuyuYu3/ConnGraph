@@ -28,6 +28,7 @@ The reports are built from the files written to `OUTPUT`, so they always show wh
 | `nirspipe` | a NIRSPipe derivatives folder; HbO and HbR are analysed separately (`--chromophore` picks one) |
 | `matrix` | a folder of connectivity matrices, laid out as below |
 | `timeseries` | a folder of regional time series, laid out as below; connectivity is computed first (`--connectivity`) |
+| `mne` | a folder of EEG or MEG connectivity files saved by MNE-Connectivity; each frequency band is analysed separately (see [EEG and MEG](#eeg-and-meg)) |
 
 A `matrix` or `timeseries` folder holds one file per participant and a node table with fixed names:
 
@@ -44,7 +45,7 @@ With several sessions, the session label follows the participant: `sub-01_ses-01
 - `<ext>` is `.tsv`, `.csv`, `.txt`, `.1D`, `.npy` or `.mat`, a CIFTI `.pconn.nii` (matrices) or `.ptseries.nii` (time series), or AFNI `3dNetCorr` output: `.netcc` (matrices) or `.netts` (time series, one region per row).
 - A matrix is square and symmetric, one row and one column per node; directed connectivity is not supported. A time series has one column per node and one row per time point.
 - Tables may carry the node labels as headers; without them, rows and columns follow the order of `nodes.tsv`.
-- Matrices hold Pearson correlations; add `--values z` if they hold Fisher z values.
+- Matrices hold Pearson correlations; add `--values z` if they hold Fisher z values, or `--no-fisher-z` if they hold a measure that is not a correlation.
 - `nodes.tsv` has one row per node. Without a network column only the node level is computed; without x, y, z the report leaves out the brain figures. For XCP-D input with the Gordon atlas, coordinates are added automatically.
 - Brain figures are drawn in the fsLR 32k surfaces. `--surfaces` takes another left and right `.surf.gii`, or one skull-stripped brain volume (NIfTI or AFNI BRIK/HEAD), such as a pediatric template, whose smoothed outline is used instead. Node coordinates must be in the template's space.
 
@@ -60,13 +61,31 @@ A participant with several runs left after filtering has each run analysed on it
 
 ### EEG and MEG
 
-EEG and MEG connectivity matrices can be analysed as `matrix` input. The pipeline was written for correlations, so a few precautions apply:
+`mne` input reads connectivity computed with [MNE-Connectivity](https://mne.tools/mne-connectivity/) and saved with `conn.save()`, one file per participant:
 
-- Add `--no-fisher-z` when the matrices hold the phase-locking value, the weighted phase lag index, coherence or any other measure that is not a correlation; otherwise they are Fisher z-transformed when averaged and compared. The colour bars of the matrix figures still read "r".
-- Give matrices, not time series: `timeseries` input computes Pearson correlations of the signals.
-- Only undirected measures are supported; directed measures such as Granger causality give asymmetric matrices, which are refused.
-- Analyse one frequency band at a time, with each band's matrices in its own `INPUT` folder.
+```
+INPUT/
+    nodes.tsv                  optional: label; network, hemisphere, x, y, z
+    sub-01_connectivity.nc
+    sub-02_connectivity.nc
+    ...
+```
+
+```python
+from mne_connectivity import spectral_connectivity_epochs
+
+conn = spectral_connectivity_epochs(epochs, method="wpli", fmin=(4, 8, 13), fmax=(8, 13, 30), faverage=True)
+conn.save("INPUT/sub-01_connectivity.nc")
+```
+
+- The method is read from the files and named in the report. Undirected methods are supported: `coh`, `imcoh` (taken as its absolute value), `plv`, `ciplv`, `ppc`, `pli`, `pli2_unbiased`, `wpli`, `wpli2_debiased` and envelope correlation. Directed methods such as `dpli`, `psi` or Granger causality are refused.
+- Envelope correlation is Fisher z-transformed when averaged and compared, like other correlations; the phase and coherence measures are used as they are.
+- Each frequency band averaged with `faverage=True` gets its own result folder, such as `band-8to13Hz`; files with single frequencies are refused. Envelope correlation has no band axis, so band-pass the data before computing it, and average its per-epoch matrices with `conn.combine()` before saving.
+- Node names come from the files. `nodes.tsv` adds networks (lobes or regions, for example), hemispheres and coordinates; without a network column only the node level is computed.
 - Brain figures need x, y, z in the template's space. Regions of a source-space atlas have them; scalp electrode positions lie outside the brain surface.
+- The phase-locking value and coherence are biased upward when there are few epochs. If epoch counts differ between groups, prefer a debiased measure such as `wpli2_debiased` or `ppc`; the report gives the range of epoch counts.
+
+Matrices of these measures computed elsewhere can be given as `matrix` input with `--no-fisher-z`.
 
 ## Output
 

@@ -13,6 +13,7 @@ from conngraph.report.pages import (
     NO_VALUES,
     _SWEEP_LABELS,
     _circos_images,
+    value_label,
     _column,
     _coordinates,
     _figure_block,
@@ -56,7 +57,7 @@ def participant_section(result, sid: str, matrix: pd.DataFrame, nodes: pd.DataFr
     steps = []
 
     panes = [("regions", "Regions", figures.to_div(figures.ordered_heatmap(
-        np.nan_to_num(matrix.to_numpy(float)), labels, nets, 1.0, "r")))]
+        np.nan_to_num(matrix.to_numpy(float)), labels, nets, 1.0, value_label(params))))]
     for attr, name in (("net_corr_df", "Networks"), ("net_hemi_corr_df", "Networks (hemispheres)")):
         wide = getattr(result, attr)
         if wide is not None:
@@ -64,7 +65,7 @@ def participant_section(result, sid: str, matrix: pd.DataFrame, nodes: pd.DataFr
             hemi = attr == "net_hemi_corr_df"
             panes.append((attr, name, figures.to_div(figures.ordered_heatmap(
                 M.to_numpy(float), list(M.index), [n.partition("_")[2] if hemi else n for n in M.index],
-                float(np.nanmax(np.abs(M.to_numpy(float)))) or 1.0, "Fisher z" if opts.get("apply_fisher_z") else "r"))))
+                float(np.nanmax(np.abs(M.to_numpy(float)))) or 1.0, "Fisher z" if opts.get("apply_fisher_z") else value_label(params)))))
     steps.append(_step(f"{next(letter)}. Connectivity matrix", data=link("net_corr_df", "net_hemi_corr_df"), html=_picker(panes),
                        desc="The input matrix ordered by network, and the mean connectivity within and between networks."))
 
@@ -122,7 +123,7 @@ def participant_section(result, sid: str, matrix: pd.DataFrame, nodes: pd.DataFr
     if graph is not None and nets is not None:
         G, names, how = graph
         spring = figures.to_div(figures.spring_figure(G, names, nets, palette))
-        steps.append(_step(f"{next(letter)}. Graph", html=_figure_row(*_circos_images(G, names, nets, palette, "r"))
+        steps.append(_step(f"{next(letter)}. Graph", html=_figure_row(*_circos_images(G, names, nets, palette, value_label(params)))
                            + _figure_block("Spring layout", spring),
                            desc=f"This participant's node-level graph ({how}). Hover a region for its name."))
 

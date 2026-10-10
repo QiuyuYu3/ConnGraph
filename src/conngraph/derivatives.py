@@ -1,7 +1,7 @@
 """
-Loaders for BIDS derivatives that name their connectivity matrices *_relmat.tsv:
-XCP-D and NIRSPipe. Each returns matrices and a node table in the format
-expected by compute_graph_metrics.
+Loaders for pipeline outputs: XCP-D and NIRSPipe, which name their connectivity
+matrices *_relmat.tsv, and MNE-Connectivity's saved files. Each returns matrices
+and a node table in the format expected by compute_graph_metrics.
 """
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ import glob
 import os
 import warnings
 
+import numpy as np
 import pandas as pd
 
 from conngraph.exceptions import DataValidationError
@@ -366,6 +367,137 @@ def load_nirspipe(
                  chromophore=chromophore, task=_label(filters, "task", task), session=session, skipped=skipped,
                  **_filter_record(filters), **({"split_runs": split} if split else {}))
     return matrices, nodes
+
+
+# undirected MNE-Connectivity methods: full name, short label, Fisher z suits it, absolute value taken
+MNE_MEASURES = {
+    "coh": ("coherence", "Coh", False, False),
+    "imcoh": ("absolute imaginary part of coherency", "|ImCoh|", False, True),
+    "plv": ("phase-locking value", "PLV", False, False),
+    "ciplv": ("corrected imaginary phase-locking value", "ciPLV", False, False),
+    "ppc": ("pairwise phase consistency", "PPC", False, False),
+    "pli": ("phase lag index", "PLI", False, False),
+    "pli2_unbiased": ("unbiased squared phase lag index", "PLI²", False, False),
+    "wpli": ("weighted phase lag index", "wPLI", False, False),
+    "wpli2_debiased": ("debiased squared weighted phase lag index", "wPLI² (debiased)", False, False),
+    "envelope correlation": ("amplitude envelope correlation", "AEC", True, False),
+    "env_corr": ("amplitude envelope correlation", "AEC", True, False),
+    "env_corr_orth": ("orthogonalized amplitude envelope correlation", "AEC", True, False),
+}
+
+
+def mne_connectivity_bands(path: str) -> list[tuple[float, float]] | None:
+    """Frequency bands of an MNE-Connectivity file as (low, high) Hz; None when it has no frequency axis."""
+    return _mne_bands(_read_mne(path), path)
+
+
+def load_mne_connectivity(
+    files: dict[str, str],
+    band: tuple[float, float] | None = None,
+    nodes: str | pd.DataFrame | None = None,
+    bad_node_threshold: float = 0.9,
+    drop_mode: str = "union",
+    verbose: bool = True,
+) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
+    """One band's matrices from MNE-Connectivity files ({subject_id: path}), with the node table in file order."""
+    matrices: dict[str, pd.DataFrame] = {}
+    methods, epochs = set(), []
+    for sid, path in files.items():
+        conn = _read_mne(path)
+        methods.add(conn.method)
+        if conn.n_epochs_used is not None:
+            epochs.append(int(conn.n_epochs_used))
+        full = _mne_square(conn)
+        bands = _mne_bands(conn, path)
+        if bands is not None:
+            if band is None or tuple(band) not in bands:
+                raise DataValidationError(f"'{path}' has no {band} Hz band; it holds {bands}.")
+            full = full[..., bands.index(tuple(band))]
+        elif full.ndim == 3:
+            full = full[..., 0]
+        matrices[sid] = pd.DataFrame(full, index=list(conn.names), columns=list(conn.names))
+    if len(methods) > 1:
+        raise DataValidationError(f"The files mix connectivity methods: {sorted(methods)}.")
+    method = methods.pop()
+    name, label, _, absolute = MNE_MEASURES[method]
+    names = list(dict.fromkeys(n for m in matrices.values() for n in m.columns))
+    matrices = {sid: (m.abs() if absolute else m).reindex(index=names, columns=names) for sid, m in matrices.items()}
+    if verbose:
+        print(f"[load_mne_connectivity] Loaded {len(matrices)} {method} matrix/matrices")
+
+    before = matrices
+    if bad_node_threshold < 1.0:
+        matrices = _drop_bad_nodes(matrices, bad_node_threshold, drop_mode)
+    kept = list(next(iter(matrices.values())).columns)
+    table = pd.DataFrame({"label": kept}) if nodes is None else _mne_nodes(nodes, kept)
+    record_input(table, before, matrices, bad_node_threshold, drop_mode, source="MNE-Connectivity",
+                 measure=method, measure_name=name, measure_label=label, band=list(band) if band else None,
+                 epochs=[min(epochs), max(epochs)] if epochs else None)
+    return matrices, table
+
+
+def _read_mne(path: str):
+    from mne_connectivity import read_connectivity
+
+    conn = read_connectivity(path)
+    if conn.is_epoched:
+        raise DataValidationError(f"'{path}' holds one matrix per epoch; average them first, e.g. with "
+                                  "conn.combine(), and save the result.")
+    if conn.method not in MNE_MEASURES:
+        raise DataValidationError(f"'{path}' holds {conn.method!r} connectivity; supported undirected methods are "
+                                  f"{', '.join(MNE_MEASURES)}.")
+    if "times" in conn.dims and conn.get_data("raveled").shape[-1] > 1:
+        raise DataValidationError(f"'{path}' holds time-resolved connectivity; average it over time first.")
+    return conn
+
+
+def _mne_bands(conn, path: str) -> list[tuple[float, float]] | None:
+    if "freqs" not in conn.dims:
+        return None
+    used = conn.attrs.get("freqs_used")
+    if used is None or any(np.ndim(b) != 1 or len(b) != 2 for b in used):
+        raise DataValidationError(f"'{path}' holds single frequencies; compute connectivity with faverage=True "
+                                  "to average them into bands.")
+    return [(float(lo), float(hi)) for lo, hi in used]
+
+
+def _mne_square(conn) -> np.ndarray:
+    """Node × node (× band) array from the stored connections, each pair filled from whichever side was stored."""
+    n, data = conn.n_nodes, np.asarray(conn.get_data("raveled"), dtype=float)
+    indices = conn.indices
+    if isinstance(indices, tuple):
+        rows, cols = (np.asarray(i) for i in indices)
+    elif indices == "symmetric":
+        rows, cols = np.triu_indices(n)
+    elif indices in ("lower", "upper"):
+        rows, cols = np.tril_indices(n, -1) if indices == "lower" else np.triu_indices(n, 1)
+    else:
+        rows, cols = np.unravel_index(np.arange(n * n), (n, n))
+    full = np.full((n, n, *data.shape[1:]), np.nan)
+    full[rows, cols] = data
+    # all-to-all results store one triangle and leave the other at zero or missing
+    lower, upper = np.tril_indices(n, -1), np.triu_indices(n, 1)
+    unset = lambda tri: bool(np.all((full[tri] == 0) | np.isnan(full[tri])))
+    if unset(upper) and not unset(lower):
+        full[lower[::-1]] = full[lower]
+    elif unset(lower) and not unset(upper):
+        full[upper[::-1]] = full[upper]
+    mirror = np.swapaxes(full, 0, 1)
+    gap = np.isnan(full) & ~np.isnan(mirror)
+    full[gap] = mirror[gap]
+    full[np.arange(n), np.arange(n)] = 0.0
+    return full
+
+
+def _mne_nodes(nodes: str | pd.DataFrame, names: list[str]) -> pd.DataFrame:
+    from conngraph.loaders import _read_nodes
+
+    table = _read_nodes(nodes)
+    missing = [n for n in names if n not in set(table["label"])]
+    if missing:
+        raise DataValidationError(f"The node table has no row for {', '.join(missing[:10])}"
+                                  + (" …" if len(missing) > 10 else "") + ".")
+    return table.set_index("label").loc[names].reset_index()
 
 
 def _find(root: str, sub: str, session: str | None, datatype: str, tail: str) -> list[str]:
