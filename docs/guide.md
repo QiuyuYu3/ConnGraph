@@ -53,6 +53,54 @@ With several sessions, the session label follows the participant: `sub-01_ses-01
 
 `nodes.tsv` has one row per node. Without a network column only the node level is computed; without x, y, z the report leaves out the brain figures. For XCP-D input with the Gordon atlas, coordinates are added automatically.
 
+## fMRI
+
+- **XCP-D**: `--input-type xcpd` reads XCP-D's matrices for each atlas named with `--atlases`, each in its own result folder; `--task-id` and `--space` match the file names. `--connectivity` computes connectivity from XCP-D's time series instead (Pearson or partial correlation, optionally with `--shrinkage`), and `--combine-runs` joins runs first (see [Several runs](#several-runs)). Coordinates for the Gordon atlas are added automatically.
+- **Other pipelines**: AFNI `3dNetCorr` output (`.netcc`, `.netts`), CIFTI files and matrices or time series from any other tool go in a `matrix` or `timeseries` folder with `--modality fmri`. The brain figures need MNI coordinates in `nodes.tsv` or `--coords`.
+
+## fNIRS
+
+- **NIRSPipe**: `--input-type nirspipe` analyses HbO and HbR separately (`--chromophore` picks one); `--task-id` matches the file names. Channels have no networks, so only the node level is computed, and the brain figures need channel MNI coordinates given with `--coords`.
+- **MNE-NIRS**: connectivity computed with MNE-Connectivity is read as `mne-connectivity` input with `--modality fnirs`, laid out as in [EEG and MEG](#eeg-and-meg).
+- **Other pipelines**: a `matrix` or `timeseries` folder with `--modality fnirs`.
+
+## EEG and MEG
+
+`mne-connectivity` input reads connectivity computed with [MNE-Connectivity](https://mne.tools/mne-connectivity/) and saved with `conn.save()`, one file per participant and method. `--modality` says whether it is `eeg`, `meg` or `fnirs` (MNE-NIRS data analysed with MNE-Connectivity):
+
+```text
+INPUT/
+    nodes.tsv                  optional: label; network, hemisphere, x, y, z
+    sub-01_desc-wpli_connectivity.nc
+    sub-01_desc-coh_connectivity.nc
+    sub-02_desc-wpli_connectivity.nc
+    ...
+```
+
+```python
+from mne_connectivity import spectral_connectivity_epochs
+
+conn = spectral_connectivity_epochs(epochs, method="wpli", fmin=(4, 8, 13), fmax=(8, 13, 30), faverage=True)
+conn.save("INPUT/sub-01_desc-wpli_connectivity.nc")
+```
+
+### Methods and bands
+
+- The method is read from the files and named in the report. Undirected methods are supported: `coh`, `imcoh` (taken as its absolute value), `plv`, `ciplv`, `ppc`, `pli`, `pli2_unbiased`, `wpli`, `wpli2_debiased` and envelope correlation. Directed methods such as `dpli`, `psi` or Granger causality are refused.
+- Envelope correlation is Fisher z-transformed when averaged and compared, like other correlations; the phase and coherence measures are used as they are.
+- The method is read from each file, so the part of the file name between the participant (and session) and `_connectivity.nc` is free; a participant may have one file per method. Each method and each frequency band averaged with `faverage=True` gets its own result folder, such as `meas-wpli/band-8to13Hz`; files with single frequencies are refused. Envelope correlation has no band axis, so band-pass the data before computing it, and average its per-epoch matrices with `conn.combine()` before saving.
+
+### Nodes
+
+- Node names come from the files. `nodes.tsv` adds networks (lobes or regions, for example), hemispheres and coordinates; without a network column only the node level is computed.
+- With `--modality eeg` and no x, y, z in `nodes.tsv` (for `matrix` and `timeseries` input too), electrodes with standard names (Fp1, Cz, O2 and so on) are placed at the positions of MNE's `colin27_1005` template, which is in MNI space, and drawn on the scalp around the brain. `--montage` picks another MNE template in MNI space (`colin27_1020`, `mgh60`, `mgh70` and the other `colin27` templates). Other caps (EGI, BioSemi 128 with A1, B2 and so on) or measured positions need MNI coordinates given with `--coords`. Regions of a source-space atlas need their coordinates in `nodes.tsv` or `--coords` too.
+
+:::{important}
+The phase-locking value and coherence are biased upward when there are few epochs. If epoch counts differ between groups, prefer a debiased measure such as `wpli2_debiased` or `ppc`; the report gives the range of epoch counts.
+:::
+
+Matrices of these measures computed elsewhere can be given as `matrix` input with `--modality eeg` (or `meg`) and `--no-fisher-z`.
+
 ## Participants, sessions and runs
 
 `--participant-label` and `--session-id` select participants and sessions, as in XCP-D; for `xcpd` and `nirspipe`, `--task-id` selects the task. Each session is analysed on its own; without `--session-id`, every session in `INPUT` is.
@@ -68,42 +116,6 @@ For files that differ in other BIDS entities, such as several runs or acquisitio
 ### Several runs
 
 A participant with several runs left after filtering has each run analysed on its own (`01_run-1`, `01_run-2`), with a warning in the report; group comparisons stop instead, since they need one matrix per participant. XCP-D's `--combine-runs` merges runs before conngraph sees the data; for XCP-D output without it, `--combine-runs` together with `--connectivity` z-scores each run's time series and concatenates them in run order before computing connectivity.
-
-## EEG and MEG
-
-`mne-connectivity` input reads connectivity computed with [MNE-Connectivity](https://mne.tools/mne-connectivity/) and saved with `conn.save()`, one file per participant. `--modality` says whether it is `eeg`, `meg` or `fnirs` (MNE-NIRS data analysed with MNE-Connectivity):
-
-```text
-INPUT/
-    nodes.tsv                  optional: label; network, hemisphere, x, y, z
-    sub-01_connectivity.nc
-    sub-02_connectivity.nc
-    ...
-```
-
-```python
-from mne_connectivity import spectral_connectivity_epochs
-
-conn = spectral_connectivity_epochs(epochs, method="wpli", fmin=(4, 8, 13), fmax=(8, 13, 30), faverage=True)
-conn.save("INPUT/sub-01_connectivity.nc")
-```
-
-### Methods and bands
-
-- The method is read from the files and named in the report. Undirected methods are supported: `coh`, `imcoh` (taken as its absolute value), `plv`, `ciplv`, `ppc`, `pli`, `pli2_unbiased`, `wpli`, `wpli2_debiased` and envelope correlation. Directed methods such as `dpli`, `psi` or Granger causality are refused.
-- Envelope correlation is Fisher z-transformed when averaged and compared, like other correlations; the phase and coherence measures are used as they are.
-- Each frequency band averaged with `faverage=True` gets its own result folder, such as `band-8to13Hz`; files with single frequencies are refused. Envelope correlation has no band axis, so band-pass the data before computing it, and average its per-epoch matrices with `conn.combine()` before saving.
-
-### Nodes
-
-- Node names come from the files. `nodes.tsv` adds networks (lobes or regions, for example), hemispheres and coordinates; without a network column only the node level is computed.
-- With `--modality eeg` and no x, y, z in `nodes.tsv` (for `matrix` and `timeseries` input too), electrodes with standard names (Fp1, Cz, O2 and so on) are placed at the positions of MNE's `colin27_1005` template, which is in MNI space, and drawn on the scalp around the brain. `--montage` picks another MNE template in MNI space (`colin27_1020`, `mgh60`, `mgh70` and the other `colin27` templates). Other caps (EGI, BioSemi 128 with A1, B2 and so on) or measured positions need MNI coordinates given with `--coords`. Regions of a source-space atlas need their coordinates in `nodes.tsv` or `--coords` too.
-
-:::{important}
-The phase-locking value and coherence are biased upward when there are few epochs. If epoch counts differ between groups, prefer a debiased measure such as `wpli2_debiased` or `ppc`; the report gives the range of epoch counts.
-:::
-
-Matrices of these measures computed elsewhere can be given as `matrix` input with `--modality eeg` (or `meg`) and `--no-fisher-z`.
 
 ## Output files
 
@@ -130,7 +142,7 @@ OUTPUT/
         nbs/                          nbs_components.tsv, nbs_edges.tsv, nbs_null.tsv, nbs_mean_group1.tsv, nbs_mean_group2.tsv, nbs_report.html, figures/
 ```
 
-Without sessions the `ses-` folders are left out; matrix and time series input has no atlas folder. fNIRS channels have no networks, so only the node level is computed.
+Without sessions the `ses-` folders are left out; matrix and time series input has no atlas folder.
 
 ### Comparison tables
 

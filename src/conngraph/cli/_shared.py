@@ -5,6 +5,7 @@ Input options, loading and output files shared by the conngraph command-line too
 from __future__ import annotations
 
 import argparse
+import functools
 import glob
 import json
 import os
@@ -88,12 +89,27 @@ def input_variants(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
         if not paths:
             raise SystemExit(f"{parser.prog}: no files matching sub-*_{FOLDER_FILES['mne-connectivity']} in "
                              f"{args.input_dir}")
-        try:
-            bands = conngraph.mne_connectivity_bands(paths[0])
-        except ValueError as exc:
-            raise SystemExit(f"{parser.prog}: {exc}") from None
-        return [band_folder(b) for b in bands] if bands else [None]
+        variants = []
+        for label, first in {measure_label(_mne_method(p)): p for p in reversed(paths)}.items():
+            try:
+                bands = conngraph.mne_connectivity_bands(first)
+            except ValueError as exc:
+                raise SystemExit(f"{parser.prog}: {exc}") from None
+            variants += [f"meas-{label}_{band_folder(b)}" for b in bands] if bands else [f"meas-{label}"]
+        return sorted(variants)
     return [None]
+
+
+def measure_label(method: str) -> str:
+    """An MNE-Connectivity method as a file-name label, e.g. wpli2debiased."""
+    return "".join(c for c in method if c.isalnum())
+
+
+@functools.lru_cache(maxsize=None)
+def _mne_method(path: str) -> str:
+    from conngraph.derivatives import mne_connectivity_method
+
+    return mne_connectivity_method(path)
 
 
 def band_folder(band: tuple[float, float]) -> str:
@@ -181,7 +197,8 @@ def run_all(args: argparse.Namespace, parser: argparse.ArgumentParser, run, erro
 
 
 def run_folder(output_dir: str, folder: str, session: str | None, variant: str | None) -> pathlib.Path:
-    return pathlib.Path(output_dir, folder, session or "", variant or "")
+    # a variant of several entities (meas-wpli_band-8to13Hz) gets one folder level per entity
+    return pathlib.Path(output_dir, folder, session or "", *(variant or "").split("_"))
 
 
 def participant_parts(sid: str) -> tuple[str, str | None]:
@@ -213,7 +230,7 @@ def _load_mne(args: argparse.Namespace, files: dict[str, str], variant: str | No
     from conngraph.derivatives import MNE_MEASURES
 
     bands = conngraph.mne_connectivity_bands(next(iter(files.values()))) or []
-    band = next((b for b in bands if band_folder(b) == variant), None)
+    band = next((b for b in bands if band_folder(b) == variant.partition("_")[2]), None)
     matrices, table = conngraph.load_mne_connectivity(files, band, nodes, bad_node_threshold=args.bad_node_threshold,
                                                        drop_mode=args.drop_mode, verbose=not args.quiet,
                                                        montage=_montage(args))
@@ -243,6 +260,9 @@ def load_input(args: argparse.Namespace, parser: argparse.ArgumentParser,
         ending = FOLDER_FILES[args.input_type]
         pattern = f"sub-*_{session}_{ending}" if session else f"sub-*_{ending}"
         paths = _input_files(args.input_dir, pattern)
+        if args.input_type == "mne-connectivity":
+            measure = variant.partition("_")[0].removeprefix("meas-")
+            paths = [p for p in paths if measure_label(_mne_method(p)) == measure]
         files: dict[str, str] = {}
         for p in paths:
             sid = subject_id_from_path(p)

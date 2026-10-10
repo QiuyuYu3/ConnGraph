@@ -32,10 +32,10 @@ def _save(conn, path):
     return str(path)
 
 
-def _files(folder, method="wpli", n=3, **options):
+def _files(folder, method="wpli", n=3, tag="", **options):
     folder.mkdir(exist_ok=True)
     return {f"sub-{s:02d}": _save(mne_connectivity.spectral_connectivity_epochs(
-        _epochs(s, 10 + s), method=method, verbose=False, **(options or BANDS)), folder / f"sub-{s:02d}_connectivity.nc")
+        _epochs(s, 10 + s), method=method, verbose=False, **(options or BANDS)), folder / f"sub-{s:02d}{tag}_connectivity.nc")
         for s in range(1, n + 1)}
 
 
@@ -51,6 +51,13 @@ def test_each_band_is_read_as_a_symmetric_matrix(tmp_path):
     record = nodes.attrs["conngraph_input"]
     assert (record["source"], record["measure"], record["band"], record["epochs"]) == (
         "MNE-Connectivity", "wpli", [13.0, 30.0], [11, 13])
+
+
+def test_a_file_with_one_band_is_read(tmp_path):
+    files = _files(tmp_path, n=1, fmin=(8,), fmax=(13,), faverage=True)
+    assert bnv.mne_connectivity_bands(files["sub-01"]) == [(8.0, 13.0)]
+    matrices, _ = bnv.load_mne_connectivity(files, (8.0, 13.0), verbose=False)
+    assert matrices["sub-01"].shape == (len(CHANNELS), len(CHANNELS))
 
 
 def test_imaginary_coherence_is_taken_as_its_absolute_value(tmp_path):
@@ -183,7 +190,7 @@ def test_mne_connectivity_input_places_electrodes_only_for_eeg(tmp_path):
     for modality, placed in (("eeg", True), ("fnirs", False)):
         args, parser = cli.parse_args([str(folder), str(tmp_path / "out"), "group", "--input-type", "mne-connectivity",
                                        "--modality", modality, "--quiet"])
-        _, nodes = _shared.load_input(args, parser, "band-8to13Hz")
+        _, nodes = _shared.load_input(args, parser, "meas-wpli_band-8to13Hz")
         assert ("x" in nodes) is placed and nodes.attrs["conngraph_input"]["modality"] == modality
 
 
@@ -212,10 +219,37 @@ def test_cli_runs_each_band_without_fisher_z(tmp_path):
     assert cli.main([str(folder), str(out), "participant", *fast]) == 0
     assert cli.main([str(folder), str(out), "group", *mne_input, "--no-report", "--quiet"]) == 0
     for band in ("band-8to13Hz", "band-13to30Hz"):
-        params = json.loads((out / "group" / band / "parameters.json").read_text(encoding="utf-8"))
+        params = json.loads((out / "group" / "meas-wpli" / band / "parameters.json").read_text(encoding="utf-8"))
         assert params["options"]["apply_fisher_z"] is False
         assert (params["input"]["measure"], params["input"]["source"]) == ("wpli", "MNE-Connectivity")
         assert "node" in params["levels"]
         assert (params["input"]["electrodes"], params["input"]["modality"]) == ("colin27_1005", "eeg")
-        saved = pd.read_csv(out / "group" / band / "nodes.tsv", sep="	")
+        saved = pd.read_csv(out / "group" / "meas-wpli" / band / "nodes.tsv", sep="	")
         assert not saved[["x", "y", "z"]].isna().any().any()
+
+
+def test_cli_runs_each_measure_and_band_in_its_own_folder(tmp_path):
+    folder = tmp_path / "in"
+    _files(folder, n=6, tag="_desc-wpli")
+    _files(folder, method="coh", n=6, tag="_desc-coh", fmin=(8,), fmax=(13,), faverage=True)
+    out = tmp_path / "out"
+    mne_input = ["--input-type", "mne-connectivity", "--modality", "eeg", "--quiet"]
+    assert cli.main([str(folder), str(out), "participant", *mne_input, "--graph-method", "density", "--graph-param",
+                     "density=0.5", "--metrics", "strength", "--level", "node", "--n-jobs", "1", "--no-report"]) == 0
+    assert cli.main([str(folder), str(out), "group", *mne_input, "--no-report"]) == 0
+    for measure, bands in (("wpli", ("band-8to13Hz", "band-13to30Hz")), ("coh", ("band-8to13Hz",))):
+        for band in bands:
+            params = json.loads((out / "group" / f"meas-{measure}" / band / "parameters.json").read_text(encoding="utf-8"))
+            assert params["input"]["measure"] == measure and len(params["subjects"]) == 6
+    assert not (out / "group" / "meas-coh" / "band-13to30Hz").exists()
+    assert (out / "sub-01" / "sub-01_meas-coh_band-8to13Hz_metrics.json").exists()
+
+
+def test_two_files_of_one_measure_for_a_participant_are_refused(tmp_path):
+    folder = tmp_path / "in"
+    for run in (1, 2):
+        _files(folder, n=1, tag=f"_run-{run}", fmin=(8,), fmax=(13,), faverage=True)
+    with pytest.raises(SystemExit, match="two files for sub-01"):
+        cli.main([str(folder), str(tmp_path / "out"), "participant", "--input-type", "mne-connectivity", "--modality",
+                  "eeg", "--graph-method", "density", "--graph-param", "density=0.5", "--n-jobs", "1", "--no-report",
+                  "--quiet"])

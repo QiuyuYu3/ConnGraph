@@ -386,6 +386,14 @@ MNE_MEASURES = {
 }
 
 
+def mne_connectivity_method(path: str) -> str:
+    """The connectivity method named in an MNE-Connectivity file, read without loading its data."""
+    import xarray as xr
+
+    with xr.open_dataarray(path, engine="h5netcdf") as data:
+        return str(data.attrs["method"])
+
+
 def mne_connectivity_bands(path: str) -> list[tuple[float, float]] | None:
     """Frequency bands of an MNE-Connectivity file as (low, high) Hz; None when it has no frequency axis."""
     return _mne_bands(_read_mne(path), path)
@@ -507,6 +515,9 @@ def _mne_bands(conn, path: str) -> list[tuple[float, float]] | None:
     if "freqs" not in conn.dims:
         return None
     used = conn.attrs.get("freqs_used")
+    # a saved file flattens a single band to [low, high]
+    if used is not None and np.ndim(used) == 1 and len(used) == 2 and len(conn.freqs) == 1:
+        used = [used]
     if used is None or any(np.ndim(b) != 1 or len(b) != 2 for b in used):
         raise DataValidationError(f"'{path}' holds single frequencies; compute connectivity with faverage=True "
                                   "to average them into bands.")
