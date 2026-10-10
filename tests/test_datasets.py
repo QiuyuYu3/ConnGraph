@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -57,3 +58,49 @@ def test_load_gordon_atlas_options(parcels_xlsx):
     assert len(bnv.load_gordon_atlas(parcels_xlsx=str(parcels_xlsx), drop_none=True)) == 4
     perino = bnv.load_gordon_atlas(community="perino2021", parcels_xlsx=str(parcels_xlsx))
     assert perino["network"].tolist()[5] == "MedVisual"
+
+
+@pytest.fixture
+def mock_nodes():
+    nets = ["Default", "Salience", "Visual"]
+    return pd.DataFrame({
+        "label":      [f"{n}_{i}" for n in nets for i in range(6)],
+        "network":    [n for n in nets for _ in range(6)],
+        "hemisphere": ["L", "R"] * 9,
+    })
+
+
+def _within(matrix, nodes, network):
+    keep = (nodes["network"] == network).to_numpy()
+    block = matrix.to_numpy()[np.ix_(keep, keep)]
+    return block[np.triu_indices(keep.sum(), 1)].mean()
+
+
+def test_mock_dataset_groups_differ_within_the_named_networks(mock_nodes):
+    matrices, nodes, participants = datasets.make_mock_dataset(n_per_group=8, nodes=mock_nodes)
+
+    assert participants["group"].value_counts().to_dict() == {"A": 8, "B": 8}
+    assert list(matrices) == participants["participant_id"].tolist()
+    for m in matrices.values():
+        assert m.index.tolist() == m.columns.tolist() == mock_nodes["label"].tolist()
+        np.testing.assert_allclose(m.to_numpy(), m.to_numpy().T)
+        np.testing.assert_allclose(np.diag(m), 1)
+    group = dict(zip(participants["participant_id"], participants["group"]))
+    for network, sign in [("Default", 1), ("Visual", -1), ("Salience", 0)]:
+        a = np.mean([_within(m, nodes, network) for s, m in matrices.items() if group[s] == "A"])
+        b = np.mean([_within(m, nodes, network) for s, m in matrices.items() if group[s] == "B"])
+        assert np.sign(round(b - a, 1)) == sign, network
+
+
+def test_mock_dataset_writes_a_matrix_folder(mock_nodes, tmp_path):
+    matrices, _, _ = datasets.make_mock_dataset(n_per_group=2, nodes=mock_nodes, out_dir=tmp_path)
+
+    loaded = bnv.load_group(str(tmp_path), str(tmp_path / "nodes.tsv"), pattern="*_matrix.tsv")
+    assert sorted(loaded.matrices) == sorted(matrices)
+    np.testing.assert_allclose(np.asarray(loaded.matrices["sub-03"]), matrices["sub-03"].to_numpy(), atol=1e-12)
+    assert pd.read_csv(tmp_path / "participants.tsv", sep="\t").shape == (4, 3)
+
+
+def test_mock_dataset_rejects_an_unknown_network(mock_nodes):
+    with pytest.raises(ValueError, match="'Limbic'"):
+        datasets.make_mock_dataset(nodes=mock_nodes, weaker="Limbic")

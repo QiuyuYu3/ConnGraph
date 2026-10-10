@@ -40,7 +40,7 @@ conngraph derivatives/xcpd results group \
     --nbs-thresh 3.5
 ```
 
-Input formats, options and the output layout are described in [docs/usage.md](https://github.com/QiuyuYu3/brainnet3d/blob/main/docs/usage.md); `conngraph --help` lists every option.
+Input formats, options and the output layout are described in the [user guide](https://github.com/QiuyuYu3/brainnet3d/tree/main/docs/guide); `conngraph --help` lists every option.
 
 ## Gallery
 

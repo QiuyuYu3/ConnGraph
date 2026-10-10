@@ -21,6 +21,7 @@
 - Brain figures can use any template: a pair of `.surf.gii` files or a brain volume (NIfTI or AFNI), whose outline is used.
 - Two-group comparisons of graph metrics, network connectivity and edges with permutation t-tests, covariates, and FDR and family-wise corrected p-values (`compare_groups`), with an HTML report.
 - NBS permutations run in parallel.
+- A documentation site with a user guide, a CLI reference and a gallery of examples run on simulated data, and `datasets.make_mock_dataset` to simulate such data.
 
 ### Fixed
 

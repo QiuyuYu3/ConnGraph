@@ -34,3 +34,7 @@ Turn a connectivity matrix and a node table into graph-theory metrics and an int
 - Loaders for XCP-D correlation matrices.
 - Network-based statistic (NBS) group comparison, with significant edges highlighted in the 3-D plot.
 - 2-D spring and circos plots, 3-D spring layout, threshold and density graph filtering.
+
+## Milestones
+
+- **Connectome Mapper 3 EEG output** (possible): read the connectivity matrices of its EEG pipeline as an input type.

@@ -51,6 +51,13 @@ dev = [
     "pytest",
     "ruff",
 ]
+docs = [
+    "sphinx",
+    "sphinx-gallery",
+    "pydata-sphinx-theme",
+    "myst-parser",
+    "sphinx-design",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
