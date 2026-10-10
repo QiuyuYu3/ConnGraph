@@ -56,7 +56,6 @@ docs = [
     "sphinx-gallery",
     "pydata-sphinx-theme",
     "myst-parser",
-    "sphinx-design",
 ]
 
 [tool.setuptools.packages.find]

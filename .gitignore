@@ -30,4 +30,4 @@ _build/
 # pages generated when the docs are built
 docs/auto_examples/
 docs/sg_execution_times.rst
-docs/cli/_generated/
+docs/_generated/

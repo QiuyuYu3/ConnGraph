@@ -75,4 +75,4 @@ results/
         nbs/nbs_report.html           the network-based statistic
 ```
 
-The tables behind each report sit beside it and are linked from it; [Output files](guide/output.md) lists them. To run on your own data, see [Input](guide/input.md) and the [CLI reference](cli/index.md). The [gallery](auto_examples/index.rst) does the same steps in Python.
+The tables behind each report sit beside it and are linked from it; [Output files](guide.md#output-files) lists them. To run on your own data, see [Input](guide.md#input) and the [CLI reference](cli.md). The [gallery](auto_examples/index.rst) does the same steps in Python.

@@ -22,41 +22,11 @@ This package is in early development; the options may change.
 
 `conngraph` works like a BIDS App: a participant level, then a group level. Everything it does is also available from Python.
 
-## Where to go
-
-::::{grid} 1 2 2 2
-:gutter: 3
-
-:::{grid-item-card} Getting started
-:link: getting-started
-:link-type: doc
-Install the package, see what it downloads on first use, and run both levels on 20 simulated participants.
-:::
-
-:::{grid-item-card} Gallery
-:link: auto_examples/index
-:link-type: doc
-Python examples on simulated data, run when the site is built, each with its figures and a downloadable script and notebook.
-:::
-
-:::{grid-item-card} User guide
-:link: guide/index
-:link-type: doc
-The two levels, input types and file formats, participants, sessions and runs, EEG and MEG, output files and reports.
-:::
-
-:::{grid-item-card} CLI reference
-:link: cli/index
-:link-type: doc
-Every option of the `conngraph` command, generated from the command itself: input, both levels, participant level and group level.
-:::
-::::
-
 ```{toctree}
 :hidden:
 
 getting-started
-guide/index
+guide
 auto_examples/index
-cli/index
+cli
 ```

@@ -16,9 +16,9 @@ author = "Qiuyu Yu"
 copyright = "2026, Qiuyu Yu"
 release = conngraph.__version__
 
-extensions = ["myst_parser", "sphinx_design", "sphinx_gallery.gen_gallery"]
+extensions = ["myst_parser", "sphinx_gallery.gen_gallery"]
 source_suffix = {".rst": "restructuredtext", ".md": "markdown"}
-exclude_patterns = ["_build", "cli/_generated"]
+exclude_patterns = ["_build", "_generated"]
 myst_enable_extensions = ["colon_fence"]
 myst_heading_anchors = 3
 # keep the double hyphen of option names in prose and tables
@@ -31,7 +31,7 @@ html_theme_options = {
     "navbar_align": "left",
     "secondary_sidebar_items": ["page-toc", "sg_download_links", "sg_launcher_links"],
 }
-html_sidebars = {"index": [], "getting-started": [], "auto_examples/index": []}
+html_sidebars = {"index": [], "getting-started": [], "guide": [], "auto_examples/index": [], "cli": []}
 
 sphinx_gallery_conf = {
     "examples_dirs": "../examples",
@@ -44,7 +44,7 @@ sphinx_gallery_conf = {
     "show_signature": False,
 }
 
-# argparse group title -> table file included by the CLI reference pages
+# argparse group title -> table file included by the CLI reference page
 CLI_TABLES = {
     "positional arguments": "general",
     "options": "general",
@@ -80,7 +80,7 @@ def write_cli_tables() -> None:
                 values = f"`{formatter._format_args(action, action.dest.upper())}`"
             values = values.replace("|", "\\|")
             rows.append(f"| {names} | {values} | {_cli_text(formatter._expand_help(action))} |")
-    out = pathlib.Path(__file__).parent / "cli" / "_generated"
+    out = pathlib.Path(__file__).parent / "_generated"
     out.mkdir(parents=True, exist_ok=True)
     for name, rows in tables.items():
         path, text = out / f"{name}.md", "\n".join(rows) + "\n"
